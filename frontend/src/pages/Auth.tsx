@@ -48,13 +48,11 @@ export const Auth: React.FC<Props> = ({ onLoginSuccess }) => {
       }
     } catch (err: any) {
       console.error('Erro de autenticação:', err);
-      let erroMsg = 'Erro ao realizar login. Verifique suas credenciais.';
-      if (err.message?.includes('Invalid login credentials')) {
-        erroMsg = 'E-mail ou senha incorretos.';
-      } else if (err.message?.includes('Email not confirmed')) {
-        erroMsg = 'E-mail não confirmado. Verifique sua caixa de entrada.';
+      let erroTexto = 'E-mail ou senha inválidos.';
+      if (err.message && err.message.toLowerCase().includes('email not confirmed')) {
+        erroTexto = 'Por favor, confirme seu e-mail antes de acessar.';
       }
-      setMensagem({ tipo: 'erro', texto: erroMsg });
+      setMensagem({ tipo: 'erro', texto: erroTexto });
     } finally {
       setLoading(false);
     }
@@ -64,29 +62,29 @@ export const Auth: React.FC<Props> = ({ onLoginSuccess }) => {
     e.preventDefault();
     setMensagem(null);
 
-    if (!nomeResponsavel || !nomeAssistencia || !whatsapp || !cadEmail || !cadSenha) {
-      setMensagem({ tipo: 'erro', texto: 'Preencha todos os campos obrigatórios marcados com (*).' });
-      return;
-    }
-
-    if (cadSenha.length < 6) {
-      setMensagem({ tipo: 'erro', texto: 'A senha precisa ter pelo menos 6 caracteres.' });
+    if (!cadEmail || !cadSenha || !nomeResponsavel || !nomeAssistencia || !whatsapp) {
+      setMensagem({ tipo: 'erro', texto: 'Preencha todos os campos obrigatórios (*).' });
       return;
     }
 
     if (cadSenha !== cadConfirmarSenha) {
-      setMensagem({ tipo: 'erro', texto: 'As senhas informadas não coincidem.' });
+      setMensagem({ tipo: 'erro', texto: 'As senhas digitadas não coincidem.' });
+      return;
+    }
+
+    if (cadSenha.length < 6) {
+      setMensagem({ tipo: 'erro', texto: 'A senha deve conter no mínimo 6 caracteres.' });
       return;
     }
 
     if (!concordouTermos) {
-      setMensagem({ tipo: 'erro', texto: 'Você precisa aceitar os Termos de Uso para prosseguir.' });
+      setMensagem({ tipo: 'erro', texto: 'Você deve concordar com os Termos de Uso.' });
       return;
     }
 
     setLoading(true);
     try {
-      const data = await cadastrarUsuario({
+      await cadastrarUsuario({
         email: cadEmail,
         password: cadSenha,
         nomeResponsavel,
@@ -95,32 +93,22 @@ export const Auth: React.FC<Props> = ({ onLoginSuccess }) => {
         cpfCnpj,
       });
 
-      const savedConfigs = localStorage.getItem('sig_apple_configs');
-      const configs = savedConfigs ? JSON.parse(savedConfigs) : {};
-      configs.nomeLoja = nomeAssistencia.trim();
-      configs.telefone = whatsapp.trim();
-      if (cpfCnpj) configs.cnpj = cpfCnpj.trim();
-      localStorage.setItem('sig_apple_configs', JSON.stringify(configs));
-      window.dispatchEvent(new Event('storage_configs_updated'));
+      setMensagem({
+        tipo: 'sucesso',
+        texto: 'Conta criada com sucesso! Verifique seu e-mail para confirmação se necessário.',
+      });
 
-      if (data.session) {
-        setMensagem({ tipo: 'sucesso', texto: 'Conta criada com sucesso! Entrando no sistema...' });
-        if (onLoginSuccess) onLoginSuccess();
-      } else {
-        setMensagem({
-          tipo: 'sucesso',
-          texto: 'Conta criada! Se o seu Supabase exigir confirmação por e-mail, verifique sua caixa de entrada antes de entrar.',
-        });
+      setTimeout(() => {
         setModo('login');
         setLoginEmail(cadEmail);
-      }
+      }, 2000);
     } catch (err: any) {
       console.error('Erro de cadastro:', err);
-      let erroMsg = err.message || 'Erro ao criar conta. Tente novamente.';
-      if (err.message?.includes('User already registered')) {
-        erroMsg = 'Este e-mail já está em uso.';
+      let erroTexto = err.message || 'Falha ao registrar conta.';
+      if (erroTexto.toLowerCase().includes('already registered')) {
+        erroTexto = 'Este e-mail já está cadastrado no sistema.';
       }
-      setMensagem({ tipo: 'erro', texto: erroMsg });
+      setMensagem({ tipo: 'erro', texto: erroTexto });
     } finally {
       setLoading(false);
     }
@@ -128,7 +116,10 @@ export const Auth: React.FC<Props> = ({ onLoginSuccess }) => {
 
   const handleRecuperar = async () => {
     if (!loginEmail) {
-      setMensagem({ tipo: 'erro', texto: 'Digite seu e-mail no campo acima para receber o link de recuperação.' });
+      setMensagem({
+        tipo: 'erro',
+        texto: 'Digite seu e-mail no campo acima para receber o link de redefinição de senha.',
+      });
       return;
     }
 
@@ -148,8 +139,9 @@ export const Auth: React.FC<Props> = ({ onLoginSuccess }) => {
 
   return (
     <div className="min-h-screen w-full flex flex-col lg:flex-row bg-[#080c14] text-zinc-100 font-sans selection:bg-blue-600 selection:text-white">
-      {/* ================= PAINEL ESQUERDO (BRANDING MONTEC SYSTEM) ================= */}
-      <div className="relative flex-1 flex flex-col justify-between p-8 lg:p-16 border-b lg:border-b-0 lg:border-r border-zinc-800/60 overflow-hidden bg-[#070b12]">
+      {/* ================= PAINEL INSTITUCIONAL (EMBAIXO NO MOBILE / ESQUERDA NO DESKTOP) ================= */}
+      <div className="relative flex-1 flex flex-col justify-between p-8 lg:p-16 border-t lg:border-t-0 lg:border-r border-zinc-800/60 overflow-hidden bg-[#070b12] order-2 lg:order-1">
+        {/* Grade Blueprint de fundo */}
         <div
           className="absolute inset-0 pointer-events-none opacity-20"
           style={{
@@ -163,14 +155,24 @@ export const Auth: React.FC<Props> = ({ onLoginSuccess }) => {
 
         <div className="absolute -top-32 -left-32 w-96 h-96 bg-blue-600/10 rounded-full blur-3xl pointer-events-none" />
 
-        {/* Topo: Logo Montec System */}
-        <div className="relative z-10 flex items-center space-x-3.5">
-          <div className="relative w-12 h-12 rounded-xl overflow-hidden shadow-lg shadow-blue-500/25 shrink-0 border border-blue-500/30 bg-[#0d131f]">
-            <img
-              src="/logo-montec.png"
-              alt="Montec System"
-              className="w-full h-full object-cover"
-            />
+        {/* Topo Desktop: Logo Montec System */}
+        <div className="relative z-10 hidden lg:flex items-center space-x-3.5">
+          <div className="relative w-12 h-12 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 p-0.5 shadow-lg shadow-blue-500/20 flex items-center justify-center shrink-0">
+            <div className="w-full h-full bg-[#0d131f] rounded-[10px] flex items-center justify-center">
+              <svg
+                className="w-6 h-6 text-blue-400"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.2"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M4 6h3l5 7 5-7h3v12h-3v-7l-5 7-5-7v7H4V6z"
+                />
+              </svg>
+            </div>
             <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-amber-500 rounded-full border-2 border-[#070b12]" />
           </div>
           <div>
@@ -181,14 +183,14 @@ export const Auth: React.FC<Props> = ({ onLoginSuccess }) => {
           </div>
         </div>
 
-        {/* Chamada Principal (Login vs Cadastro) */}
-        <div className="relative z-10 max-w-xl my-12 lg:my-auto">
+        {/* Chamada Principal (Frase Institucional) */}
+        <div className="relative z-10 max-w-xl my-10 lg:my-auto">
           {modo === 'login' ? (
             <div className="space-y-6">
               <span className="inline-block text-xs font-bold tracking-widest text-blue-400 uppercase">
                 OPERAÇÃO SOB CONTROLE
               </span>
-              <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black text-white tracking-tight leading-[1.15]">
+              <h2 className="text-2xl sm:text-4xl lg:text-5xl font-black text-white tracking-tight leading-[1.15]">
                 Do balcão à bancada: o controle total da sua assistência técnica.
               </h2>
               <p className="text-zinc-400 text-sm sm:text-base leading-relaxed">
@@ -200,7 +202,7 @@ export const Auth: React.FC<Props> = ({ onLoginSuccess }) => {
               <span className="inline-block text-xs font-bold tracking-widest text-blue-400 uppercase">
                 COMECE AGORA
               </span>
-              <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black text-white tracking-tight leading-[1.15]">
+              <h2 className="text-2xl sm:text-4xl lg:text-5xl font-black text-white tracking-tight leading-[1.15]">
                 Organize sua assistência desde a primeira ordem.
               </h2>
               <p className="text-zinc-400 text-sm sm:text-base leading-relaxed">
@@ -230,9 +232,37 @@ export const Auth: React.FC<Props> = ({ onLoginSuccess }) => {
         </div>
       </div>
 
-      {/* ================= PAINEL DIREITO (FORMULÁRIOS) ================= */}
-      <div className="w-full lg:w-[480px] xl:w-[540px] flex flex-col justify-between p-8 lg:p-14 bg-[#0a0e17] overflow-y-auto">
+      {/* ================= PAINEL DE FORMULÁRIO (PRIMEIRO NO MOBILE / DIREITA NO DESKTOP) ================= */}
+      <div className="w-full lg:w-[480px] xl:w-[540px] flex flex-col justify-between p-6 sm:p-8 lg:p-14 bg-[#0a0e17] overflow-y-auto order-1 lg:order-2">
         <div className="my-auto max-w-md w-full mx-auto">
+          {/* Topo Mobile: Logo Montec System */}
+          <div className="flex lg:hidden items-center space-x-3.5 mb-8">
+            <div className="relative w-11 h-11 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 p-0.5 shadow-lg shadow-blue-500/20 flex items-center justify-center shrink-0">
+              <div className="w-full h-full bg-[#0d131f] rounded-[10px] flex items-center justify-center">
+                <svg
+                  className="w-5 h-5 text-blue-400"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.2"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M4 6h3l5 7 5-7h3v12h-3v-7l-5 7-5-7v7H4V6z"
+                  />
+                </svg>
+              </div>
+              <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-amber-500 rounded-full border-2 border-[#070b12]" />
+            </div>
+            <div>
+              <h1 className="text-base font-extrabold tracking-tight text-white leading-none">
+                Montec System
+              </h1>
+              <p className="text-xs text-blue-400 mt-1 font-semibold">Software de Gestão Técnica</p>
+            </div>
+          </div>
+
           {mensagem && (
             <div
               className={`mb-6 p-4 rounded-xl text-xs sm:text-sm font-medium border flex items-start space-x-3 ${
@@ -287,7 +317,7 @@ export const Auth: React.FC<Props> = ({ onLoginSuccess }) => {
                       onClick={handleRecuperar}
                       className="text-xs font-medium text-blue-400 hover:text-blue-300 transition"
                     >
-                      Recuperar acesso
+                      Recuperar
                     </button>
                   </div>
                   <input
@@ -303,31 +333,23 @@ export const Auth: React.FC<Props> = ({ onLoginSuccess }) => {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full py-3.5 px-4 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 disabled:opacity-50 text-white font-bold rounded-xl text-sm transition-all shadow-lg shadow-blue-600/25 flex items-center justify-center space-x-2 mt-2"
+                  className="w-full py-3.5 px-4 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-bold text-sm rounded-xl shadow-lg shadow-blue-600/30 transition duration-200 mt-2"
                 >
-                  {loading ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      <span>Verificando...</span>
-                    </>
-                  ) : (
-                    <span>Entrar</span>
-                  )}
+                  {loading ? 'Entrando...' : 'Entrar'}
                 </button>
               </form>
 
-              <div className="mt-8 pt-6 border-t border-zinc-800/60 text-center">
+              <div className="mt-8 text-center">
                 <p className="text-xs text-zinc-400">
                   Ainda não tem conta na assistência?{' '}
                   <button
-                    type="button"
                     onClick={() => {
                       setModo('cadastro');
                       setMensagem(null);
                     }}
                     className="font-bold text-blue-400 hover:text-blue-300 transition ml-1"
                   >
-                    Crie sua conta
+                    Criar conta
                   </button>
                 </p>
               </div>
@@ -339,10 +361,10 @@ export const Auth: React.FC<Props> = ({ onLoginSuccess }) => {
                   NOVA CONTA
                 </span>
                 <h3 className="text-2xl sm:text-3xl font-extrabold text-white mt-1.5 tracking-tight">
-                  Crie sua conta
+                  Cadastre sua loja
                 </h3>
                 <p className="text-zinc-400 text-xs sm:text-sm mt-1">
-                  Informe os dados do responsável e da assistência.
+                  Configure seu ambiente de trabalho.
                 </p>
               </div>
 
@@ -350,14 +372,14 @@ export const Auth: React.FC<Props> = ({ onLoginSuccess }) => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                   <div>
                     <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
-                      NOME DO RESPONSÁVEL *
+                      RESPONSÁVEL *
                     </label>
                     <input
                       type="text"
                       required
                       value={nomeResponsavel}
                       onChange={(e) => setNomeResponsavel(e.target.value)}
-                      placeholder="Davi Rodrigues"
+                      placeholder="Nome completo"
                       className="w-full px-3.5 py-2.5 bg-[#0d131f] border border-zinc-800 rounded-xl text-xs sm:text-sm text-white placeholder-zinc-400 focus:outline-none focus:border-blue-500 transition"
                     />
                   </div>
@@ -370,7 +392,7 @@ export const Auth: React.FC<Props> = ({ onLoginSuccess }) => {
                       required
                       value={nomeAssistencia}
                       onChange={(e) => setNomeAssistencia(e.target.value)}
-                      placeholder="Sampaio Cell"
+                      placeholder="Ex: Montec Smart"
                       className="w-full px-3.5 py-2.5 bg-[#0d131f] border border-zinc-800 rounded-xl text-xs sm:text-sm text-white placeholder-zinc-400 focus:outline-none focus:border-blue-500 transition"
                     />
                   </div>
@@ -386,13 +408,13 @@ export const Auth: React.FC<Props> = ({ onLoginSuccess }) => {
                       required
                       value={whatsapp}
                       onChange={(e) => setWhatsapp(e.target.value)}
-                      placeholder="(85) 99999-9999"
+                      placeholder="(00) 00000-0000"
                       className="w-full px-3.5 py-2.5 bg-[#0d131f] border border-zinc-800 rounded-xl text-xs sm:text-sm text-white placeholder-zinc-400 focus:outline-none focus:border-blue-500 transition"
                     />
                   </div>
                   <div>
                     <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
-                      CPF OU CNPJ
+                      CNPJ OU CPF
                     </label>
                     <input
                       type="text"
@@ -413,7 +435,7 @@ export const Auth: React.FC<Props> = ({ onLoginSuccess }) => {
                     required
                     value={cadEmail}
                     onChange={(e) => setCadEmail(e.target.value)}
-                    placeholder="voce@suaassistencia.com.br"
+                    placeholder="seuemail@provedor.com"
                     className="w-full px-3.5 py-2.5 bg-[#0d131f] border border-zinc-800 rounded-xl text-xs sm:text-sm text-white placeholder-zinc-400 focus:outline-none focus:border-blue-500 transition"
                   />
                 </div>
@@ -421,44 +443,42 @@ export const Auth: React.FC<Props> = ({ onLoginSuccess }) => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                   <div>
                     <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
-                      CRIE UMA SENHA *
+                      SENHA *
                     </label>
                     <input
                       type="password"
                       required
                       value={cadSenha}
                       onChange={(e) => setCadSenha(e.target.value)}
-                      placeholder="Mínimo de 6 caracteres"
+                      placeholder="Mínimo 6 dígitos"
                       className="w-full px-3.5 py-2.5 bg-[#0d131f] border border-zinc-800 rounded-xl text-xs sm:text-sm text-white placeholder-zinc-400 focus:outline-none focus:border-blue-500 transition"
                     />
                   </div>
                   <div>
                     <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
-                      CONFIRME A SENHA *
+                      CONFIRMAR SENHA *
                     </label>
                     <input
                       type="password"
                       required
                       value={cadConfirmarSenha}
                       onChange={(e) => setCadConfirmarSenha(e.target.value)}
-                      placeholder="Digite novamente"
+                      placeholder="Repita a senha"
                       className="w-full px-3.5 py-2.5 bg-[#0d131f] border border-zinc-800 rounded-xl text-xs sm:text-sm text-white placeholder-zinc-400 focus:outline-none focus:border-blue-500 transition"
                     />
                   </div>
                 </div>
 
-                <div className="pt-1">
+                <div className="pt-2">
                   <label className="flex items-start space-x-2.5 cursor-pointer">
                     <input
                       type="checkbox"
                       checked={concordouTermos}
                       onChange={(e) => setConcordouTermos(e.target.checked)}
-                      className="mt-0.5 rounded bg-[#0d131f] border-zinc-700 text-blue-600 focus:ring-0 focus:ring-offset-0"
+                      className="mt-1 rounded bg-[#0d131f] border-zinc-700 text-blue-600 focus:ring-blue-500"
                     />
-                    <span className="text-[11px] sm:text-xs text-zinc-400 leading-tight">
-                      Li e concordo com os{' '}
-                      <span className="text-blue-400 hover:underline">Termos de Uso</span> e a{' '}
-                      <span className="text-blue-400 hover:underline">Política de Privacidade</span>.
+                    <span className="text-xs text-zinc-400">
+                      Concordo com os Termos de Uso e Política de Privacidade do sistema.
                     </span>
                   </label>
                 </div>
@@ -466,24 +486,16 @@ export const Auth: React.FC<Props> = ({ onLoginSuccess }) => {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full py-3.5 px-4 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 disabled:opacity-50 text-white font-bold rounded-xl text-sm transition-all shadow-lg shadow-blue-600/25 flex items-center justify-center space-x-2 mt-3"
+                  className="w-full py-3.5 px-4 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-bold text-sm rounded-xl shadow-lg shadow-blue-600/30 transition duration-200 mt-2"
                 >
-                  {loading ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      <span>Criando conta...</span>
-                    </>
-                  ) : (
-                    <span>Criar minha conta</span>
-                  )}
+                  {loading ? 'Cadastrando...' : 'Finalizar Cadastro'}
                 </button>
               </form>
 
-              <div className="mt-6 pt-4 border-t border-zinc-800/60 text-center">
+              <div className="mt-6 text-center">
                 <p className="text-xs text-zinc-400">
                   Já possui uma conta?{' '}
                   <button
-                    type="button"
                     onClick={() => {
                       setModo('login');
                       setMensagem(null);
