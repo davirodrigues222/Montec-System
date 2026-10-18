@@ -25,6 +25,7 @@ export async function cadastrarUsuario(dados: {
     email: dados.email,
     password: dados.password,
     options: {
+      emailRedirectTo: `${window.location.origin}/`,
       data: {
         nome_responsavel: dados.nomeResponsavel,
         nome_assistencia: dados.nomeAssistencia,
@@ -38,7 +39,9 @@ export async function cadastrarUsuario(dados: {
 }
 
 export async function recuperarSenha(email: string) {
-  const { data, error } = await supabase.auth.resetPasswordForEmail(email);
+  const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: `${window.location.origin}/`,
+  });
   if (error) throw error;
   return data;
 }
