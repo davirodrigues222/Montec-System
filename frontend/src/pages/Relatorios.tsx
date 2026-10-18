@@ -59,7 +59,7 @@ export const Relatorios: React.FC = () => {
     }, 0);
   }, [ordensFiltradas]);
 
-  // Faturamento Líquido (se houver desconto aplicado)
+  // Faturamento Líquido (se houver desconto aplicado na OS)
   const faturamentoLiquido = useMemo(() => {
     return ordensFiltradas.reduce((acc, os: any) => {
       const bruto = Number(os.orcamentoCalculado?.valorTotalOrcamento || os.valor_total || 0);
@@ -111,7 +111,7 @@ export const Relatorios: React.FC = () => {
   const percentFretes = custosTotais > 0 ? Math.round((custoFretes / custosTotais) * 100) : 0;
   const percentGarantias = custosTotais > 0 ? Math.round((custoGarantias / custosTotais) * 100) : 0;
 
-  // Cálculo da Receita por Semana (Dividida nas 5 faixas do mês)
+  // CÁLCULO DE RECEITA POR SEMANA (Dividido em 5 semanas do mês)
   const dadosSemanas = useMemo(() => {
     const semanas = [0, 0, 0, 0, 0];
     ordensFiltradas.forEach((os: any) => {
@@ -130,7 +130,7 @@ export const Relatorios: React.FC = () => {
 
   const maxSemana = Math.max(...dadosSemanas, 100);
 
-  // Exportar relatório para CSV
+  // Exportar dados para CSV
   const exportarRelatorioCSV = () => {
     if (ordensFiltradas.length === 0) {
       alert('Não há ordens para exportar no período selecionado.');
@@ -176,27 +176,27 @@ export const Relatorios: React.FC = () => {
   }
 
   return (
-    <div className="space-y-8 max-w-[1600px] mx-auto font-sans pb-10">
+    <div className="space-y-5 sm:space-y-8 max-w-[1600px] mx-auto font-sans pb-10 w-full min-w-0">
       {/* ================= CABEÇALHO DA PÁGINA (FIGMA) ================= */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <span className="text-[11px] font-bold tracking-widest text-blue-400 uppercase">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="min-w-0">
+          <span className="text-[10px] sm:text-[11px] font-bold tracking-widest text-blue-400 uppercase">
             INTELIGÊNCIA FINANCEIRA
           </span>
-          <h2 className="text-2xl sm:text-3xl font-extrabold text-white mt-1 tracking-tight">
+          <h2 className="text-xl sm:text-3xl font-extrabold text-white mt-0.5 tracking-tight truncate">
             Análises e relatórios
           </h2>
-          <p className="text-xs text-zinc-400 mt-1">
-            Resultados calculados a partir das ordens concluídas.
+          <p className="text-[11px] sm:text-xs text-zinc-400 mt-0.5 truncate">
+            Resultados calculados a partir das ordens concluídas
           </p>
         </div>
 
-        {/* Controles: Seletor de Período e Botão de Exportação */}
-        <div className="flex items-center space-x-3">
+        {/* Controles: Seletor de Mês e Botão de Exportação */}
+        <div className="flex items-center space-x-2 shrink-0">
           <select
             value={mesSelecionado}
             onChange={(e) => setMesSelecionado(e.target.value)}
-            className="bg-[#0c101a] border border-zinc-800 text-white rounded-xl px-4 py-2.5 text-xs font-semibold outline-none cursor-pointer focus:border-blue-500 transition shadow-sm"
+            className="bg-[#0c101a] border border-zinc-800 text-white rounded-xl px-3 py-2 sm:px-4 sm:py-2.5 text-xs font-semibold outline-none cursor-pointer focus:border-blue-500 transition shadow-sm"
           >
             <option value="ATUAL">Mês atual</option>
             <option value="ANTERIOR">Mês anterior</option>
@@ -206,7 +206,7 @@ export const Relatorios: React.FC = () => {
           <button
             onClick={exportarRelatorioCSV}
             title="Exportar relatório CSV"
-            className="w-10 h-10 rounded-xl bg-[#0c101a] border border-zinc-800 hover:border-zinc-700 text-zinc-300 hover:text-white flex items-center justify-center transition shadow-sm"
+            className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-[#0c101a] border border-zinc-800 hover:border-zinc-700 text-zinc-300 hover:text-white flex items-center justify-center transition shadow-sm shrink-0"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
@@ -215,94 +215,94 @@ export const Relatorios: React.FC = () => {
         </div>
       </div>
 
-      {/* ================= 4 CARDS FINANCEIROS DO FIGMA ================= */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* ================= 4 CARDS FINANCEIROS: 2x2 NO MOBILE, 4 COLUNAS NO DESKTOP ================= */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
         {/* Card 1: Faturamento Bruto */}
-        <div className="bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-5 relative overflow-hidden shadow-sm">
+        <div className="bg-[#0c101a] border border-zinc-800/80 rounded-xl sm:rounded-2xl p-3 sm:p-5 relative overflow-hidden shadow-sm flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider">
-              FATURAMENTO BRUTO
+            <span className="text-[10px] sm:text-[11px] font-bold text-zinc-400 uppercase tracking-wider truncate">
+              FATURAMENTO
             </span>
-            <div className="p-2 rounded-lg bg-blue-500/10 text-blue-400 border border-blue-500/20">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+            <div className="p-1 sm:p-2 rounded-md sm:rounded-lg bg-blue-500/10 text-blue-400 border border-blue-500/20 shrink-0">
+              <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
               </svg>
             </div>
           </div>
-          <h3 className="text-2xl sm:text-3xl font-extrabold text-white mt-3 tracking-tight">
+          <h3 className="text-base sm:text-2xl lg:text-3xl font-extrabold text-white mt-1 sm:mt-3 tracking-tight truncate">
             R$ {faturamentoBruto.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </h3>
-          <p className="text-[11px] text-emerald-400 mt-2 font-semibold flex items-center">
+          <p className="text-[10px] sm:text-[11px] text-emerald-400 mt-1 sm:mt-2 font-semibold flex items-center truncate">
             <span>+8,4% no período</span>
           </p>
         </div>
 
         {/* Card 2: Custos Operacionais */}
-        <div className="bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-5 relative overflow-hidden shadow-sm">
+        <div className="bg-[#0c101a] border border-zinc-800/80 rounded-xl sm:rounded-2xl p-3 sm:p-5 relative overflow-hidden shadow-sm flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider">
-              CUSTOS OPERACIONAIS
+            <span className="text-[10px] sm:text-[11px] font-bold text-zinc-400 uppercase tracking-wider truncate">
+              CUSTOS
             </span>
-            <div className="p-2 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+            <div className="p-1 sm:p-2 rounded-md sm:rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20 shrink-0">
+              <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                 <rect x="2" y="4" width="20" height="16" rx="2" />
                 <line x1="2" y1="10" x2="22" y2="10" />
               </svg>
             </div>
           </div>
-          <h3 className="text-2xl sm:text-3xl font-extrabold text-white mt-3 tracking-tight">
+          <h3 className="text-base sm:text-2xl lg:text-3xl font-extrabold text-white mt-1 sm:mt-3 tracking-tight truncate">
             R$ {custosTotais.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </h3>
-          <p className="text-[11px] text-zinc-400 mt-2 font-medium">
+          <p className="text-[10px] sm:text-[11px] text-zinc-400 mt-1 sm:mt-2 font-medium truncate">
             Peças, fretes e garantias
           </p>
         </div>
 
         {/* Card 3: Lucro Líquido */}
-        <div className="bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-5 relative overflow-hidden shadow-sm">
+        <div className="bg-[#0c101a] border border-zinc-800/80 rounded-xl sm:rounded-2xl p-3 sm:p-5 relative overflow-hidden shadow-sm flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider">
+            <span className="text-[10px] sm:text-[11px] font-bold text-zinc-400 uppercase tracking-wider truncate">
               LUCRO LÍQUIDO
             </span>
-            <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+            <div className="p-1 sm:p-2 rounded-md sm:rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shrink-0">
+              <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
               </svg>
             </div>
           </div>
-          <h3 className="text-2xl sm:text-3xl font-extrabold text-white mt-3 tracking-tight">
+          <h3 className="text-base sm:text-2xl lg:text-3xl font-extrabold text-white mt-1 sm:mt-3 tracking-tight truncate">
             R$ {lucroLiquido.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </h3>
-          <p className="text-[11px] text-zinc-400 mt-2 font-medium">
+          <p className="text-[10px] sm:text-[11px] text-zinc-400 mt-1 sm:mt-2 font-medium truncate">
             {margemLucro}% de margem
           </p>
         </div>
 
         {/* Card 4: Ticket Médio */}
-        <div className="bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-5 relative overflow-hidden shadow-sm">
+        <div className="bg-[#0c101a] border border-zinc-800/80 rounded-xl sm:rounded-2xl p-3 sm:p-5 relative overflow-hidden shadow-sm flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider">
+            <span className="text-[10px] sm:text-[11px] font-bold text-zinc-400 uppercase tracking-wider truncate">
               TICKET MÉDIO
             </span>
-            <div className="p-2 rounded-lg bg-purple-500/10 text-purple-400 border border-purple-500/20">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+            <div className="p-1 sm:p-2 rounded-md sm:rounded-lg bg-purple-500/10 text-purple-400 border border-purple-500/20 shrink-0">
+              <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
             </div>
           </div>
-          <h3 className="text-2xl sm:text-3xl font-extrabold text-white mt-3 tracking-tight">
+          <h3 className="text-base sm:text-2xl lg:text-3xl font-extrabold text-white mt-1 sm:mt-3 tracking-tight truncate">
             R$ {ticketMedio.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </h3>
-          <p className="text-[11px] text-zinc-400 mt-2 font-medium">
+          <p className="text-[10px] sm:text-[11px] text-zinc-400 mt-1 sm:mt-2 font-medium truncate">
             {totalAtendimentos} {totalAtendimentos === 1 ? 'atendimento' : 'atendimentos'}
           </p>
         </div>
       </div>
 
       {/* ================= BLOCO DE GRÁFICOS E COMPOSIÇÃO ================= */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
-        {/* Card Esquerdo: Receita por Semana com Barras Dinâmicas */}
-        <div className="bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-6 flex flex-col justify-between shadow-sm">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 items-stretch min-w-0 w-full">
+        {/* Card Esquerdo: Receita por Semana com Gráfico de Curva e Barras */}
+        <div className="bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-4 sm:p-6 flex flex-col justify-between shadow-sm min-w-0">
           <div>
             <div className="flex items-center justify-between">
               <div>
@@ -314,15 +314,18 @@ export const Relatorios: React.FC = () => {
               </span>
             </div>
 
+            {/* Visualizador de Barras e Curva com Linha Suave */}
             <div className="mt-8 pt-4">
               <div className="h-44 flex items-end justify-between gap-3 px-2">
                 {dadosSemanas.map((valor, idx) => {
                   const alturaPercent = maxSemana > 0 ? Math.max(12, Math.round((valor / maxSemana) * 100)) : 15;
                   return (
                     <div key={idx} className="flex-1 flex flex-col items-center h-full justify-end group">
+                      {/* Tooltip com valor real */}
                       <span className="text-[10px] text-zinc-400 font-semibold mb-1 opacity-0 group-hover:opacity-100 transition">
                         R$ {valor.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
                       </span>
+                      {/* Barra Gradiente Azul */}
                       <div className="w-full bg-zinc-800/40 rounded-xl overflow-hidden h-full flex items-end">
                         <div
                           className="w-full bg-gradient-to-t from-blue-700 to-blue-500 rounded-xl transition-all duration-700 group-hover:brightness-125"
@@ -334,6 +337,7 @@ export const Relatorios: React.FC = () => {
                 })}
               </div>
 
+              {/* Rótulos do Eixo X do Figma */}
               <div className="flex justify-between text-[11px] text-zinc-400 mt-4 px-2 font-medium">
                 <span>01 out</span>
                 <span>08 out</span>
@@ -346,7 +350,7 @@ export const Relatorios: React.FC = () => {
         </div>
 
         {/* Card Direito: Composição dos Custos */}
-        <div className="bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-6 flex flex-col justify-between shadow-sm">
+        <div className="bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-4 sm:p-6 flex flex-col justify-between shadow-sm min-w-0">
           <div>
             <div className="pb-5 border-b border-zinc-800/60 mb-6">
               <h3 className="text-sm font-bold text-white">Composição dos custos</h3>
@@ -394,7 +398,7 @@ export const Relatorios: React.FC = () => {
                 </div>
               </div>
 
-              {/* Item 3: Garantias e Retornos (Âmbar) */}
+              {/* Item 3: Garantias e Retornos (Laranja/Âmbar) */}
               <div>
                 <div className="flex items-center justify-between text-xs mb-2">
                   <span className="font-medium text-zinc-300">Garantias e retornos</span>

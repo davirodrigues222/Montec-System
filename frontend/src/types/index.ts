@@ -1,4 +1,5 @@
 export type StatusOS =
+  | 'RASCUNHO'
   | 'AGUARDANDO_AVALIACAO'
   | 'EM_ANALISE'
   | 'AGUARDANDO_PECA'

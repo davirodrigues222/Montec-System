@@ -84,6 +84,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
     carregarDadosIniciais();
   }, []);
 
+  // Selecionar Cliente
   const handleSelecionarCliente = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const id = e.target.value;
     setIdClienteSelecionado(id);
@@ -99,6 +100,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
     }
   };
 
+  // Selecionar Serviço Padrão
   const handleSelecionarServico = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const id = e.target.value;
     setServicoPadraoId(id);
@@ -111,7 +113,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
     }
   };
 
-  // CÁLCULOS FINANCEIROS
+  // CÁLCULOS FINANCEIROS DO CARD 03
   const numPrecoServico = Number(valorServico) || 0;
   const numDescontoInput = Number(descontoCliente) || 0;
 
@@ -135,7 +137,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
   const numFreteReal = Number(freteReal) || 0;
   const lucroEstimado = liquidoRecebido - (numCustoPeca + numFreteReal);
 
-  // Ajuste automático de taxa conforme a forma de pagamento
+  // Ajuste automático de taxa conforme forma de pagamento
   useEffect(() => {
     if (formaPagamento === 'Dinheiro' || formaPagamento === 'PIX') {
       setTaxaMaquinetaPercentual(0);
@@ -149,6 +151,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
     }
   }, [formaPagamento, parcelas]);
 
+  // Submissão do Formulário
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -179,7 +182,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
         defeitoRelatado: defeitoRelatado.trim(),
         diagnostico: diagnostico.trim(),
         servicoRealizado: defeitoRelatado.trim(),
-        observacoes: observacoes.trim(),
+        observacoes: (diagnostico || observacoes).trim(),
         dataAbertura: dataAbertura,
         dataPrevistaEntrega: dataPrevista || undefined,
         formaPagamento: formaPagamento,
@@ -214,6 +217,70 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
     } catch (err: any) {
       console.error('Erro ao criar OS:', err);
       alert(`Falha ao salvar Ordem de Serviço: ${err.message || 'Verifique sua conexão.'}`);
+    } finally {
+      setCarregando(false);
+    }
+  };
+
+  // Salvar OS em modo Rascunho (campos flexíveis, sem travar em frete, preço ou diagnóstico pendente)
+  const handleSalvarRascunho = async () => {
+    const nomeValido = nomeCliente.trim();
+    const modeloValido = modeloAparelho.trim();
+
+    // Requer apenas ao menos 1 identificador mínimo para não salvar um registro 100% fantasma
+    if (!nomeValido && !modeloValido) {
+      alert('Para salvar como rascunho, preencha ao menos o Nome do Cliente ou o Modelo do Aparelho.');
+      return;
+    }
+
+    setCarregando(true);
+    try {
+      const payload = {
+        cliente: {
+          idCliente: idClienteSelecionado || undefined,
+          nome: nomeValido || 'Cliente a Definir',
+          whatsapp: whatsappCliente.trim(),
+          cpfCnpj: cpfCnpjCliente.trim(),
+        },
+        aparelho: {
+          modelo: modeloValido || 'Aparelho em Avaliação',
+          imei1: imeiAparelho.trim(),
+          senhaDesbloqueio: senhaAparelho.trim(),
+        },
+        defeitoRelatado: defeitoRelatado.trim() || 'Defeito a diagnosticar',
+        diagnostico: diagnostico.trim(),
+        servicoRealizado: defeitoRelatado.trim() || 'Aguardando diagnóstico',
+        observacoes: (diagnostico || observacoes).trim(),
+        dataAbertura: dataAbertura,
+        dataPrevistaEntrega: dataPrevista || undefined,
+        formaPagamento: formaPagamento,
+        parcelas: parcelas,
+        valorLiquido: liquidoRecebido,
+        possuiGarantia: possuiGarantia,
+        checklistEntrada: checklist,
+        orcamentoCalculado: {
+          subtotalServicos: numPrecoServico,
+          descontoGeralAplicado: descontoCalculado,
+          tipoDesconto: tipoDesconto,
+          valorTotalOrcamento: valorCobrado,
+          custoPeca: numCustoPeca,
+          freteReal: numFreteReal,
+          fornecedorPeca: fornecedorPeca,
+          lucroTotalEstimadoInterno: lucroEstimado,
+        },
+        status_os: 'RASCUNHO',
+      };
+
+      const resultado = await criarOrdemServico(payload as any);
+
+      alert(`✅ Rascunho da OS ${resultado.numeroOs} salvo com sucesso!\n\nEle está disponível na aba "Rascunhos / Em Definição" no histórico de ordens.`);
+      handleLimparFormulario();
+      if (onNavigate) {
+        onNavigate('historico');
+      }
+    } catch (err: any) {
+      console.error('Erro ao salvar rascunho:', err);
+      alert(`Falha ao salvar rascunho: ${err.message || 'Verifique sua conexão.'}`);
     } finally {
       setCarregando(false);
     }
@@ -267,7 +334,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        {/* ================= CARD TOPO: COBERTURA ================= */}
+        {/* ================= CARD TOPO: COBERTURA DESTE ATENDIMENTO ================= */}
         <div className="bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
           <div className="flex items-center space-x-3.5">
             <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 shrink-0">
@@ -307,7 +374,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
           </div>
         </div>
 
-        {/* ================= CARD 01 (CLIENTE) + CARD 02 (APARELHO E DATAS) ================= */}
+        {/* ================= LINHA: CARD 01 (CLIENTE) + CARD 02 (APARELHO E DATAS) ================= */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
           {/* CARD 01: CLIENTE */}
           <div className="bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-6 space-y-4 shadow-sm flex flex-col justify-between">
@@ -470,10 +537,11 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
             <h3 className="text-sm font-bold text-white">Serviço, diagnóstico e custos</h3>
           </div>
 
+          {/* Linha 1: Serviço Padrão + Defeito Relatado */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             <div>
               <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
-                SERVIÇO PADRÃO
+                SERVIÇO
               </label>
               <select
                 value={servicoPadraoId}
@@ -490,46 +558,34 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
             </div>
             <div className="lg:col-span-2">
               <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
-                DEFEITO RELATADO / DESCRIÇÃO DO SERVIÇO *
+                DEFEITO RELATADO *
               </label>
               <input
                 type="text"
                 required
                 value={defeitoRelatado}
                 onChange={(e) => setDefeitoRelatado(e.target.value)}
-                placeholder="Ex.: troca de tela frontal"
+                placeholder="Ex.: troca de tela frontal, aparelho não liga..."
                 className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs text-white placeholder-zinc-400 outline-none focus:border-blue-500 transition"
               />
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
-                DIAGNÓSTICO TÉCNICO
-              </label>
-              <input
-                type="text"
-                value={diagnostico}
-                onChange={(e) => setDiagnostico(e.target.value)}
-                placeholder="Ex.: display quebrado, sem imagem"
-                className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs text-white placeholder-zinc-400 outline-none focus:border-blue-500 transition"
-              />
-            </div>
-            <div>
-              <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
-                OBSERVAÇÕES INTERNAS
-              </label>
-              <input
-                type="text"
-                value={observacoes}
-                onChange={(e) => setObservacoes(e.target.value)}
-                placeholder="Ex.: aparelho sem gaveta de chip"
-                className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs text-white placeholder-zinc-400 outline-none focus:border-blue-500 transition"
-              />
-            </div>
+          {/* Linha 2: Descrição Técnica do Serviço (Unificação de Diagnóstico + Observações) */}
+          <div>
+            <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
+              DESCRIÇÃO TÉCNICA DO SERVIÇO
+            </label>
+            <input
+              type="text"
+              value={diagnostico}
+              onChange={(e) => setDiagnostico(e.target.value)}
+              placeholder="Ex.: display quebrado, sem imagem, detalhes e observações do reparo"
+              className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs text-white placeholder-zinc-400 outline-none focus:border-blue-500 transition"
+            />
           </div>
 
+          {/* Linha 3: Custo Peça, Frete, Fornecedor, Desconto e Valor do Serviço */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3.5">
             <div>
               <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
@@ -621,6 +677,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
             </div>
           </div>
 
+          {/* Linha 4: Forma Pagamento, Parcelas, Taxa Maquineta, Líquido Recebido */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
             <div>
               <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
@@ -734,7 +791,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
           </div>
         </div>
 
-        {/* ================= CHECKLIST EXPANSÍVEL ================= */}
+        {/* ================= SEÇÃO EXPANSÍVEL: CHECKLIST DE ENTRADA ================= */}
         <div className="bg-[#0c101a] border border-zinc-800/80 rounded-2xl overflow-hidden shadow-sm">
           <button
             type="button"
@@ -769,20 +826,22 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
           )}
         </div>
 
-        {/* ================= BOTÕES INFERIORES (FIGMA) ================= */}
-        <div className="flex items-center justify-end space-x-3.5 pt-2">
+        {/* ================= BOTÕES DE AÇÃO INFERIORES (FIGMA) ================= */}
+        <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-3 pt-2">
           <button
             type="button"
-            onClick={handleLimparFormulario}
-            className="px-5 py-2.5 bg-transparent border border-zinc-800 hover:bg-zinc-800 text-zinc-300 rounded-xl text-xs font-semibold transition"
+            onClick={handleSalvarRascunho}
+            disabled={carregando}
+            className="w-full sm:w-auto justify-center px-5 py-2.5 bg-amber-500/10 hover:bg-amber-500/20 active:bg-amber-500/30 text-amber-300 border border-amber-500/30 rounded-xl text-xs font-semibold transition flex items-center space-x-1.5"
           >
-            Salvar rascunho
+            <span>📝</span>
+            <span>Salvar rascunho</span>
           </button>
 
           <button
             type="submit"
             disabled={carregando}
-            className="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 disabled:opacity-50 text-white font-bold rounded-xl text-xs transition shadow-lg shadow-blue-600/25 flex items-center space-x-2"
+            className="w-full sm:w-auto justify-center px-6 py-2.5 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 disabled:opacity-50 text-white font-bold rounded-xl text-xs transition shadow-lg shadow-blue-600/25 flex items-center space-x-2"
           >
             {carregando ? (
               <>
@@ -796,7 +855,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
         </div>
       </form>
 
-      {/* ================= MODAL: SUCESSO ================= */}
+      {/* ================= MODAL: SUCESSO PÓS-CRIAÇÃO ================= */}
       {osCriadaSucesso && (
         <div className="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-[#0b0f19] border border-zinc-800 w-full max-w-md rounded-2xl p-6 shadow-2xl text-center space-y-5">
@@ -810,7 +869,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
                 {osCriadaSucesso.numeroOs}
               </p>
               <p className="text-xs text-zinc-400 mt-2">
-                A ordem de serviço foi registrada e vinculada com sucesso.
+                A ordem de serviço foi registrada e já está disponível na bancada.
               </p>
             </div>
 
@@ -842,7 +901,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
         </div>
       )}
 
-      {/* Impressão de Comprovante */}
+      {/* Impressão de Certidão de Garantia */}
       {osParaImprimir && (
         <CertidaoGarantia os={osParaImprimir} onClose={() => setOsParaImprimir(null)} />
       )}

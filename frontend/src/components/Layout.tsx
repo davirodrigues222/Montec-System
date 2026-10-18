@@ -9,6 +9,9 @@ interface Props {
 }
 
 export const Layout: React.FC<Props> = ({ children, activeTab, setActiveTab, session }) => {
+  // Controle de abertura do menu lateral no Mobile/Tablet
+  const [menuAberto, setMenuAberto] = useState(false);
+
   // Dados da Assistência Técnica do Cliente (ex: Sampaio Cell)
   const [nomeLoja, setNomeLoja] = useState<string>('Sampaio Cell');
   const [subtitulo, setSubtitulo] = useState<string>('Assistência Técnica');
@@ -34,7 +37,6 @@ export const Layout: React.FC<Props> = ({ children, activeTab, setActiveTab, ses
 
   useEffect(() => {
     carregarConfigs();
-
     window.addEventListener('storage_configs_updated', carregarConfigs);
     return () => window.removeEventListener('storage_configs_updated', carregarConfigs);
   }, [session]);
@@ -45,6 +47,11 @@ export const Layout: React.FC<Props> = ({ children, activeTab, setActiveTab, ses
     } catch (err) {
       console.error('Erro ao sair:', err);
     }
+  };
+
+  const mudarAba = (aba: typeof activeTab) => {
+    setActiveTab(aba);
+    setMenuAberto(false);
   };
 
   const userName = session?.user?.user_metadata?.nome_responsavel || 'Davi Sampaio';
@@ -66,18 +73,34 @@ export const Layout: React.FC<Props> = ({ children, activeTab, setActiveTab, ses
   };
 
   return (
-    <div className="min-h-screen flex bg-[#070a12] text-zinc-100 font-sans print:bg-white print:text-black">
+    <div className="min-h-screen flex bg-[#070a12] text-zinc-100 font-sans print:bg-white print:text-black overflow-x-hidden">
+      {/* ================= BACKDROP OVERLAY PARA MOBILE ================= */}
+      {menuAberto && (
+        <div
+          onClick={() => setMenuAberto(false)}
+          className="fixed inset-0 bg-black/70 backdrop-blur-sm z-40 lg:hidden transition-opacity duration-300"
+          aria-hidden="true"
+        />
+      )}
+
       {/* ================= BARRA LATERAL (MONTEC SYSTEM) ================= */}
-      <aside className="w-80 min-w-[20rem] border-r border-zinc-800/60 bg-[#090d15] flex flex-col justify-between print:hidden">
-        <div>
+      <aside
+        className={`fixed lg:static inset-y-0 left-0 z-50 w-72 sm:w-80 border-r border-zinc-800/60 bg-[#090d15] flex flex-col justify-between print:hidden transition-transform duration-300 ease-in-out shrink-0 ${
+          menuAberto ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+        }`}
+      >
+        <div className="overflow-y-auto flex-1">
           {/* Topo da Sidebar: Plataforma Montec System com a Logo Oficial */}
-          <div className="p-6 border-b border-zinc-800/40">
-            <div className="flex items-center space-x-3.5">
+          <div className="p-5 sm:p-6 border-b border-zinc-800/40 flex items-center justify-between">
+            <div className="flex items-center space-x-3.5 min-w-0">
               {/* Logo Oficial Montec System */}
-              <div className="relative w-12 h-12 rounded-xl overflow-hidden shadow-lg shadow-blue-500/25 shrink-0 border border-blue-500/30 bg-[#0d131f]">
+              <div className="relative w-11 h-11 sm:w-12 sm:h-12 rounded-xl overflow-hidden shadow-lg shadow-blue-500/25 shrink-0 border border-blue-500/30 bg-[#0d131f]">
                 <img
                   src="/logo-montec.png"
                   alt="Montec System"
+                  onError={(e) => {
+                    (e.target as HTMLElement).style.display = 'none';
+                  }}
                   className="w-full h-full object-cover"
                 />
                 <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-amber-500 rounded-full border-2 border-[#090d15]" />
@@ -92,6 +115,17 @@ export const Layout: React.FC<Props> = ({ children, activeTab, setActiveTab, ses
                 </p>
               </div>
             </div>
+
+            {/* Botão Fechar Menu no Mobile */}
+            <button
+              onClick={() => setMenuAberto(false)}
+              className="lg:hidden p-2 text-zinc-400 hover:text-white rounded-xl hover:bg-zinc-800 transition"
+              aria-label="Fechar menu"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
           </div>
 
           {/* Navegação */}
@@ -102,7 +136,7 @@ export const Layout: React.FC<Props> = ({ children, activeTab, setActiveTab, ses
               </span>
               <div className="space-y-1.5">
                 <button
-                  onClick={() => setActiveTab('dashboard')}
+                  onClick={() => mudarAba('dashboard')}
                   className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-bold transition-all ${
                     activeTab === 'dashboard'
                       ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
@@ -121,7 +155,7 @@ export const Layout: React.FC<Props> = ({ children, activeTab, setActiveTab, ses
                 </button>
 
                 <button
-                  onClick={() => setActiveTab('relatorios')}
+                  onClick={() => mudarAba('relatorios')}
                   className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-bold transition-all ${
                     activeTab === 'relatorios'
                       ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
@@ -140,7 +174,7 @@ export const Layout: React.FC<Props> = ({ children, activeTab, setActiveTab, ses
                 </button>
 
                 <button
-                  onClick={() => setActiveTab('historico')}
+                  onClick={() => mudarAba('historico')}
                   className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-bold transition-all ${
                     activeTab === 'historico'
                       ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
@@ -159,7 +193,7 @@ export const Layout: React.FC<Props> = ({ children, activeTab, setActiveTab, ses
                 </button>
 
                 <button
-                  onClick={() => setActiveTab('nova-os')}
+                  onClick={() => mudarAba('nova-os')}
                   className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-bold transition-all ${
                     activeTab === 'nova-os'
                       ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
@@ -178,7 +212,7 @@ export const Layout: React.FC<Props> = ({ children, activeTab, setActiveTab, ses
                 </button>
 
                 <button
-                  onClick={() => setActiveTab('garantia-retorno')}
+                  onClick={() => mudarAba('garantia-retorno')}
                   className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-bold transition-all ${
                     activeTab === 'garantia-retorno'
                       ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
@@ -204,7 +238,7 @@ export const Layout: React.FC<Props> = ({ children, activeTab, setActiveTab, ses
               </span>
               <div className="space-y-1.5">
                 <button
-                  onClick={() => setActiveTab('cadastros')}
+                  onClick={() => mudarAba('cadastros')}
                   className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-bold transition-all ${
                     activeTab === 'cadastros'
                       ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
@@ -223,7 +257,7 @@ export const Layout: React.FC<Props> = ({ children, activeTab, setActiveTab, ses
                 </button>
 
                 <button
-                  onClick={() => setActiveTab('configuracoes')}
+                  onClick={() => mudarAba('configuracoes')}
                   className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-bold transition-all ${
                     activeTab === 'configuracoes'
                       ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
@@ -247,7 +281,7 @@ export const Layout: React.FC<Props> = ({ children, activeTab, setActiveTab, ses
         </div>
 
         {/* Rodapé: Operador Logado */}
-        <div className="p-4 border-t border-zinc-800/60">
+        <div className="p-4 border-t border-zinc-800/60 shrink-0">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3 overflow-hidden min-w-0">
               <div className="w-10 h-10 rounded-xl bg-slate-800 border border-slate-700/60 flex items-center justify-center text-xs font-extrabold text-white shrink-0 shadow-sm">
@@ -271,45 +305,61 @@ export const Layout: React.FC<Props> = ({ children, activeTab, setActiveTab, ses
         </div>
       </aside>
 
-      {/* ================= ÁREA DE CONTEÚDO PRINCIPAL ================= */}
-      <div className="flex-1 flex flex-col min-w-0">
-        {/* Cabeçalho Superior */}
-        <header className="h-16 border-b border-zinc-800/60 bg-[#090d15]/80 backdrop-blur-md flex items-center justify-between px-8 print:hidden">
-          {/* Breadcrumb Montec System */}
-          <div className="flex items-center space-x-2 text-xs text-zinc-400 font-medium">
-            <span className="font-bold text-zinc-300">Montec System</span>
-            <span className="text-zinc-600">/</span>
-            <span className="font-bold text-white">{titulosAbas[activeTab] || 'Painel'}</span>
+      {/* ================= ÁREA DE CONTEÚDO ================= */}
+      <div className="flex-1 flex flex-col min-w-0 w-full overflow-hidden max-w-full">
+        {/* Cabeçalho Superior Adaptativo */}
+        <header className="h-16 border-b border-zinc-800/60 bg-[#090d15]/90 backdrop-blur-md flex items-center justify-between px-3.5 sm:px-6 lg:px-8 print:hidden shrink-0 z-30 w-full max-w-full">
+          <div className="flex items-center space-x-3 min-w-0">
+            {/* Botão Hambúrguer no Mobile/Tablet */}
+            <button
+              onClick={() => setMenuAberto(true)}
+              aria-label="Abrir menu lateral"
+              className="lg:hidden p-2 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-800 transition shrink-0"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
+
+            {/* Breadcrumb Montec System */}
+            <div className="flex items-center space-x-1.5 sm:space-x-2 text-xs text-zinc-400 font-medium truncate">
+              <span className="font-bold text-zinc-300 hidden md:inline">Montec System</span>
+              <span className="text-zinc-600 hidden md:inline">/</span>
+              <span className="font-bold text-white text-xs sm:text-sm truncate">
+                {titulosAbas[activeTab] || 'Painel'}
+              </span>
+            </div>
           </div>
 
           {/* Topo Direito: Identidade da Assistência Técnica do Cliente */}
-          <div className="flex items-center space-x-3 bg-[#0d121c] border border-zinc-800/80 rounded-xl px-3.5 py-1.5 shadow-sm">
+          <div className="flex items-center space-x-2 sm:space-x-3 bg-[#0d121c] border border-zinc-800/80 rounded-xl px-2.5 sm:px-3.5 py-1.5 shadow-sm max-w-[170px] sm:max-w-xs shrink-0">
             {logoUrl ? (
               <img
                 src={logoUrl}
                 alt={nomeLoja}
-                className="w-8 h-8 object-contain rounded-lg bg-zinc-950 p-1 border border-zinc-800 shrink-0"
+                className="w-7 h-7 sm:w-8 sm:h-8 object-contain rounded-lg bg-zinc-950 p-0.5 sm:p-1 border border-zinc-800 shrink-0"
               />
             ) : (
-              <div className="w-8 h-8 rounded-lg bg-blue-600/15 border border-blue-500/30 flex items-center justify-center text-blue-400 font-extrabold text-xs shrink-0">
+              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-blue-600/15 border border-blue-500/30 flex items-center justify-center text-blue-400 font-extrabold text-xs shrink-0">
                 {nomeLoja.charAt(0).toUpperCase()}
               </div>
             )}
             <div className="text-left pr-1 min-w-0">
-              <div className="flex items-center space-x-2">
-                <h4 className="text-xs font-bold text-white truncate leading-tight max-w-[180px]">
+              <div className="flex items-center space-x-1.5">
+                <h4 className="text-[11px] sm:text-xs font-bold text-white truncate leading-tight">
                   {nomeLoja}
                 </h4>
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0 animate-pulse" title="Assistência Conectada" />
               </div>
-              <p className="text-[10px] text-zinc-400 truncate mt-0.5 max-w-[180px] font-medium">
+              <p className="text-[9px] sm:text-[10px] text-zinc-400 truncate mt-0.5 font-medium hidden sm:block">
                 {subtitulo}
               </p>
             </div>
           </div>
         </header>
 
-        <main className="flex-1 p-8 overflow-y-auto print:p-0">
+        {/* Área Principal com Rolagem Independente */}
+        <main className="flex-1 p-3 sm:p-6 lg:p-8 overflow-y-auto overflow-x-hidden print:p-0 min-w-0 w-full max-w-full">
           {children}
         </main>
       </div>
