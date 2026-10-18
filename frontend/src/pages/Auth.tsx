@@ -155,25 +155,17 @@ export const Auth: React.FC<Props> = ({ onLoginSuccess }) => {
 
         <div className="absolute -top-32 -left-32 w-96 h-96 bg-blue-600/10 rounded-full blur-3xl pointer-events-none" />
 
-        {/* Topo Desktop: Logo Montec System */}
-        <div className="relative z-10 hidden lg:flex items-center space-x-3.5">
-          <div className="relative w-12 h-12 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 p-0.5 shadow-lg shadow-blue-500/20 flex items-center justify-center shrink-0">
-            <div className="w-full h-full bg-[#0d131f] rounded-[10px] flex items-center justify-center">
-              <svg
-                className="w-6 h-6 text-blue-400"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.2"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M4 6h3l5 7 5-7h3v12h-3v-7l-5 7-5-7v7H4V6z"
-                />
-              </svg>
-            </div>
-            <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-amber-500 rounded-full border-2 border-[#070b12]" />
+        {/* Topo: Logo Oficial Montec System */}
+        <div className="relative z-10 flex items-center space-x-3.5">
+          <div className="relative w-12 h-12 rounded-xl overflow-hidden shadow-lg shadow-blue-500/25 shrink-0 border border-blue-500/30 bg-[#0d131f] flex items-center justify-center">
+            <img
+              src="/logo-montec.png"
+              alt="Montec System"
+              onError={(e) => {
+                (e.target as HTMLElement).style.display = 'none';
+              }}
+              className="w-full h-full object-cover"
+            />
           </div>
           <div>
             <h1 className="text-base font-extrabold tracking-tight text-white leading-none">
@@ -235,25 +227,17 @@ export const Auth: React.FC<Props> = ({ onLoginSuccess }) => {
       {/* ================= PAINEL DE FORMULÁRIO (PRIMEIRO NO MOBILE / DIREITA NO DESKTOP) ================= */}
       <div className="w-full lg:w-[480px] xl:w-[540px] flex flex-col justify-between p-6 sm:p-8 lg:p-14 bg-[#0a0e17] overflow-y-auto order-1 lg:order-2">
         <div className="my-auto max-w-md w-full mx-auto">
-          {/* Topo Mobile: Logo Montec System */}
+          {/* Topo Mobile: Logo Oficial Montec System */}
           <div className="flex lg:hidden items-center space-x-3.5 mb-8">
-            <div className="relative w-11 h-11 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 p-0.5 shadow-lg shadow-blue-500/20 flex items-center justify-center shrink-0">
-              <div className="w-full h-full bg-[#0d131f] rounded-[10px] flex items-center justify-center">
-                <svg
-                  className="w-5 h-5 text-blue-400"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.2"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M4 6h3l5 7 5-7h3v12h-3v-7l-5 7-5-7v7H4V6z"
-                  />
-                </svg>
-              </div>
-              <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-amber-500 rounded-full border-2 border-[#070b12]" />
+            <div className="relative w-11 h-11 rounded-xl overflow-hidden shadow-lg shadow-blue-500/25 shrink-0 border border-blue-500/30 bg-[#0d131f] flex items-center justify-center">
+              <img
+                src="/logo-montec.png"
+                alt="Montec System"
+                onError={(e) => {
+                  (e.target as HTMLElement).style.display = 'none';
+                }}
+                className="w-full h-full object-cover"
+              />
             </div>
             <div>
               <h1 className="text-base font-extrabold tracking-tight text-white leading-none">
