@@ -175,7 +175,7 @@ export const Auth: React.FC<Props> = ({ onLoginSuccess }) => {
           </div>
         </div>
 
-        {/* Chamada Principal (Frase Institucional) */}
+        
         <div className="relative z-10 max-w-xl my-10 lg:my-auto">
           {modo === 'login' ? (
             <div className="space-y-6">

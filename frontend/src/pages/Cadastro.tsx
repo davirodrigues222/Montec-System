@@ -15,23 +15,6 @@ export interface RegistryItem {
   raw: any;
 }
 
-interface FormState {
-  id?: string;
-  name: string;
-  phone: string;
-  document: string;
-  price: string;
-  warranty: string;
-}
-
-const emptyFormState: FormState = {
-  name: '',
-  phone: '',
-  document: '',
-  price: '',
-  warranty: '90 dias / 45 min',
-};
-
 const registryMeta = {
   client: {
     label: 'Cliente',
@@ -60,19 +43,44 @@ export function Cadastro() {
   const [fornecedores, setFornecedores] = useState<any[]>([]);
   const [servicos, setServicos] = useState<any[]>([]);
 
-  // Workspace Form State (Exato do seu print)
-  const [activeType, setActiveType] = useState<RegistryType>('client');
-  const [form, setForm] = useState<FormState>(emptyFormState);
+  // Tipo de cadastro ativo (3 cards seletores)
+  const [tipoCadastro, setTipoCadastro] = useState<RegistryType>('client');
 
-  // Filter & Search
+  // Estados dos formulários específicos
+  const [formCliente, setFormCliente] = useState({
+    nome: '',
+    telefone: '',
+    email: '',
+    cpfCnpj: '',
+    observacoes: '',
+  });
+
+  const [formFornecedor, setFormFornecedor] = useState({
+    nome: '',
+    telefone: '',
+    email: '',
+    cnpj: '',
+    categoria: '',
+    observacoes: '',
+  });
+
+  const [formServico, setFormServico] = useState({
+    titulo: '',
+    valorBase: '',
+    tempoEstimado: '',
+    garantiaPadrao: 'Sem padrão',
+    descricao: '',
+  });
+
+  // Filtros da tabela
   const [activeFilter, setActiveFilter] = useState<RegistryFilter>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Modals
+  // Modais
   const [viewItem, setViewItem] = useState<RegistryItem | null>(null);
   const [itemToDelete, setItemToDelete] = useState<RegistryItem | null>(null);
 
-  // 1. CARREGAMENTO DE TODOS OS DADOS REAIS DO SUPABASE
+  // 1. CARREGAMENTO REAL DO SUPABASE
   const carregarDados = async () => {
     try {
       const [resCli, resForn, resServ] = await Promise.all([
@@ -95,7 +103,7 @@ export function Cadastro() {
     carregarDados();
   }, []);
 
-  // 2. UNIFICAÇÃO DE TODOS OS CLIENTES, FORNECEDORES E SERVIÇOS REAIS
+  // 2. UNIFICAÇÃO DOS REGISTROS REAIS NA LISTAGEM
   const registryItems = useMemo<RegistryItem[]>(() => {
     const list: RegistryItem[] = [];
 
@@ -172,7 +180,7 @@ export function Cadastro() {
     [registryItems.length, clientes.length, fornecedores.length, servicos.length]
   );
 
-  // Filtragem dinâmica
+  // Filtragem dinâmica por busca e abas
   const filteredItems = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return registryItems.filter((item) => {
@@ -187,55 +195,117 @@ export function Cadastro() {
     });
   }, [registryItems, activeFilter, searchQuery]);
 
-  // 3. PERSISTÊNCIA REAL NO SUPABASE
-  const handleSubmitForm = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!form.name.trim()) {
-      alert('Por favor, informe o nome do cadastro.');
-      return;
+  // Limpar formulário atual
+  const handleLimpar = () => {
+    if (tipoCadastro === 'client') {
+      setFormCliente({ nome: '', telefone: '', email: '', cpfCnpj: '', observacoes: '' });
+    } else if (tipoCadastro === 'supplier') {
+      setFormFornecedor({ nome: '', telefone: '', email: '', cnpj: '', categoria: '', observacoes: '' });
+    } else {
+      setFormServico({ titulo: '', valorBase: '', tempoEstimado: '', garantiaPadrao: 'Sem padrão', descricao: '' });
     }
+  };
 
+  // 3. PERSISTÊNCIA REAL NO SUPABASE
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault();
     setSaving(true);
+
     try {
       const { data: authData } = await supabase.auth.getUser();
       const userId = authData?.user?.id;
 
-      if (activeType === 'client') {
+      if (tipoCadastro === 'client') {
+        if (!formCliente.nome.trim()) {
+          alert('Por favor, digite o nome do cliente.');
+          setSaving(false);
+          return;
+        }
+
         const newId = crypto.randomUUID ? crypto.randomUUID() : 'cli_' + Math.random().toString(36).substring(2);
         const payload: any = {
           id_cliente: newId,
-          nome: form.name.trim(),
-          whatsapp: form.phone.trim(),
-          cpf_cnpj: form.document.trim() || null,
+          nome: formCliente.nome.trim(),
+          whatsapp: formCliente.telefone.trim(),
+          cpf_cnpj: formCliente.cpfCnpj.trim() || null,
         };
         if (userId) payload.user_id = userId;
-        const { error } = await supabase.from('clientes').insert([payload]);
+        if (formCliente.email.trim()) payload.email = formCliente.email.trim();
+        if (formCliente.observacoes.trim()) payload.observacoes = formCliente.observacoes.trim();
+
+        let { error } = await supabase.from('clientes').insert([payload]);
+        if (error && error.message?.includes('column')) {
+          delete payload.email;
+          delete payload.observacoes;
+          const retry = await supabase.from('clientes').insert([payload]);
+          error = retry.error;
+        }
         if (error) throw error;
-      } else if (activeType === 'supplier') {
+
+        setFormCliente({ nome: '', telefone: '', email: '', cpfCnpj: '', observacoes: '' });
+      } else if (tipoCadastro === 'supplier') {
+        if (!formFornecedor.nome.trim()) {
+          alert('Por favor, digite o nome/razão social do fornecedor.');
+          setSaving(false);
+          return;
+        }
+
         const newId = crypto.randomUUID ? crypto.randomUUID() : 'forn_' + Math.random().toString(36).substring(2);
         const payload: any = {
           id_fornecedor: newId,
-          nome: form.name.trim(),
-          contato: form.phone.trim(),
+          nome: formFornecedor.nome.trim(),
+          contato: formFornecedor.telefone.trim(),
         };
         if (userId) payload.user_id = userId;
-        const { error } = await supabase.from('cad_fornecedores').insert([payload]);
+        if (formFornecedor.cnpj.trim()) payload.cnpj = formFornecedor.cnpj.trim();
+        if (formFornecedor.categoria) payload.categoria = formFornecedor.categoria;
+        if (formFornecedor.email.trim()) payload.email = formFornecedor.email.trim();
+        if (formFornecedor.observacoes.trim()) payload.observacoes = formFornecedor.observacoes.trim();
+
+        let { error } = await supabase.from('cad_fornecedores').insert([payload]);
+        if (error && error.message?.includes('column')) {
+          delete payload.cnpj;
+          delete payload.categoria;
+          delete payload.email;
+          delete payload.observacoes;
+          const retry = await supabase.from('cad_fornecedores').insert([payload]);
+          error = retry.error;
+        }
         if (error) throw error;
-      } else if (activeType === 'service') {
-        const precoNum = Number(form.price.replace(',', '.')) || 0;
+
+        setFormFornecedor({ nome: '', telefone: '', email: '', cnpj: '', categoria: '', observacoes: '' });
+      } else if (tipoCadastro === 'service') {
+        if (!formServico.titulo.trim()) {
+          alert('Por favor, digite o título do serviço.');
+          setSaving(false);
+          return;
+        }
+
+        const valorNum = Number(formServico.valorBase.replace('R$', '').replace('.', '').replace(',', '.').trim()) || 0;
         const newId = crypto.randomUUID ? crypto.randomUUID() : 'srv_' + Math.random().toString(36).substring(2);
         const payload: any = {
           id_servico: newId,
-          nome: form.name.trim(),
-          preco_sugerido: precoNum,
+          nome: formServico.titulo.trim(),
+          preco_sugerido: valorNum,
         };
         if (userId) payload.user_id = userId;
+        if (formServico.tempoEstimado.trim()) payload.tempo_estimado = formServico.tempoEstimado.trim();
+        if (formServico.garantiaPadrao !== 'Sem padrão') payload.garantia_padrao = formServico.garantiaPadrao;
+        if (formServico.descricao.trim()) payload.descricao = formServico.descricao.trim();
 
-        const { error } = await supabase.from('cad_servicos').insert([payload]);
+        let { error } = await supabase.from('cad_servicos').insert([payload]);
+        if (error && error.message?.includes('column')) {
+          delete payload.tempo_estimado;
+          delete payload.garantia_padrao;
+          delete payload.descricao;
+          const retry = await supabase.from('cad_servicos').insert([payload]);
+          error = retry.error;
+        }
         if (error) throw error;
+
+        setFormServico({ titulo: '', valorBase: '', tempoEstimado: '', garantiaPadrao: 'Sem padrão', descricao: '' });
       }
 
-      setForm(emptyFormState);
       await carregarDados();
     } catch (err: any) {
       alert(`Erro ao salvar no banco: ${err.message || err}`);
@@ -250,22 +320,13 @@ export function Cadastro() {
     setSaving(true);
     try {
       if (itemToDelete.type === 'client') {
-        const { error } = await supabase
-          .from('clientes')
-          .delete()
-          .eq('id_cliente', itemToDelete.rawId);
+        const { error } = await supabase.from('clientes').delete().eq('id_cliente', itemToDelete.rawId);
         if (error) throw error;
       } else if (itemToDelete.type === 'supplier') {
-        const { error } = await supabase
-          .from('cad_fornecedores')
-          .delete()
-          .eq('id_fornecedor', itemToDelete.rawId);
+        const { error } = await supabase.from('cad_fornecedores').delete().eq('id_fornecedor', itemToDelete.rawId);
         if (error) throw error;
       } else if (itemToDelete.type === 'service') {
-        const { error } = await supabase
-          .from('cad_servicos')
-          .delete()
-          .eq('id_servico', itemToDelete.rawId);
+        const { error } = await supabase.from('cad_servicos').delete().eq('id_servico', itemToDelete.rawId);
         if (error) throw error;
       }
 
@@ -291,200 +352,432 @@ export function Cadastro() {
 
   return (
     <div className="space-y-6 max-w-[1600px] mx-auto font-sans pb-16 text-slate-100">
-      {/* ================= CABEÇALHO ================= */}
+      {/* ================= CABEÇALHO DA PÁGINA ================= */}
       <div>
         <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
-          Central de Cadastros
+          Central de cadastros
         </h2>
         <p className="text-xs sm:text-sm text-slate-400 mt-1">
-          Área unificada para gerenciar clientes, fornecedores e catálogo de serviços.
+          Cadastre e consulte clientes, fornecedores e serviços em um único lugar.
         </p>
       </div>
 
-      {/* ================= WORKSPACE DE NOVO CADASTRO (EXATO FIGMA) ================= */}
-      <div className="bg-[#111722] border border-slate-800 rounded-2xl p-6 shadow-sm">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-          <div>
-            <h3 className="text-sm font-bold text-white tracking-wide uppercase">
-              NOVO CADASTRO
+      {/* ================= CARD DE NOVO CADASTRO (EXATO DOS PRINTS) ================= */}
+      <div className="bg-[#111722] border border-slate-800 rounded-2xl p-6 shadow-sm space-y-6">
+        {/* Cabeçalho do Card */}
+        <div>
+          <div className="flex items-center space-x-2.5">
+            <div className="w-6 h-6 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-400 flex items-center justify-center text-xs font-bold">
+              +
+            </div>
+            <h3 className="text-sm font-bold text-white tracking-wide">
+              Novo cadastro
             </h3>
-            <p className="text-xs text-slate-400 mt-1">
-              Selecione a categoria para alternar os campos do formulário.
-            </p>
           </div>
+          <p className="text-xs text-slate-400 mt-1 pl-8.5">
+            Escolha o tipo e preencha somente as informações necessárias.
+          </p>
+        </div>
 
-          {/* Toggle de Tipo Original */}
-          <div className="inline-flex rounded-xl bg-[#0b0f16] p-1 border border-slate-800 self-start sm:self-auto">
-            {(['client', 'supplier', 'service'] as RegistryType[]).map((type) => {
-              const active = activeType === type;
-              return (
-                <button
-                  key={type}
-                  type="button"
-                  onClick={() => {
-                    setActiveType(type);
-                    setForm(emptyFormState);
-                  }}
-                  className={`px-4 py-2 text-xs font-semibold rounded-lg transition-all ${
-                    active
+        {/* ================= SELEÇÃO: TIPO DE CADASTRO (3 CARDS) ================= */}
+        <div>
+          <p className="text-[11px] font-bold text-slate-400 tracking-wider uppercase mb-3">
+            TIPO DE CADASTRO
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Card 1: Cliente */}
+            <button
+              type="button"
+              onClick={() => setTipoCadastro('client')}
+              className={`p-4 rounded-xl border text-left transition-all flex items-center justify-between ${
+                tipoCadastro === 'client'
+                  ? 'border-blue-500 bg-blue-500/5 ring-1 ring-blue-500/50'
+                  : 'border-slate-800 bg-[#0d111a] hover:border-slate-700'
+              }`}
+            >
+              <div className="flex items-center space-x-3.5">
+                <div
+                  className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${
+                    tipoCadastro === 'client'
                       ? 'bg-blue-600 text-white shadow-sm'
-                      : 'text-slate-400 hover:text-white'
+                      : 'bg-[#111722] border border-slate-800 text-emerald-400'
                   }`}
                 >
-                  {registryMeta[type].label}
-                </button>
-              );
-            })}
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  </svg>
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-white">Cliente</p>
+                  <p className="text-xs text-slate-400">Contato e documento</p>
+                </div>
+              </div>
+              {tipoCadastro === 'client' && (
+                <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" />
+                </svg>
+              )}
+            </button>
+
+            {/* Card 2: Fornecedor */}
+            <button
+              type="button"
+              onClick={() => setTipoCadastro('supplier')}
+              className={`p-4 rounded-xl border text-left transition-all flex items-center justify-between ${
+                tipoCadastro === 'supplier'
+                  ? 'border-blue-500 bg-blue-500/5 ring-1 ring-blue-500/50'
+                  : 'border-slate-800 bg-[#0d111a] hover:border-slate-700'
+              }`}
+            >
+              <div className="flex items-center space-x-3.5">
+                <div
+                  className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${
+                    tipoCadastro === 'supplier'
+                      ? 'bg-blue-600 text-white shadow-sm'
+                      : 'bg-[#111722] border border-slate-800 text-orange-400'
+                  }`}
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                  </svg>
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-white">Fornecedor</p>
+                  <p className="text-xs text-slate-400">Compras e peças</p>
+                </div>
+              </div>
+              {tipoCadastro === 'supplier' && (
+                <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" />
+                </svg>
+              )}
+            </button>
+
+            {/* Card 3: Serviço */}
+            <button
+              type="button"
+              onClick={() => setTipoCadastro('service')}
+              className={`p-4 rounded-xl border text-left transition-all flex items-center justify-between ${
+                tipoCadastro === 'service'
+                  ? 'border-blue-500 bg-blue-500/5 ring-1 ring-blue-500/50'
+                  : 'border-slate-800 bg-[#0d111a] hover:border-slate-700'
+              }`}
+            >
+              <div className="flex items-center space-x-3.5">
+                <div
+                  className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${
+                    tipoCadastro === 'service'
+                      ? 'bg-blue-600 text-white shadow-sm'
+                      : 'bg-[#111722] border border-slate-800 text-blue-400'
+                  }`}
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-white">Serviço</p>
+                  <p className="text-xs text-slate-400">Preço e execução</p>
+                </div>
+              </div>
+              {tipoCadastro === 'service' && (
+                <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" />
+                </svg>
+              )}
+            </button>
           </div>
         </div>
 
-        {/* Formulário com 3 Colunas Exatas do Print */}
-        <form onSubmit={handleSubmitForm}>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-5">
-            {activeType === 'client' && (
-              <>
-                <div>
-                  <label className="block text-xs font-medium text-slate-200 mb-2">
-                    Nome do Cliente *
+        {/* ================= FORMULÁRIOS ESPECÍFICOS ================= */}
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {/* 1. FORMULÁRIO DO CLIENTE (PRINT 1) */}
+          {tipoCadastro === 'client' && (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+                <div className="md:col-span-6">
+                  <label className="text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-2 block">
+                    NOME COMPLETO *
                   </label>
                   <input
                     type="text"
                     required
-                    value={form.name}
-                    onChange={(e) => setForm({ ...form, name: e.target.value })}
-                    placeholder="Ex: João da Silva"
-                    className="w-full bg-[#0d111a] border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                    value={formCliente.nome}
+                    onChange={(e) => setFormCliente({ ...formCliente, nome: e.target.value })}
+                    placeholder="Digite o nome"
+                    className="w-full bg-[#0d111a] border border-slate-800 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors"
                   />
                 </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-200 mb-2">
-                    WhatsApp / Telefone *
+                <div className="md:col-span-3">
+                  <label className="text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-2 block">
+                    TELEFONE / WHATSAPP *
                   </label>
                   <input
                     type="text"
                     required
-                    value={form.phone}
-                    onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                    value={formCliente.telefone}
+                    onChange={(e) => setFormCliente({ ...formCliente, telefone: e.target.value })}
                     placeholder="(85) 99999-9999"
-                    className="w-full bg-[#0d111a] border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                    className="w-full bg-[#0d111a] border border-slate-800 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors"
                   />
                 </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-200 mb-2">
+                <div className="md:col-span-3">
+                  <label className="text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-2 block">
+                    E-MAIL
+                  </label>
+                  <input
+                    type="email"
+                    value={formCliente.email}
+                    onChange={(e) => setFormCliente({ ...formCliente, email: e.target.value })}
+                    placeholder="contato@email.com"
+                    className="w-full bg-[#0d111a] border border-slate-800 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+                <div className="md:col-span-4">
+                  <label className="text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-2 block">
                     CPF / CNPJ
                   </label>
                   <input
                     type="text"
-                    value={form.document}
-                    onChange={(e) => setForm({ ...form, document: e.target.value })}
-                    placeholder="000.000.000-00"
-                    className="w-full bg-[#0d111a] border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                    value={formCliente.cpfCnpj}
+                    onChange={(e) => setFormCliente({ ...formCliente, cpfCnpj: e.target.value })}
+                    placeholder="Somente números"
+                    className="w-full bg-[#0d111a] border border-slate-800 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors"
                   />
                 </div>
-              </>
-            )}
+                <div className="md:col-span-8">
+                  <label className="text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-2 block">
+                    OBSERVAÇÕES INTERNAS
+                  </label>
+                  <input
+                    type="text"
+                    value={formCliente.observacoes}
+                    onChange={(e) => setFormCliente({ ...formCliente, observacoes: e.target.value })}
+                    placeholder="Preferências, contato responsável ou informações úteis"
+                    className="w-full bg-[#0d111a] border border-slate-800 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors"
+                  />
+                </div>
+              </div>
+            </>
+          )}
 
-            {activeType === 'supplier' && (
-              <>
-                <div>
-                  <label className="block text-xs font-medium text-slate-200 mb-2">
-                    Nome da Empresa / Fornecedor *
+          {/* 2. FORMULÁRIO DO FORNECEDOR (PRINT 2) */}
+          {tipoCadastro === 'supplier' && (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+                <div className="md:col-span-6">
+                  <label className="text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-2 block">
+                    NOME / RAZÃO SOCIAL *
                   </label>
                   <input
                     type="text"
                     required
-                    value={form.name}
-                    onChange={(e) => setForm({ ...form, name: e.target.value })}
-                    placeholder="Ex: Distribuidora Central Peças"
-                    className="w-full bg-[#0d111a] border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                    value={formFornecedor.nome}
+                    onChange={(e) => setFormFornecedor({ ...formFornecedor, nome: e.target.value })}
+                    placeholder="Digite o nome"
+                    className="w-full bg-[#0d111a] border border-slate-800 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors"
                   />
                 </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-200 mb-2">
-                    Contato / Telefone *
+                <div className="md:col-span-3">
+                  <label className="text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-2 block">
+                    TELEFONE / WHATSAPP *
                   </label>
                   <input
                     type="text"
                     required
-                    value={form.phone}
-                    onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                    value={formFornecedor.telefone}
+                    onChange={(e) => setFormFornecedor({ ...formFornecedor, telefone: e.target.value })}
                     placeholder="(85) 99999-9999"
-                    className="w-full bg-[#0d111a] border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                    className="w-full bg-[#0d111a] border border-slate-800 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors"
                   />
                 </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-200 mb-2">
+                <div className="md:col-span-3">
+                  <label className="text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-2 block">
+                    E-MAIL
+                  </label>
+                  <input
+                    type="email"
+                    value={formFornecedor.email}
+                    onChange={(e) => setFormFornecedor({ ...formFornecedor, email: e.target.value })}
+                    placeholder="contato@email.com"
+                    className="w-full bg-[#0d111a] border border-slate-800 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+                <div className="md:col-span-4">
+                  <label className="text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-2 block">
                     CNPJ
                   </label>
                   <input
                     type="text"
-                    value={form.document}
-                    onChange={(e) => setForm({ ...form, document: e.target.value })}
-                    placeholder="00.000.000/0000-00"
-                    className="w-full bg-[#0d111a] border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                    value={formFornecedor.cnpj}
+                    onChange={(e) => setFormFornecedor({ ...formFornecedor, cnpj: e.target.value })}
+                    placeholder="Somente números"
+                    className="w-full bg-[#0d111a] border border-slate-800 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors"
                   />
                 </div>
-              </>
-            )}
+                <div className="md:col-span-8">
+                  <label className="text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-2 block">
+                    CATEGORIA DE FORNECIMENTO *
+                  </label>
+                  <select
+                    value={formFornecedor.categoria}
+                    onChange={(e) => setFormFornecedor({ ...formFornecedor, categoria: e.target.value })}
+                    className="w-full bg-[#0d111a] border border-slate-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors appearance-none cursor-pointer"
+                  >
+                    <option value="">Selecione...</option>
+                    <option value="Telas & Displays">Telas & Displays</option>
+                    <option value="Baterias">Baterias</option>
+                    <option value="Peças & Componentes">Peças & Componentes</option>
+                    <option value="Acessórios & Películas">Acessórios & Películas</option>
+                    <option value="Ferramentas & Insumos">Ferramentas & Insumos</option>
+                  </select>
+                </div>
+              </div>
 
-            {activeType === 'service' && (
-              <>
-                <div>
-                  <label className="block text-xs font-medium text-slate-200 mb-2">
-                    Nome do Serviço *
+              <div>
+                <label className="text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-2 block">
+                  OBSERVAÇÕES INTERNAS
+                </label>
+                <input
+                  type="text"
+                  value={formFornecedor.observacoes}
+                  onChange={(e) => setFormFornecedor({ ...formFornecedor, observacoes: e.target.value })}
+                  placeholder="Preferências, contato responsável ou informações úteis"
+                  className="w-full bg-[#0d111a] border border-slate-800 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors"
+                />
+              </div>
+            </>
+          )}
+
+          {/* 3. FORMULÁRIO DO SERVIÇO (PRINT 3) */}
+          {tipoCadastro === 'service' && (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+                <div className="md:col-span-6">
+                  <label className="text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-2 block">
+                    TÍTULO DO SERVIÇO *
                   </label>
                   <input
                     type="text"
                     required
-                    value={form.name}
-                    onChange={(e) => setForm({ ...form, name: e.target.value })}
-                    placeholder="Ex: Troca de Tela iPhone 13"
-                    className="w-full bg-[#0d111a] border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                    value={formServico.titulo}
+                    onChange={(e) => setFormServico({ ...formServico, titulo: e.target.value })}
+                    placeholder="Ex.: Troca de bateria"
+                    className="w-full bg-[#0d111a] border border-slate-800 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors"
                   />
                 </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-200 mb-2">
-                    Preço Sugerido (R$) *
+                <div className="md:col-span-3">
+                  <label className="text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-2 block">
+                    VALOR BASE *
                   </label>
                   <input
                     type="text"
                     required
-                    value={form.price}
-                    onChange={(e) => setForm({ ...form, price: e.target.value })}
-                    placeholder="Ex: 150.00"
-                    className="w-full bg-[#0d111a] border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                    value={formServico.valorBase}
+                    onChange={(e) => setFormServico({ ...formServico, valorBase: e.target.value })}
+                    placeholder="R$ 0,00"
+                    className="w-full bg-[#0d111a] border border-slate-800 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors"
                   />
+                  <span className="text-[10px] text-slate-500 mt-1 block">
+                    Pode ser alterado ao criar a OS.
+                  </span>
                 </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-200 mb-2">
-                    Garantia / Tempo Estimado
+                <div className="md:col-span-3">
+                  <label className="text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-2 block">
+                    TEMPO ESTIMADO
                   </label>
                   <input
                     type="text"
-                    value={form.warranty}
-                    onChange={(e) => setForm({ ...form, warranty: e.target.value })}
-                    placeholder="Ex: 90 dias / 45 min"
-                    className="w-full bg-[#0d111a] border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                    value={formServico.tempoEstimado}
+                    onChange={(e) => setFormServico({ ...formServico, tempoEstimado: e.target.value })}
+                    placeholder="Ex.: 1 hora"
+                    className="w-full bg-[#0d111a] border border-slate-800 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors"
                   />
                 </div>
-              </>
-            )}
-          </div>
+              </div>
 
-          <div className="flex justify-end">
-            <button
-              type="submit"
-              disabled={saving}
-              className="bg-blue-600 hover:bg-blue-500 text-white font-medium text-sm px-6 py-2.5 rounded-xl transition-colors shadow-sm disabled:opacity-50"
-            >
-              {saving ? 'Salvando...' : 'Salvar Cadastro'}
-            </button>
+              <div>
+                <label className="text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-2 block">
+                  GARANTIA PADRÃO
+                </label>
+                <div className="md:w-1/3">
+                  <select
+                    value={formServico.garantiaPadrao}
+                    onChange={(e) => setFormServico({ ...formServico, garantiaPadrao: e.target.value })}
+                    className="w-full bg-[#0d111a] border border-slate-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors appearance-none cursor-pointer"
+                  >
+                    <option value="Sem padrão">Sem padrão</option>
+                    <option value="30 dias">30 dias</option>
+                    <option value="90 dias">90 dias (Recomendado)</option>
+                    <option value="180 dias">180 dias</option>
+                    <option value="1 ano">1 ano</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-2 block">
+                  DESCRIÇÃO E DETALHES
+                </label>
+                <textarea
+                  rows={3}
+                  value={formServico.descricao}
+                  onChange={(e) => setFormServico({ ...formServico, descricao: e.target.value })}
+                  placeholder="Descreva o que está incluído no serviço..."
+                  className="w-full bg-[#0d111a] border border-slate-800 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition-colors resize-none"
+                />
+              </div>
+            </>
+          )}
+
+          {/* Rodapé do Formulário */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-3 border-t border-slate-800/80">
+            <span className="text-xs text-slate-500">
+              Campos marcados com * são obrigatórios.
+            </span>
+            <div className="flex items-center space-x-3 self-end sm:self-auto">
+              <button
+                type="button"
+                onClick={handleLimpar}
+                className="text-sm font-semibold text-slate-400 hover:text-white px-4 py-2.5 rounded-xl transition-colors"
+              >
+                Limpar
+              </button>
+              <button
+                type="submit"
+                disabled={saving}
+                className="bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold px-6 py-2.5 rounded-xl transition-colors shadow-sm disabled:opacity-50 flex items-center space-x-2"
+              >
+                {saving ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                    <span>Salvando...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>+</span>
+                    <span>
+                      {tipoCadastro === 'client' && 'Cadastrar cliente'}
+                      {tipoCadastro === 'supplier' && 'Cadastrar fornecedor'}
+                      {tipoCadastro === 'service' && 'Cadastrar serviço'}
+                    </span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </form>
       </div>
 
       {/* ================= BARRA DE FILTROS E BUSCA ================= */}
-      <div className="space-y-4">
+      <div className="space-y-4 pt-2">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           {/* Abas com Contadores REAIS do Banco */}
           <div className="flex flex-wrap items-center gap-1.5 border-b md:border-b-0 border-slate-800 pb-2 md:pb-0">
@@ -815,7 +1108,7 @@ export function Cadastro() {
               </div>
             )}
 
-            {/* Footer Buttons */}
+            {/* Rodapé do Modal */}
             <div className="flex items-center justify-end space-x-3 pt-2 border-t border-slate-800">
               <button
                 type="button"
