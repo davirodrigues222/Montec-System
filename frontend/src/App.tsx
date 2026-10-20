@@ -8,7 +8,7 @@ import { HistoricoServicos } from './pages/HistoricoServicos';
 import { Configuracoes } from './pages/Configuracoes';
 import { NovaOS } from './pages/NovaOS';
 import { GarantiaRetorno } from './pages/Garantiaretorno';
-import { Cadastros } from './pages/Cadastro';
+import { Cadastro } from './pages/Cadastro';
 
 export default function App() {
   const [session, setSession] = useState<any>(null);
@@ -56,7 +56,7 @@ export default function App() {
       {activeTab === 'configuracoes' && <Configuracoes />}
       {activeTab === 'nova-os' && <NovaOS onNavigate={setActiveTab} />}
       {activeTab === 'garantia-retorno' && <GarantiaRetorno />}
-      {activeTab === 'cadastros' && <Cadastros />}
+      {activeTab === 'cadastros' && <Cadastro />}
     </Layout>
   );
 }
