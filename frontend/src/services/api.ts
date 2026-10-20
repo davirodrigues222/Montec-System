@@ -25,7 +25,6 @@ export async function cadastrarUsuario(dados: {
     email: dados.email,
     password: dados.password,
     options: {
-      emailRedirectTo: `${window.location.origin}/`,
       data: {
         nome_responsavel: dados.nomeResponsavel,
         nome_assistencia: dados.nomeAssistencia,
@@ -39,9 +38,7 @@ export async function cadastrarUsuario(dados: {
 }
 
 export async function recuperarSenha(email: string) {
-  const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: `${window.location.origin}/`,
-  });
+  const { data, error } = await supabase.auth.resetPasswordForEmail(email);
   if (error) throw error;
   return data;
 }
@@ -134,6 +131,7 @@ export async function criarOrdemServico(payload: {
   parcelas?: number;
   valorLiquido?: number | null;
   status_os?: string;
+  pagamentos?: any[];
 }): Promise<{ idOs: string; numeroOs: string }> {
   const numeroOsGerado = `OS-${Math.floor(100000 + Math.random() * 900000)}`;
   const idOsGerado = crypto.randomUUID ? crypto.randomUUID() : 'os_' + Math.random().toString(36).substring(2, 11);
@@ -201,6 +199,16 @@ export async function criarOrdemServico(payload: {
     }], { onConflict: 'id_aparelho' });
   }
 
+  // Prepara checklist_entrada incluindo a persistência estruturada dos pagamentos
+  const checklistFinal = {
+    ...(payload.checklistEntrada || {}),
+    __pagamentos: payload.pagamentos || (payload.checklistEntrada as any)?.__pagamentos || null,
+  };
+
+  const valorLiqFinal = payload.valorLiquido !== undefined && payload.valorLiquido !== null
+    ? payload.valorLiquido
+    : (payload.orcamentoCalculado?.valorLiquido ?? payload.orcamentoCalculado?.valorTotalOrcamento ?? 0);
+
   const dadosParaSalvar: any = {
     id_os: idOsGerado,
     numero_os: numeroOsGerado,
@@ -210,14 +218,14 @@ export async function criarOrdemServico(payload: {
     diagnostico_tecnico: payload.diagnostico || '',
     observacoes_internas: payload.observacoes || '',
     status_os: payload.status_os || 'AGUARDANDO_AVALIACAO',
-    checklist_entrada: payload.checklistEntrada || {},
+    checklist_entrada: checklistFinal,
     valor_total: payload.orcamentoCalculado?.valorTotalOrcamento || 0,
     lucro_estimado_total: payload.orcamentoCalculado?.lucroTotalEstimadoInterno || 0,
     custo_peca: payload.orcamentoCalculado?.custoPeca || 0,
     frete_real: payload.orcamentoCalculado?.freteReal || 0,
     forma_pagamento: payload.formaPagamento || 'Dinheiro',
     parcelas: payload.parcelas || 1,
-    valor_liquido: payload.valorLiquido || payload.orcamentoCalculado?.valorTotalOrcamento || 0,
+    valor_liquido: valorLiqFinal,
     possui_garantia: payload.possuiGarantia ?? true,
     data_abertura: payload.dataAbertura ? formatarDataParaBanco(payload.dataAbertura) : new Date().toISOString(),
   };
@@ -242,7 +250,7 @@ export async function editarOrdemServico(id_os: string, payload: any): Promise<v
   // 1. Busca a OS atual para sabermos o id_cliente e o id_aparelho associados
   const { data: osAtual, error: errBusca } = await supabase
     .from('ordens_servico')
-    .select('id_cliente, id_aparelho')
+    .select('id_cliente, id_aparelho, checklist_entrada')
     .eq('id_os', id_os)
     .single();
 
@@ -290,8 +298,12 @@ export async function editarOrdemServico(id_os: string, payload: any): Promise<v
   const obs = payload.observacoes !== undefined ? payload.observacoes : (payload.observacoes_internas !== undefined ? payload.observacoes_internas : payload.observacoesInternas);
   if (obs !== undefined) dadosAtualizados.observacoes_internas = obs;
 
-  if (payload.checklistEntrada !== undefined) {
-    dadosAtualizados.checklist_entrada = payload.checklistEntrada;
+  if (payload.checklistEntrada !== undefined || payload.pagamentos !== undefined) {
+    const checklistBase = payload.checklistEntrada !== undefined ? payload.checklistEntrada : (osAtual?.checklist_entrada || {});
+    dadosAtualizados.checklist_entrada = {
+      ...(checklistBase || {}),
+      __pagamentos: payload.pagamentos !== undefined ? payload.pagamentos : (checklistBase as any)?.__pagamentos,
+    };
   }
 
   const dataAberturaInput = payload.dataAbertura !== undefined ? payload.dataAbertura : payload.data_abertura;
@@ -301,7 +313,6 @@ export async function editarOrdemServico(id_os: string, payload: any): Promise<v
 
   if (payload.orcamentoCalculado?.valorTotalOrcamento !== undefined) {
     dadosAtualizados.valor_total = payload.orcamentoCalculado.valorTotalOrcamento;
-    dadosAtualizados.valor_liquido = payload.orcamentoCalculado.valorTotalOrcamento;
   }
   if (payload.orcamentoCalculado?.lucroTotalEstimadoInterno !== undefined) {
     dadosAtualizados.lucro_estimado_total = payload.orcamentoCalculado.lucroTotalEstimadoInterno;
@@ -315,8 +326,12 @@ export async function editarOrdemServico(id_os: string, payload: any): Promise<v
   if (payload.orcamentoCalculado?.fornecedorPeca !== undefined) {
     dadosAtualizados.fornecedor_peca = payload.orcamentoCalculado.fornecedorPeca;
   }
-  if (payload.valor_liquido !== undefined) {
-    dadosAtualizados.valor_liquido = payload.valor_liquido;
+
+  const vLiq = payload.valorLiquido !== undefined ? payload.valorLiquido : payload.valor_liquido;
+  if (vLiq !== undefined) {
+    dadosAtualizados.valor_liquido = vLiq;
+  } else if (payload.orcamentoCalculado?.valorTotalOrcamento !== undefined && dadosAtualizados.valor_liquido === undefined) {
+    dadosAtualizados.valor_liquido = payload.orcamentoCalculado.valorTotalOrcamento;
   }
 
   const { error } = await supabase
@@ -367,11 +382,28 @@ export async function buscarOrdensServico(): Promise<any[]> {
       });
 
       const valorBruto = Number(item.valor_total || 0);
-      const valorLiq = Number(item.valor_liquido || valorBruto);
+      const valorLiq = Number(item.valor_liquido !== null && item.valor_liquido !== undefined ? item.valor_liquido : valorBruto);
       const pecaBase = Number(item.custo_peca || 0);
       const freteBase = Number(item.frete_real || 0);
 
       const lucroLiquidoReal = valorLiq - (pecaBase + freteBase + custoTotalGarantiaOS);
+
+      // Resgata pagamentos estruturados (misto ou único)
+      let pagamentosLista: any[] = [];
+      const pagamentosRaw = item.checklist_entrada?.__pagamentos || (item as any).pagamentos || item.orcamentoCalculado?.pagamentos;
+      if (Array.isArray(pagamentosRaw) && pagamentosRaw.length > 0) {
+        pagamentosLista = pagamentosRaw;
+      } else if (item.forma_pagamento) {
+        pagamentosLista = [{
+          id: 'pg_1',
+          forma: item.forma_pagamento,
+          valor: valorBruto,
+          parcelas: Number(item.parcelas || 1),
+          taxaPercentual: 0,
+          valorTaxa: 0,
+          valorLiquido: valorLiq,
+        }];
+      }
 
       return {
         ...item,
@@ -384,6 +416,7 @@ export async function buscarOrdensServico(): Promise<any[]> {
         formaPagamento: item.forma_pagamento || 'PIX',
         parcelas: Number(item.parcelas || 1),
         valorLiquido: valorLiq,
+        pagamentos: pagamentosLista,
         possuiGarantia: item.possui_garantia ?? true,
         dataAbertura: item.data_abertura || '',
         cliente: {
@@ -404,6 +437,7 @@ export async function buscarOrdensServico(): Promise<any[]> {
           freteReal: freteBase,
           fornecedorPeca: item.fornecedor_peca || '',
           custoPecaGarantia: custoTotalGarantiaOS,
+          pagamentos: pagamentosLista,
         },
         checklistEntrada: item.checklist_entrada || {},
         garantia: listaRetornos.length > 0 || custoTotalGarantiaOS > 0 ? {
