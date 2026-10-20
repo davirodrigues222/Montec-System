@@ -909,46 +909,52 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
                   </select>
                 </div>
 
-                {/* Parcelas: Exibido SOMENTE quando Cartão de crédito */}
-                {formaPagamento1 === 'Cartão de crédito' ? (
-                  <div>
-                    <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
-                      QUANTIDADE DE PARCELAS
-                    </label>
-                    <select
-                      value={parcelas1}
-                      onChange={(e) => setParcelas1(Number(e.target.value))}
-                      className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs text-white outline-none focus:border-blue-500 transition cursor-pointer"
-                    >
-                      {[1, 2, 3, 4, 5, 6, 10, 12].map((p) => (
-                        <option key={p} value={p}>
-                          {p}x {p === 1 ? '(à vista)' : '(sem juros)'}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                ) : (
-                  <div className="hidden lg:block" />
-                )}
+                {/* Parcelas: 100% visível quando Cartão de crédito; translúcido, inselecionável e desabilitado nas demais */}
+                <div className={`transition-all duration-200 ${
+                  formaPagamento1 === 'Cartão de crédito'
+                    ? 'opacity-100'
+                    : 'opacity-30 pointer-events-none select-none'
+                }`}>
+                  <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
+                    QUANTIDADE DE PARCELAS {formaPagamento1 !== 'Cartão de crédito' && <span className="text-[10px] text-zinc-500 font-normal lowercase">(à vista)</span>}
+                  </label>
+                  <select
+                    disabled={formaPagamento1 !== 'Cartão de crédito'}
+                    value={formaPagamento1 === 'Cartão de crédito' ? parcelas1 : 1}
+                    onChange={(e) => setParcelas1(Number(e.target.value))}
+                    className={`w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs text-white outline-none focus:border-blue-500 transition ${
+                      formaPagamento1 === 'Cartão de crédito' ? 'cursor-pointer' : 'cursor-not-allowed text-zinc-500'
+                    }`}
+                  >
+                    {[1, 2, 3, 4, 5, 6, 10, 12].map((p) => (
+                      <option key={p} value={p}>
+                        {p}x {p === 1 ? '(à vista)' : '(sem juros)'}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-                {/* Taxa da Maquineta: Exibida SOMENTE para Cartão de crédito ou débito. OCULTA para Dinheiro e PIX! */}
-                {formaPagamento1 === 'Cartão de crédito' || formaPagamento1 === 'Cartão de débito' ? (
-                  <div>
-                    <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
-                      TAXA DA MAQUINETA (%)
-                    </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={taxaMaquinetaPercentual1}
-                      onChange={(e) => setTaxaMaquinetaPercentual1(e.target.value === '' ? '' : Number(e.target.value))}
-                      placeholder="0.00"
-                      className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs text-white outline-none focus:border-blue-500 transition"
-                    />
-                  </div>
-                ) : (
-                  <div className="hidden lg:block" />
-                )}
+                {/* Taxa da Maquineta: 100% visível para Cartão; translúcido, inselecionável e desabilitado para Dinheiro e PIX */}
+                <div className={`transition-all duration-200 ${
+                  formaPagamento1 === 'Cartão de crédito' || formaPagamento1 === 'Cartão de débito'
+                    ? 'opacity-100'
+                    : 'opacity-30 pointer-events-none select-none'
+                }`}>
+                  <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
+                    TAXA DA MAQUINETA (%) {formaPagamento1 !== 'Cartão de crédito' && formaPagamento1 !== 'Cartão de débito' && <span className="text-[10px] text-zinc-500 font-normal lowercase">(isento)</span>}
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    disabled={formaPagamento1 !== 'Cartão de crédito' && formaPagamento1 !== 'Cartão de débito'}
+                    value={formaPagamento1 === 'Cartão de crédito' || formaPagamento1 === 'Cartão de débito' ? taxaMaquinetaPercentual1 : 0}
+                    onChange={(e) => setTaxaMaquinetaPercentual1(e.target.value === '' ? '' : Number(e.target.value))}
+                    placeholder="0.00"
+                    className={`w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs text-white outline-none focus:border-blue-500 transition ${
+                      formaPagamento1 === 'Cartão de crédito' || formaPagamento1 === 'Cartão de débito' ? '' : 'cursor-not-allowed text-zinc-500'
+                    }`}
+                  />
+                </div>
 
                 <div>
                   <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
@@ -989,7 +995,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
                     ) : saldoRestante > 0 ? (
                       <span className="font-bold text-amber-400">Falta distribuir: R$ {saldoRestante.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                     ) : (
-                      <span className="font-bold text-rose-400">Excedeu em: R$ {Math.abs(saldoRestante).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                      <span className="font-bold text-rose-400">Excedeu o total em: R$ {Math.abs(saldoRestante).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                     )}
                   </div>
                 </div>
@@ -1038,42 +1044,52 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
                         />
                       </div>
 
-                      {/* Parcelas: SOMENTE para Cartão de crédito */}
-                      {formaPagamento1 === 'Cartão de crédito' && (
-                        <div>
-                          <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
-                            PARCELAS
-                          </label>
-                          <select
-                            value={parcelas1}
-                            onChange={(e) => setParcelas1(Number(e.target.value))}
-                            className="w-full px-3 py-2 bg-[#0c101a] border border-zinc-800 rounded-xl text-xs text-white outline-none focus:border-blue-500 cursor-pointer"
-                          >
-                            {[1, 2, 3, 4, 5, 6, 10, 12].map((p) => (
-                              <option key={p} value={p}>
-                                {p}x {p === 1 ? '(à vista)' : '(sem juros)'}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      )}
+                      {/* Parcelas: translúcido e inselecionável quando não for cartão de crédito */}
+                      <div className={`transition-all duration-200 ${
+                        formaPagamento1 === 'Cartão de crédito'
+                          ? 'opacity-100'
+                          : 'opacity-30 pointer-events-none select-none'
+                      }`}>
+                        <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
+                          PARCELAS {formaPagamento1 !== 'Cartão de crédito' && <span className="text-[10px] text-zinc-500 font-normal lowercase">(à vista)</span>}
+                        </label>
+                        <select
+                          disabled={formaPagamento1 !== 'Cartão de crédito'}
+                          value={formaPagamento1 === 'Cartão de crédito' ? parcelas1 : 1}
+                          onChange={(e) => setParcelas1(Number(e.target.value))}
+                          className={`w-full px-3 py-2 bg-[#0c101a] border border-zinc-800 rounded-xl text-xs text-white outline-none focus:border-blue-500 ${
+                            formaPagamento1 === 'Cartão de crédito' ? 'cursor-pointer' : 'cursor-not-allowed text-zinc-500'
+                          }`}
+                        >
+                          {[1, 2, 3, 4, 5, 6, 10, 12].map((p) => (
+                            <option key={p} value={p}>
+                              {p}x {p === 1 ? '(à vista)' : '(sem juros)'}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
 
-                      {/* Taxa Maquineta: SOMENTE para Crédito ou Débito. Oculta para Dinheiro e PIX! */}
-                      {(formaPagamento1 === 'Cartão de crédito' || formaPagamento1 === 'Cartão de débito') && (
-                        <div>
-                          <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
-                            TAXA MAQUINETA (%)
-                          </label>
-                          <input
-                            type="number"
-                            step="0.01"
-                            value={taxaMaquinetaPercentual1}
-                            onChange={(e) => setTaxaMaquinetaPercentual1(e.target.value === '' ? '' : Number(e.target.value))}
-                            placeholder="0.00"
-                            className="w-full px-3 py-2 bg-[#0c101a] border border-zinc-800 rounded-xl text-xs text-white outline-none focus:border-blue-500"
-                          />
-                        </div>
-                      )}
+                      {/* Taxa Maquineta: translúcida e inselecionável quando não for cartão */}
+                      <div className={`transition-all duration-200 ${
+                        formaPagamento1 === 'Cartão de crédito' || formaPagamento1 === 'Cartão de débito'
+                          ? 'opacity-100'
+                          : 'opacity-30 pointer-events-none select-none'
+                      }`}>
+                        <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
+                          TAXA MAQUINETA (%) {formaPagamento1 !== 'Cartão de crédito' && formaPagamento1 !== 'Cartão de débito' && <span className="text-[10px] text-zinc-500 font-normal lowercase">(isento)</span>}
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          disabled={formaPagamento1 !== 'Cartão de crédito' && formaPagamento1 !== 'Cartão de débito'}
+                          value={formaPagamento1 === 'Cartão de crédito' || formaPagamento1 === 'Cartão de débito' ? taxaMaquinetaPercentual1 : 0}
+                          onChange={(e) => setTaxaMaquinetaPercentual1(e.target.value === '' ? '' : Number(e.target.value))}
+                          placeholder="0.00"
+                          className={`w-full px-3 py-2 bg-[#0c101a] border border-zinc-800 rounded-xl text-xs text-white outline-none focus:border-blue-500 ${
+                            formaPagamento1 === 'Cartão de crédito' || formaPagamento1 === 'Cartão de débito' ? '' : 'cursor-not-allowed text-zinc-500'
+                          }`}
+                        />
+                      </div>
                     </div>
                   </div>
 
@@ -1132,42 +1148,52 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
                         />
                       </div>
 
-                      {/* Parcelas: SOMENTE para Cartão de crédito */}
-                      {formaPagamento2 === 'Cartão de crédito' && (
-                        <div>
-                          <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
-                            PARCELAS
-                          </label>
-                          <select
-                            value={parcelas2}
-                            onChange={(e) => setParcelas2(Number(e.target.value))}
-                            className="w-full px-3 py-2 bg-[#0c101a] border border-zinc-800 rounded-xl text-xs text-white outline-none focus:border-blue-500 cursor-pointer"
-                          >
-                            {[1, 2, 3, 4, 5, 6, 10, 12].map((p) => (
-                              <option key={p} value={p}>
-                                {p}x {p === 1 ? '(à vista)' : '(sem juros)'}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      )}
+                      {/* Parcelas: translúcido e inselecionável quando não for cartão de crédito */}
+                      <div className={`transition-all duration-200 ${
+                        formaPagamento2 === 'Cartão de crédito'
+                          ? 'opacity-100'
+                          : 'opacity-30 pointer-events-none select-none'
+                      }`}>
+                        <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
+                          PARCELAS {formaPagamento2 !== 'Cartão de crédito' && <span className="text-[10px] text-zinc-500 font-normal lowercase">(à vista)</span>}
+                        </label>
+                        <select
+                          disabled={formaPagamento2 !== 'Cartão de crédito'}
+                          value={formaPagamento2 === 'Cartão de crédito' ? parcelas2 : 1}
+                          onChange={(e) => setParcelas2(Number(e.target.value))}
+                          className={`w-full px-3 py-2 bg-[#0c101a] border border-zinc-800 rounded-xl text-xs text-white outline-none focus:border-blue-500 ${
+                            formaPagamento2 === 'Cartão de crédito' ? 'cursor-pointer' : 'cursor-not-allowed text-zinc-500'
+                          }`}
+                        >
+                          {[1, 2, 3, 4, 5, 6, 10, 12].map((p) => (
+                            <option key={p} value={p}>
+                              {p}x {p === 1 ? '(à vista)' : '(sem juros)'}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
 
-                      {/* Taxa Maquineta: SOMENTE para Crédito ou Débito. Oculta para Dinheiro e PIX! */}
-                      {(formaPagamento2 === 'Cartão de crédito' || formaPagamento2 === 'Cartão de débito') && (
-                        <div>
-                          <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
-                            TAXA MAQUINETA (%)
-                          </label>
-                          <input
-                            type="number"
-                            step="0.01"
-                            value={taxaMaquinetaPercentual2}
-                            onChange={(e) => setTaxaMaquinetaPercentual2(e.target.value === '' ? '' : Number(e.target.value))}
-                            placeholder="0.00"
-                            className="w-full px-3 py-2 bg-[#0c101a] border border-zinc-800 rounded-xl text-xs text-white outline-none focus:border-blue-500"
-                          />
-                        </div>
-                      )}
+                      {/* Taxa Maquineta: translúcida e inselecionável quando não for cartão */}
+                      <div className={`transition-all duration-200 ${
+                        formaPagamento2 === 'Cartão de crédito' || formaPagamento2 === 'Cartão de débito'
+                          ? 'opacity-100'
+                          : 'opacity-30 pointer-events-none select-none'
+                      }`}>
+                        <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
+                          TAXA MAQUINETA (%) {formaPagamento2 !== 'Cartão de crédito' && formaPagamento2 !== 'Cartão de débito' && <span className="text-[10px] text-zinc-500 font-normal lowercase">(isento)</span>}
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          disabled={formaPagamento2 !== 'Cartão de crédito' && formaPagamento2 !== 'Cartão de débito'}
+                          value={formaPagamento2 === 'Cartão de crédito' || formaPagamento2 === 'Cartão de débito' ? taxaMaquinetaPercentual2 : 0}
+                          onChange={(e) => setTaxaMaquinetaPercentual2(e.target.value === '' ? '' : Number(e.target.value))}
+                          placeholder="0.00"
+                          className={`w-full px-3 py-2 bg-[#0c101a] border border-zinc-800 rounded-xl text-xs text-white outline-none focus:border-blue-500 ${
+                            formaPagamento2 === 'Cartão de crédito' || formaPagamento2 === 'Cartão de débito' ? '' : 'cursor-not-allowed text-zinc-500'
+                          }`}
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>
