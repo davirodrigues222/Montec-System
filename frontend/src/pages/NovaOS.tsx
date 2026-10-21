@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { criarOrdemServico } from '../services/api';
+import { criarOrdemServico, extrairDiasGarantia, obterPrazoGarantiaConfiguradoLoja } from '../services/api';
 import { supabase } from '../services/supabaseClient';
 import { CertidaoGarantia } from '../components/CertidaoGarantia';
 
@@ -14,6 +14,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
 
   // Topo: Cobertura
   const [possuiGarantia, setPossuiGarantia] = useState<boolean>(true);
+  const [prazoGarantiaDias, setPrazoGarantiaDias] = useState<number>(() => obterPrazoGarantiaConfiguradoLoja());
 
   // Card 01: Cliente
   const [idClienteSelecionado, setIdClienteSelecionado] = useState('');
@@ -120,6 +121,15 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
       setDefeitoRelatado(serv.nome);
       if (serv.preco_sugerido || serv.preco) {
         setValorServico(Number(serv.preco_sugerido || serv.preco));
+      }
+      const diasServico = extrairDiasGarantia(serv.garantia_padrao ?? serv.garantiaPadrao ?? serv.prazo_garantia);
+      if (diasServico !== null) {
+        if (diasServico === 0) {
+          setPossuiGarantia(false);
+        } else {
+          setPossuiGarantia(true);
+          setPrazoGarantiaDias(diasServico);
+        }
       }
     }
   };
@@ -322,9 +332,12 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
         parcelas: parcelasFinal,
         valorLiquido: liquidoRecebido,
         possuiGarantia: possuiGarantia,
+        prazoGarantiaDias: possuiGarantia ? (Number(prazoGarantiaDias) || obterPrazoGarantiaConfiguradoLoja()) : 0,
         checklistEntrada: {
           ...checklist,
           __pagamentos: pagamentosArray,
+          __possuiGarantia: possuiGarantia,
+          __prazoGarantiaDias: possuiGarantia ? (Number(prazoGarantiaDias) || obterPrazoGarantiaConfiguradoLoja()) : 0,
         },
         pagamentos: pagamentosArray,
         orcamentoCalculado: {
@@ -397,9 +410,12 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
         parcelas: parcelasFinal,
         valorLiquido: liquidoRecebido,
         possuiGarantia: possuiGarantia,
+        prazoGarantiaDias: possuiGarantia ? (Number(prazoGarantiaDias) || obterPrazoGarantiaConfiguradoLoja()) : 0,
         checklistEntrada: {
           ...checklist,
           __pagamentos: pagamentosArray,
+          __possuiGarantia: possuiGarantia,
+          __prazoGarantiaDias: possuiGarantia ? (Number(prazoGarantiaDias) || obterPrazoGarantiaConfiguradoLoja()) : 0,
         },
         pagamentos: pagamentosArray,
         orcamentoCalculado: {
@@ -513,21 +529,45 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* ================= BARRA DE COBERTURA (GARANTIA) ================= */}
         <div className="bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
-          <div className="flex items-center space-x-3">
+          <div className="flex flex-wrap items-center gap-3">
             <span className="text-sm font-bold text-white tracking-wide uppercase">Cobertura de garantia:</span>
             <span className={`px-2.5 py-1 rounded-full text-xs font-bold border ${
               possuiGarantia
                 ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
                 : 'bg-zinc-800 text-zinc-400 border-zinc-700'
             }`}>
-              {possuiGarantia ? 'Garantia Padrão Ativa (90 dias)' : 'Sem Garantia'}
+              {possuiGarantia ? `Garantia Ativa (${prazoGarantiaDias} dias)` : 'Sem Garantia'}
             </span>
+
+            {/* Seletor/Input de Prazo Individual da OS (translúcido e desabilitado se Sem Garantia) */}
+            <div className={`flex items-center space-x-2 transition-all duration-200 ${
+              possuiGarantia ? 'opacity-100' : 'opacity-30 pointer-events-none select-none'
+            }`}>
+              <label className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider">
+                Prazo (dias):
+              </label>
+              <input
+                type="number"
+                min={1}
+                disabled={!possuiGarantia}
+                value={possuiGarantia ? prazoGarantiaDias : 0}
+                onChange={(e) => setPrazoGarantiaDias(Math.max(1, Number(e.target.value) || 90))}
+                className={`w-20 px-2.5 py-1 bg-[#080c14] border border-zinc-800 rounded-xl text-xs text-white font-bold text-center outline-none focus:border-blue-500 ${
+                  possuiGarantia ? '' : 'cursor-not-allowed text-zinc-500'
+                }`}
+              />
+            </div>
           </div>
 
           <div className="flex items-center space-x-2">
             <button
               type="button"
-              onClick={() => setPossuiGarantia(true)}
+              onClick={() => {
+                setPossuiGarantia(true);
+                if (!prazoGarantiaDias || prazoGarantiaDias <= 0) {
+                  setPrazoGarantiaDias(obterPrazoGarantiaConfiguradoLoja());
+                }
+              }}
               className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition ${
                 possuiGarantia ? 'bg-blue-600 text-white font-bold' : 'bg-zinc-900 text-zinc-400 hover:text-white'
               }`}
