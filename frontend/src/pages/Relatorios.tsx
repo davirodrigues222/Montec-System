@@ -6,6 +6,14 @@ export const Relatorios: React.FC = () => {
   const [ordens, setOrdens] = useState<OrdemServico[]>([]);
   const [loading, setLoading] = useState(true);
   const [mesSelecionado, setMesSelecionado] = useState<string>('ATUAL');
+  const [dataInicioPersonalizada, setDataInicioPersonalizada] = useState<string>(() => {
+    const hoje = new Date();
+    return `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-01`;
+  });
+  const [dataFimPersonalizada, setDataFimPersonalizada] = useState<string>(() => {
+    const hoje = new Date();
+    return `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-${String(hoje.getDate()).padStart(2, '0')}`;
+  });
 
   const carregarRelatorios = async () => {
     setLoading(true);
@@ -23,13 +31,23 @@ export const Relatorios: React.FC = () => {
     carregarRelatorios();
   }, []);
 
-  // Filtro de Ordens por Mês / Período
+  // Filtro de Ordens por Dia / Mês / Ano / Intervalo Personalizado
   const ordensFiltradas = useMemo(() => {
     const hoje = new Date();
-    return ordens.filter((os) => {
-      if (!os.data_abertura) return true;
-      const dataOs = new Date(os.data_abertura);
+    const hojeStr = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-${String(hoje.getDate()).padStart(2, '0')}`;
 
+    return ordens.filter((os) => {
+      if (!os.data_abertura) return mesSelecionado === 'TODOS';
+
+      const dataOs = new Date(os.data_abertura);
+      const matchIso = String(os.data_abertura).match(/^(\d{4}-\d{2}-\d{2})/);
+      const dataOsStr = matchIso
+        ? matchIso[1]
+        : `${dataOs.getFullYear()}-${String(dataOs.getMonth() + 1).padStart(2, '0')}-${String(dataOs.getDate()).padStart(2, '0')}`;
+
+      if (mesSelecionado === 'HOJE') {
+        return dataOsStr === hojeStr;
+      }
       if (mesSelecionado === 'ATUAL') {
         return (
           dataOs.getMonth() === hoje.getMonth() &&
@@ -41,12 +59,20 @@ export const Relatorios: React.FC = () => {
         const anoAnt = hoje.getMonth() === 0 ? hoje.getFullYear() - 1 : hoje.getFullYear();
         return dataOs.getMonth() === mesAnt && dataOs.getFullYear() === anoAnt;
       }
+      if (mesSelecionado === 'ANO_ATUAL') {
+        return dataOs.getFullYear() === hoje.getFullYear();
+      }
+      if (mesSelecionado === 'PERSONALIZADO') {
+        if (dataInicioPersonalizada && dataOsStr < dataInicioPersonalizada) return false;
+        if (dataFimPersonalizada && dataOsStr > dataFimPersonalizada) return false;
+        return true;
+      }
       if (mesSelecionado === 'TODOS') {
         return true;
       }
       return true;
     });
-  }, [ordens, mesSelecionado]);
+  }, [ordens, mesSelecionado, dataInicioPersonalizada, dataFimPersonalizada]);
 
   // CÁLCULOS FINANCEIROS BLINDADOS
   // 1. Faturamento Bruto
@@ -191,17 +217,43 @@ export const Relatorios: React.FC = () => {
           </p>
         </div>
 
-        {/* Controles: Seletor de Mês e Botão de Exportação */}
-        <div className="flex items-center space-x-2 shrink-0">
+        {/* Controles: Seletor de Período, Intervalo Personalizado e Botão de Exportação */}
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
           <select
             value={mesSelecionado}
             onChange={(e) => setMesSelecionado(e.target.value)}
             className="bg-[#0c101a] border border-zinc-800 text-white rounded-xl px-3 py-2 sm:px-4 sm:py-2.5 text-xs font-semibold outline-none cursor-pointer focus:border-blue-500 transition shadow-sm"
           >
+            <option value="HOJE">Hoje (Do dia)</option>
             <option value="ATUAL">Mês atual</option>
             <option value="ANTERIOR">Mês anterior</option>
+            <option value="ANO_ATUAL">Este ano (Do ano)</option>
             <option value="TODOS">Todo o histórico</option>
+            <option value="PERSONALIZADO">Personalizado (Calendário)</option>
           </select>
+
+          {mesSelecionado === 'PERSONALIZADO' && (
+            <div className="flex flex-wrap items-center gap-2 bg-[#0c101a] border border-zinc-800 rounded-xl px-3 py-1.5 shadow-sm">
+              <div className="flex items-center space-x-1.5">
+                <span className="text-[10px] font-bold text-zinc-400 uppercase">De:</span>
+                <input
+                  type="date"
+                  value={dataInicioPersonalizada}
+                  onChange={(e) => setDataInicioPersonalizada(e.target.value)}
+                  className="bg-[#080c14] border border-zinc-800 rounded-lg px-2 py-1 text-xs text-white outline-none focus:border-blue-500 cursor-pointer [color-scheme:dark]"
+                />
+              </div>
+              <div className="flex items-center space-x-1.5">
+                <span className="text-[10px] font-bold text-zinc-400 uppercase">Até:</span>
+                <input
+                  type="date"
+                  value={dataFimPersonalizada}
+                  onChange={(e) => setDataFimPersonalizada(e.target.value)}
+                  className="bg-[#080c14] border border-zinc-800 rounded-lg px-2 py-1 text-xs text-white outline-none focus:border-blue-500 cursor-pointer [color-scheme:dark]"
+                />
+              </div>
+            </div>
+          )}
 
           <button
             onClick={exportarRelatorioCSV}
