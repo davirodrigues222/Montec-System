@@ -1,7 +1,733 @@
 import { supabase } from './supabaseClient';
 
 // ==========================================
-// 1. AUTENTICAÇÃO E GESTÃO DE ACESSO
+// 1. ISOLAMENTO DE CONFIGURAÇÕES, TEMA, METAS E IDENTIDADE VISUAL POR CONTA
+// ==========================================
+
+export type TemaVisual = 'dark' | 'midnight' | 'light';
+
+export interface ConfiguracoesLojaIsolada {
+  ownerUserId?: string;
+  nomeLoja: string;
+  subtitulo: string;
+  cnpj: string;
+  telefone: string;
+  endereco: string;
+  logoUrl: string;
+  temaVisual: TemaVisual;
+  prazoGarantiaDias: number;
+  prazoAbandonoDias: number;
+  termosGarantiaTexto: string;
+  metaFaturamentoMensal?: number;
+  historicoMetasMensais?: Record<string, number>;
+}
+
+export const TERMOS_GARANTIA_PADRAO = `1. A garantia legal de 90 (noventa) dias cobre exclusivamente as peças substituídas e os serviços expressamente discriminados nesta ordem de serviço, contados a partir da data de entrega do dispositivo (Art. 26 do Código de Defesa do Consumidor).
+2. A garantia será automaticamente invalidada em caso de: quedas, trincos, pressões mecânicas, oxidação/contato com líquidos, violação dos selos internos de segurança ou intervenção técnica efetuada por terceiros não autorizados.
+3. Não nos responsabilizamos por perdas de dados, contas ou mídias armazenadas no dispositivo. Recomendamos expressamente a realização de backup prévio antes do reparo.
+4. Conforme o Código Civil Brasileiro, aparelhos prontos não retirados no prazo superior a 90 dias após a notificação serão considerados abandonados, podendo ser descartados ou vendidos para custeio de despesas operacionais.`;
+
+const CHAVE_USUARIO_ATIVO = 'montec_active_user_json';
+const PREFIXO_CONFIG_CONTA = 'sig_apple_configs_user_';
+const CHAVE_ESPELHO_SESSAO = 'sig_apple_configs';
+export const META_FATURAMENTO_PADRAO = 8000;
+
+/**
+ * Normaliza qualquer valor de tema salvo para um dos três temas suportados ('dark' | 'midnight' | 'light').
+ */
+export function normalizarTemaVisual(tema?: any): TemaVisual {
+  const valor = String(tema || '').toLowerCase().trim();
+  if (valor === 'light' || valor === 'claro' || valor === 'branco') return 'light';
+  if (valor === 'dark' || valor === 'escuro') return 'dark';
+  return 'midnight';
+}
+
+/**
+ * Aplica imediatamente o tema visual no elemento raiz (<html> e <body>),
+ * atualizando atributos data-theme, classes CSS e color-scheme nativo do navegador.
+ */
+export function aplicarTemaVisualNoDOM(tema?: any): TemaVisual {
+  const temaFinal = normalizarTemaVisual(tema);
+  try {
+    if (typeof document !== 'undefined' && document.documentElement) {
+      const root = document.documentElement;
+      root.setAttribute('data-theme', temaFinal);
+      root.classList.remove('theme-light', 'theme-dark', 'theme-midnight', 'light', 'dark');
+      root.classList.add(`theme-${temaFinal}`, temaFinal === 'light' ? 'light' : 'dark');
+      root.style.colorScheme = temaFinal === 'light' ? 'light' : 'dark';
+
+      if (document.body) {
+        document.body.setAttribute('data-theme', temaFinal);
+        document.body.classList.remove('theme-light', 'theme-dark', 'theme-midnight', 'light', 'dark');
+        document.body.classList.add(`theme-${temaFinal}`, temaFinal === 'light' ? 'light' : 'dark');
+      }
+    }
+  } catch (e) {
+    console.error('Erro ao aplicar tema visual no DOM:', e);
+  }
+  return temaFinal;
+}
+
+/**
+ * Sanitiza um valor numérico de meta financeira salvo, garantindo número >= 0 finito.
+ */
+function sanitizarNumeroMeta(valor: any): number {
+  if (valor === null || valor === undefined || valor === '') return 0;
+  const num = Number(valor);
+  if (!Number.isFinite(num) || num < 0) return 0;
+  return Math.round(num * 100) / 100;
+}
+
+function sanitizarHistoricoMetas(raw: any): Record<string, number> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const resultado: Record<string, number> = {};
+  for (const [chave, val] of Object.entries(raw)) {
+    if (/^\d{4}-\d{2}$/.test(chave)) {
+      const num = sanitizarNumeroMeta(val);
+      if (num > 0) {
+        resultado[chave] = num;
+      }
+    }
+  }
+  return resultado;
+}
+
+/**
+ * Retorna a estrutura de configuração padrão limpa para uma conta,
+ * sem herdar absolutamente nenhuma logo, tema, meta ou dado privado de outra conta.
+ */
+export function obterConfigPadraoConta(user?: any): ConfiguracoesLojaIsolada {
+  const meta = user?.user_metadata || {};
+  return {
+    ownerUserId: user?.id || '',
+    nomeLoja: meta.nome_assistencia || 'Minha Assistência',
+    subtitulo: 'Assistência Técnica',
+    cnpj: meta.cpf_cnpj || '',
+    telefone: meta.whatsapp || '',
+    endereco: '',
+    logoUrl: '',
+    temaVisual: 'midnight',
+    prazoGarantiaDias: 90,
+    prazoAbandonoDias: 90,
+    termosGarantiaTexto: TERMOS_GARANTIA_PADRAO,
+    metaFaturamentoMensal: META_FATURAMENTO_PADRAO,
+    historicoMetasMensais: {},
+  };
+}
+
+/**
+ * Identifica de forma síncrona o usuário autenticado na sessão atual.
+ */
+export function obterUsuarioAtivoSincrono(userParam?: any): any | null {
+  if (userParam && userParam.id) {
+    return userParam;
+  }
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      const salvo = window.localStorage.getItem(CHAVE_USUARIO_ATIVO);
+      if (salvo) {
+        const parsed = JSON.parse(salvo);
+        if (parsed && parsed.id) return parsed;
+      }
+      // Fallback: verifica token de sessão nativo do Supabase no localStorage
+      for (let i = 0; i < window.localStorage.length; i++) {
+        const k = window.localStorage.key(i);
+        if (k && k.startsWith('sb-') && k.endsWith('-auth-token')) {
+          const rawSession = window.localStorage.getItem(k);
+          if (rawSession) {
+            const parsedSession = JSON.parse(rawSession);
+            const sessionUser = parsedSession?.user || parsedSession?.currentSession?.user;
+            if (sessionUser && sessionUser.id) {
+              return sessionUser;
+            }
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.error('Erro ao obter usuário ativo síncrono:', e);
+  }
+  return null;
+}
+
+/**
+ * Registra o usuário autenticado atual, sincroniza o espelho de sessão de forma isolada
+ * e aplica imediatamente o tema visual exclusivo da conta.
+ */
+export function sincronizarSessaoConfiguracoesLoja(user: any | null): ConfiguracoesLojaIsolada {
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      if (!user || !user.id) {
+        window.localStorage.removeItem(CHAVE_USUARIO_ATIVO);
+        window.localStorage.removeItem(CHAVE_ESPELHO_SESSAO);
+        const padraoDeslogado = obterConfigPadraoConta(null);
+        aplicarTemaVisualNoDOM(padraoDeslogado.temaVisual);
+        window.dispatchEvent(new Event('storage_configs_updated'));
+        return padraoDeslogado;
+      }
+
+      window.localStorage.setItem(
+        CHAVE_USUARIO_ATIVO,
+        JSON.stringify({
+          id: user.id,
+          email: user.email,
+          user_metadata: user.user_metadata || {},
+        })
+      );
+
+      const configConta = obterConfiguracoesLojaSincrono(user);
+      window.localStorage.setItem(CHAVE_ESPELHO_SESSAO, JSON.stringify(configConta));
+      aplicarTemaVisualNoDOM(configConta.temaVisual);
+      window.dispatchEvent(new Event('storage_configs_updated'));
+      return configConta;
+    }
+  } catch (e) {
+    console.error('Erro ao sincronizar sessão de configurações:', e);
+  }
+  const padrao = obterConfigPadraoConta(user);
+  aplicarTemaVisualNoDOM(padrao.temaVisual);
+  return padrao;
+}
+
+/**
+ * Lê de forma síncrona e estritamente isolada as configurações da conta autenticada.
+ * Jamais retorna dados, tema, meta ou logo pertencentes a outro userId.
+ */
+export function obterConfiguracoesLojaSincrono(userParam?: any): ConfiguracoesLojaIsolada {
+  const user = obterUsuarioAtivoSincrono(userParam);
+  const padrao = obterConfigPadraoConta(user);
+
+  if (!user || !user.id) {
+    return padrao;
+  }
+
+  const chaveConta = `${PREFIXO_CONFIG_CONTA}${user.id}`;
+  const metaConfig = user.user_metadata?.configuracoes_loja;
+
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      // 1. Verifica cofre exclusivo desta conta no localStorage
+      const rawConta = window.localStorage.getItem(chaveConta);
+      if (rawConta) {
+        const parsedConta = JSON.parse(rawConta);
+        if (!parsedConta.ownerUserId || parsedConta.ownerUserId === user.id) {
+          const metaRemotaValida =
+            metaConfig && (!metaConfig.ownerUserId || metaConfig.ownerUserId === user.id) ? metaConfig : {};
+          const mesclado: ConfiguracoesLojaIsolada = {
+            ...padrao,
+            ...metaRemotaValida,
+            ...parsedConta,
+            ownerUserId: user.id,
+            temaVisual: normalizarTemaVisual(parsedConta.temaVisual ?? metaRemotaValida?.temaVisual ?? padrao.temaVisual),
+            termosGarantiaTexto: parsedConta.termosGarantiaTexto || padrao.termosGarantiaTexto,
+            metaFaturamentoMensal: sanitizarNumeroMeta(
+              parsedConta.metaFaturamentoMensal ?? metaRemotaValida?.metaFaturamentoMensal ?? 0
+            ),
+            historicoMetasMensais: {
+              ...sanitizarHistoricoMetas(metaRemotaValida?.historicoMetasMensais),
+              ...sanitizarHistoricoMetas(parsedConta.historicoMetasMensais),
+            },
+          };
+          return mesclado;
+        }
+      }
+
+      // 2. Se não houver cofre local ainda, mas houver configuracoes_loja salvas no user_metadata da conta no Supabase
+      if (metaConfig && typeof metaConfig === 'object') {
+        if (!metaConfig.ownerUserId || metaConfig.ownerUserId === user.id) {
+          const restaurado: ConfiguracoesLojaIsolada = {
+            ...padrao,
+            ...metaConfig,
+            ownerUserId: user.id,
+            temaVisual: normalizarTemaVisual(metaConfig.temaVisual ?? padrao.temaVisual),
+            termosGarantiaTexto: metaConfig.termosGarantiaTexto || padrao.termosGarantiaTexto,
+            metaFaturamentoMensal: sanitizarNumeroMeta(metaConfig.metaFaturamentoMensal ?? 0),
+            historicoMetasMensais: sanitizarHistoricoMetas(metaConfig.historicoMetasMensais),
+          };
+          window.localStorage.setItem(chaveConta, JSON.stringify(restaurado));
+          window.localStorage.setItem(CHAVE_ESPELHO_SESSAO, JSON.stringify(restaurado));
+          return restaurado;
+        }
+      }
+
+      // 3. Migração segura para contas pré-existentes
+      const rawLegado = window.localStorage.getItem(CHAVE_ESPELHO_SESSAO);
+      if (rawLegado) {
+        const legado = JSON.parse(rawLegado);
+        if (legado && !legado.ownerUserId) {
+          const nomeAssistenciaUsuario = String(user.user_metadata?.nome_assistencia || '').trim().toLowerCase();
+          const nomeLojaLegado = String(legado.nomeLoja || '').trim().toLowerCase();
+          if (nomeAssistenciaUsuario && nomeLojaLegado && nomeAssistenciaUsuario === nomeLojaLegado) {
+            const migrado: ConfiguracoesLojaIsolada = {
+              ...padrao,
+              ...legado,
+              ownerUserId: user.id,
+              temaVisual: normalizarTemaVisual(legado.temaVisual ?? padrao.temaVisual),
+              metaFaturamentoMensal: sanitizarNumeroMeta(legado.metaFaturamentoMensal ?? 0),
+              historicoMetasMensais: sanitizarHistoricoMetas(legado.historicoMetasMensais),
+            };
+            window.localStorage.setItem(chaveConta, JSON.stringify(migrado));
+            window.localStorage.setItem(CHAVE_ESPELHO_SESSAO, JSON.stringify(migrado));
+            return migrado;
+          }
+        }
+      }
+
+      // 4. Conta sem configurações personalizadas prévias: inicializa cofre limpo da conta
+      window.localStorage.setItem(chaveConta, JSON.stringify(padrao));
+      window.localStorage.setItem(CHAVE_ESPELHO_SESSAO, JSON.stringify(padrao));
+    }
+  } catch (e) {
+    console.error('Erro ao obter configurações isoladas da loja:', e);
+  }
+
+  return padrao;
+}
+
+/**
+ * Carrega as configurações da loja validando a autenticação e a autorização da conta no Supabase.
+ * Bloqueia qualquer tentativa de consultar configurações de outro usuário (targetUserId divergente).
+ */
+export async function carregarConfiguracoesLoja(targetUserId?: string): Promise<ConfiguracoesLojaIsolada> {
+  const { data: authData, error: authError } = await supabase.auth.getUser();
+  const user = authData?.user || obterUsuarioAtivoSincrono();
+
+  if (authError || !user || !user.id) {
+    throw new Error('Não autorizado: é necessário estar autenticado para acessar as configurações da loja.');
+  }
+
+  if (targetUserId && targetUserId !== user.id) {
+    throw new Error('Acesso negado: não é permitido acessar as configurações de outra conta.');
+  }
+
+  return sincronizarSessaoConfiguracoesLoja(user);
+}
+
+/**
+ * Salva as configurações, o tema, a meta financeira e a logo exclusivamente na conta autenticada.
+ * Aplica o tema visual imediatamente e bloqueia qualquer tentativa de modificar configurações de outra conta.
+ */
+export async function salvarConfiguracoesLoja(
+  novaConfig: Partial<ConfiguracoesLojaIsolada>,
+  targetUserId?: string
+): Promise<ConfiguracoesLojaIsolada> {
+  const { data: authData, error: authError } = await supabase.auth.getUser();
+  const user = authData?.user || obterUsuarioAtivoSincrono();
+
+  if (authError || !user || !user.id) {
+    throw new Error('Não autorizado: faça login para salvar as configurações da loja.');
+  }
+
+  if (targetUserId && targetUserId !== user.id) {
+    throw new Error('Acesso negado: não é permitido modificar as configurações de outra conta.');
+  }
+
+  if (novaConfig.ownerUserId && novaConfig.ownerUserId !== user.id) {
+    throw new Error('Acesso negado: tentativa de gravar configurações vinculadas a outro usuário.');
+  }
+
+  const configAtual = obterConfiguracoesLojaSincrono(user);
+  const temaEscolhido = normalizarTemaVisual(
+    novaConfig.temaVisual !== undefined ? novaConfig.temaVisual : configAtual.temaVisual
+  );
+
+  const metaMensalFinal =
+    novaConfig.metaFaturamentoMensal !== undefined
+      ? sanitizarNumeroMeta(novaConfig.metaFaturamentoMensal)
+      : sanitizarNumeroMeta(configAtual.metaFaturamentoMensal);
+
+  const historicoMetasFinal = {
+    ...sanitizarHistoricoMetas(configAtual.historicoMetasMensais),
+    ...sanitizarHistoricoMetas(novaConfig.historicoMetasMensais),
+  };
+
+  const configFinal: ConfiguracoesLojaIsolada = {
+    ...configAtual,
+    ...novaConfig,
+    temaVisual: temaEscolhido,
+    metaFaturamentoMensal: metaMensalFinal,
+    historicoMetasMensais: historicoMetasFinal,
+    ownerUserId: user.id,
+  };
+
+  // Aplica imediatamente o tema no DOM
+  aplicarTemaVisualNoDOM(configFinal.temaVisual);
+
+  const chaveConta = `${PREFIXO_CONFIG_CONTA}${user.id}`;
+  if (typeof window !== 'undefined' && window.localStorage) {
+    window.localStorage.setItem(chaveConta, JSON.stringify(configFinal));
+    window.localStorage.setItem(CHAVE_ESPELHO_SESSAO, JSON.stringify(configFinal));
+    window.localStorage.setItem(
+      CHAVE_USUARIO_ATIVO,
+      JSON.stringify({
+        id: user.id,
+        email: user.email,
+        user_metadata: {
+          ...(user.user_metadata || {}),
+          nome_assistencia: configFinal.nomeLoja,
+          whatsapp: configFinal.telefone,
+          cpf_cnpj: configFinal.cnpj,
+          configuracoes_loja: configFinal,
+        },
+      })
+    );
+  }
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('storage_configs_updated'));
+  }
+
+  // Persiste nos metadados exclusivos do usuário autenticado no Supabase.
+  // O user_metadata vai dentro do token JWT enviado em TODA requisição: a logo (base64)
+  // nunca pode ir para lá, senão o cabeçalho estoura e o navegador falha com ERR_HTTP2_PROTOCOL_ERROR.
+  const { logoUrl: _logoLocal, ...configSemLogo } = configFinal;
+  const { data: updateData, error: updateError } = await supabase.auth.updateUser({
+    data: {
+      nome_assistencia: configFinal.nomeLoja,
+      whatsapp: configFinal.telefone,
+      cpf_cnpj: configFinal.cnpj,
+      configuracoes_loja: configSemLogo,
+    },
+  });
+
+  if (updateError) {
+    console.warn('Aviso ao sincronizar configurações na nuvem:', updateError.message);
+  } else if (updateData?.user && typeof window !== 'undefined' && window.localStorage) {
+    window.localStorage.setItem(
+      CHAVE_USUARIO_ATIVO,
+      JSON.stringify({
+        id: updateData.user.id,
+        email: updateData.user.email,
+        user_metadata: updateData.user.user_metadata || {},
+      })
+    );
+  }
+
+  return configFinal;
+}
+
+// ==========================================
+// 1.1 GESTÃO E APURAÇÃO DE METAS FINANCEIRAS MENSAIS (DASHBOARD & RELATÓRIOS)
+// ==========================================
+
+export interface ValidacaoValorMonetario {
+  valido: boolean;
+  valor: number;
+  erro?: string;
+}
+
+export interface ResumoMetaFinanceira {
+  competencia: string; // 'YYYY-MM'
+  rotuloCompetencia: string; // Ex.: 'outubro de 2026'
+  metaConfigurada: boolean;
+  metaDefinida: number;
+  valorAlcancado: number;
+  percentualAtingido: number; // Percentual real (pode ultrapassar 100%, ex: 125.5)
+  percentualBarraVisual: number; // Limitado entre 0 e 100 apenas para a largura CSS da barra
+  valorRestante: number;
+  valorExcedente: number;
+  metaBatida: boolean;
+  quantidadeOrdensPeriodo: number;
+}
+
+/**
+ * Retorna a chave de competência mensal no formato 'YYYY-MM'.
+ */
+export function obterChaveCompetenciaMensal(dataReferencia: Date = new Date()): string {
+  const ano = dataReferencia.getFullYear();
+  const mes = String(dataReferencia.getMonth() + 1).padStart(2, '0');
+  return `${ano}-${mes}`;
+}
+
+/**
+ * Formata uma chave 'YYYY-MM' em rótulo legível em português (ex.: 'Outubro de 2026').
+ */
+export function formatarRotuloCompetenciaMensal(competencia?: string): string {
+  const chave = competencia && /^\d{4}-\d{2}$/.test(competencia) ? competencia : obterChaveCompetenciaMensal();
+  const [anoStr, mesStr] = chave.split('-');
+  const nomesMeses = [
+    'Janeiro',
+    'Fevereiro',
+    'Março',
+    'Abril',
+    'Maio',
+    'Junho',
+    'Julho',
+    'Agosto',
+    'Setembro',
+    'Outubro',
+    'Novembro',
+    'Dezembro',
+  ];
+  const idx = Math.max(0, Math.min(11, Number(mesStr) - 1));
+  return `${nomesMeses[idx]} de ${anoStr}`;
+}
+
+/**
+ * Extrai com precisão a competência 'YYYY-MM' da data de abertura de uma OS,
+ * evitando deslocamentos indevidos de fuso horário.
+ */
+export function extrairCompetenciaDeDataOS(dataInput: any): string | null {
+  if (!dataInput) return null;
+  if (typeof dataInput === 'string') {
+    const str = dataInput.trim();
+    const matchIso = str.match(/^(\d{4})-(\d{2})/);
+    if (matchIso) {
+      return `${matchIso[1]}-${matchIso[2]}`;
+    }
+    const matchBr = str.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+    if (matchBr) {
+      return `${matchBr[3]}-${matchBr[2]}`;
+    }
+  }
+  const dt = dataInput instanceof Date ? dataInput : new Date(dataInput);
+  if (isNaN(dt.getTime())) return null;
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
+}
+
+/**
+ * Filtra as Ordens de Serviço pertencentes exclusivamente à competência mensal informada ('YYYY-MM').
+ */
+export function filtrarOrdensPorCompetenciaMensal(ordens: any[], competencia?: string): any[] {
+  if (!Array.isArray(ordens)) return [];
+  const chaveAlvo =
+    competencia && /^\d{4}-\d{2}$/.test(competencia) ? competencia : obterChaveCompetenciaMensal();
+
+  return ordens.filter((os) => {
+    const dataRaw = os?.data_abertura || os?.dataAbertura;
+    const compOS = extrairCompetenciaDeDataOS(dataRaw);
+    return compOS === chaveAlvo;
+  });
+}
+
+/**
+ * Calcula o faturamento bruto total de uma lista de Ordens de Serviço,
+ * utilizando exatamente a mesma regra financeira dos Relatórios e do Dashboard.
+ */
+export function calcularFaturamentoBrutoOrdens(ordens: any[]): number {
+  if (!Array.isArray(ordens)) return 0;
+  const soma = ordens.reduce((acc, os) => {
+    const valor = Number(os?.orcamentoCalculado?.valorTotalOrcamento ?? os?.valor_total ?? 0);
+    return acc + (Number.isFinite(valor) ? valor : 0);
+  }, 0);
+  return Math.round(soma * 100) / 100;
+}
+
+/**
+ * Valida e converte entradas monetárias no formato brasileiro (ex.: "R$ 10.000,00", "1.500,50", "8000")
+ * ou numérico. Impede valores vazios, negativos, iguais a zero ou inválidos.
+ */
+export function parsearValorMonetarioBR(entrada: any): ValidacaoValorMonetario {
+  if (entrada === null || entrada === undefined) {
+    return { valido: false, valor: 0, erro: 'Informe um valor para a meta financeira.' };
+  }
+
+  if (typeof entrada === 'number') {
+    if (!Number.isFinite(entrada)) {
+      return { valido: false, valor: 0, erro: 'Valor numérico inválido para a meta.' };
+    }
+    if (entrada < 0) {
+      return { valido: false, valor: 0, erro: 'A meta financeira não pode ser negativa.' };
+    }
+    if (entrada === 0) {
+      return { valido: false, valor: 0, erro: 'A meta financeira deve ser maior que R$ 0,00.' };
+    }
+    return { valido: true, valor: Math.round(entrada * 100) / 100 };
+  }
+
+  const textoOriginal = String(entrada).trim();
+  if (!textoOriginal) {
+    return { valido: false, valor: 0, erro: 'Informe um valor para a meta financeira.' };
+  }
+
+  // Remove símbolo R$ e espaços
+  const semSimbolo = textoOriginal.replace(/R\$/gi, '').replace(/\s+/g, '');
+  if (!semSimbolo) {
+    return { valido: false, valor: 0, erro: 'Informe um valor para a meta financeira.' };
+  }
+
+  // Verifica sinal negativo
+  if (semSimbolo.startsWith('-')) {
+    return { valido: false, valor: 0, erro: 'A meta financeira não pode ser negativa.' };
+  }
+
+  // Permite apenas dígitos, pontos e vírgulas
+  if (!/^[+]?[\d.,]+$/.test(semSimbolo) || /[.,]{2,}/.test(semSimbolo) || /^[+]?[.,]|[.,]$/.test(semSimbolo)) {
+    return {
+      valido: false,
+      valor: 0,
+      erro: 'Formato inválido. Digite apenas números no padrão brasileiro (ex.: 10.000,00).',
+    };
+  }
+
+  let normalizado = semSimbolo.replace(/^\+/, '');
+  const temVirgula = normalizado.includes(',');
+  const temPonto = normalizado.includes('.');
+
+  if (temVirgula && temPonto) {
+    // Formato brasileiro "10.000,00": pontos são separadores de milhar e a última vírgula é decimal
+    const partesVirgula = normalizado.split(',');
+    if (partesVirgula.length > 2) {
+      return { valido: false, valor: 0, erro: 'Formato monetário inválido.' };
+    }
+    normalizado = partesVirgula[0].replace(/\./g, '') + '.' + partesVirgula[1];
+  } else if (temVirgula) {
+    const partesVirgula = normalizado.split(',');
+    if (partesVirgula.length > 2) {
+      return { valido: false, valor: 0, erro: 'Formato monetário inválido.' };
+    }
+    normalizado = partesVirgula[0] + '.' + partesVirgula[1];
+  } else if (temPonto) {
+    const partesPonto = normalizado.split('.');
+    // Se tiver mais de um ponto (ex.: "1.000.000") ou exatamente 3 casas após o ponto (ex.: "10.000" milhar brasileiro)
+    if (partesPonto.length > 2 || (partesPonto.length === 2 && partesPonto[1].length === 3)) {
+      normalizado = normalizado.replace(/\./g, '');
+    }
+  }
+
+  const numero = Number(normalizado);
+  if (!Number.isFinite(numero) || isNaN(numero)) {
+    return { valido: false, valor: 0, erro: 'Não foi possível interpretar o valor informado.' };
+  }
+  if (numero < 0) {
+    return { valido: false, valor: 0, erro: 'A meta financeira não pode ser negativa.' };
+  }
+  if (numero === 0) {
+    return { valido: false, valor: 0, erro: 'A meta financeira deve ser maior que R$ 0,00.' };
+  }
+
+  return { valido: true, valor: Math.round(numero * 100) / 100 };
+}
+
+/**
+ * Obtém o valor da meta financeira configurada na conta autenticada para uma competência mensal ('YYYY-MM').
+ * Se houver valor específico salvo no histórico daquela competência, utiliza-o;
+ * caso contrário, utiliza a meta mensal vigente da conta (ou META_FATURAMENTO_PADRAO se ainda não configurada).
+ */
+export function obterMetaFinanceiraConta(opcoes?: { competencia?: string; user?: any }): number {
+  const cfg = obterConfiguracoesLojaSincrono(opcoes?.user);
+  const comp =
+    opcoes?.competencia && /^\d{4}-\d{2}$/.test(opcoes.competencia)
+      ? opcoes.competencia
+      : obterChaveCompetenciaMensal();
+
+  const metaDaCompetencia = cfg.historicoMetasMensais?.[comp];
+  if (typeof metaDaCompetencia === 'number' && Number.isFinite(metaDaCompetencia) && metaDaCompetencia > 0) {
+    return metaDaCompetencia;
+  }
+
+  // Conta que ainda não alterou a meta usa o padrão de R$ 8.000
+  const metaMensal = sanitizarNumeroMeta(cfg.metaFaturamentoMensal);
+  return metaMensal > 0 ? metaMensal : META_FATURAMENTO_PADRAO;
+}
+
+/**
+ * Calcula todos os indicadores de acompanhamento da meta financeira para o período mensal:
+ * Meta definida, Valor alcançado, Percentual real atingido (sem travar em 100%), Valor restante e Excedente.
+ */
+export function calcularResumoMetaFinanceira(
+  ordens: any[],
+  opcoes?: { competencia?: string; metaOverride?: number; user?: any }
+): ResumoMetaFinanceira {
+  const competencia =
+    opcoes?.competencia && /^\d{4}-\d{2}$/.test(opcoes.competencia)
+      ? opcoes.competencia
+      : obterChaveCompetenciaMensal();
+
+  const ordensDoPeriodo = filtrarOrdensPorCompetenciaMensal(ordens, competencia);
+  const valorAlcancado = calcularFaturamentoBrutoOrdens(ordensDoPeriodo);
+
+  const metaBruta =
+    opcoes?.metaOverride !== undefined
+      ? sanitizarNumeroMeta(opcoes.metaOverride)
+      : obterMetaFinanceiraConta({ competencia, user: opcoes?.user });
+
+  const metaConfigurada = metaBruta > 0;
+  const metaDefinida = metaConfigurada ? metaBruta : 0;
+
+  // Cálculo protegido contra divisão por zero e sem limitar o percentual real a 100%
+  const percentualAtingido = metaConfigurada
+    ? Math.round(((valorAlcancado / metaDefinida) * 100) * 10) / 10
+    : 0;
+
+  const percentualBarraVisual = metaConfigurada
+    ? Math.min(100, Math.max(0, Math.round((valorAlcancado / metaDefinida) * 100)))
+    : 0;
+
+  const valorRestante = metaConfigurada
+    ? Math.max(0, Math.round((metaDefinida - valorAlcancado) * 100) / 100)
+    : 0;
+
+  const valorExcedente =
+    metaConfigurada && valorAlcancado > metaDefinida
+      ? Math.round((valorAlcancado - metaDefinida) * 100) / 100
+      : 0;
+
+  const metaBatida = metaConfigurada && valorAlcancado >= metaDefinida;
+
+  return {
+    competencia,
+    rotuloCompetencia: formatarRotuloCompetenciaMensal(competencia),
+    metaConfigurada,
+    metaDefinida,
+    valorAlcancado,
+    percentualAtingido,
+    percentualBarraVisual,
+    valorRestante,
+    valorExcedente,
+    metaBatida,
+    quantidadeOrdensPeriodo: ordensDoPeriodo.length,
+  };
+}
+
+/**
+ * Valida e persiste a meta financeira mensal exclusivamente na conta autenticada,
+ * atualizando tanto o histórico da competência quanto a meta mensal padrão da loja.
+ */
+export async function salvarMetaFinanceiraConta(
+  valorEntrada: any,
+  opcoes?: { competencia?: string; targetUserId?: string }
+): Promise<{ config: ConfiguracoesLojaIsolada; valorSalvo: number; competencia: string }> {
+  const validacao = parsearValorMonetarioBR(valorEntrada);
+  if (!validacao.valido) {
+    throw new Error(validacao.erro || 'Valor de meta financeira inválido.');
+  }
+
+  const competencia =
+    opcoes?.competencia && /^\d{4}-\d{2}$/.test(opcoes.competencia)
+      ? opcoes.competencia
+      : obterChaveCompetenciaMensal();
+
+  const cfgAtual = obterConfiguracoesLojaSincrono();
+  const novoHistorico: Record<string, number> = {
+    ...(cfgAtual.historicoMetasMensais || {}),
+    [competencia]: validacao.valor,
+  };
+
+  // Se estiver salvando a meta do mês atual (ou se a conta ainda não tinha meta padrão), atualiza também a metaFaturamentoMensal
+  const competenciaAtual = obterChaveCompetenciaMensal();
+  const novaMetaPadrao =
+    competencia === competenciaAtual || !cfgAtual.metaFaturamentoMensal
+      ? validacao.valor
+      : cfgAtual.metaFaturamentoMensal;
+
+  const configSalva = await salvarConfiguracoesLoja(
+    {
+      metaFaturamentoMensal: novaMetaPadrao,
+      historicoMetasMensais: novoHistorico,
+    },
+    opcoes?.targetUserId
+  );
+
+  return {
+    config: configSalva,
+    valorSalvo: validacao.valor,
+    competencia,
+  };
+}
+
+// ==========================================
+// 2. AUTENTICAÇÃO E GESTÃO DE ACESSO
 // ==========================================
 
 export async function fazerLogin(email: string, password: string) {
@@ -10,6 +736,10 @@ export async function fazerLogin(email: string, password: string) {
     password,
   });
   if (error) throw error;
+
+  if (data?.user) {
+    sincronizarSessaoConfiguracoesLoja(data.user);
+  }
   return data;
 }
 
@@ -21,19 +751,71 @@ export async function cadastrarUsuario(dados: {
   whatsapp: string;
   cpfCnpj?: string;
 }) {
+  // Inicializa configurações limpas e exclusivas para a nova conta (sem herdar logo, tema ou meta de nenhuma outra conta)
+  const configInicialLimpa: ConfiguracoesLojaIsolada = {
+    ownerUserId: '',
+    nomeLoja: dados.nomeAssistencia.trim() || 'Minha Assistência',
+    subtitulo: 'Assistência Técnica',
+    cnpj: dados.cpfCnpj?.trim() || '',
+    telefone: dados.whatsapp.trim() || '',
+    endereco: '',
+    logoUrl: '', // Sempre vazia para novas contas
+    temaVisual: 'midnight',
+    prazoGarantiaDias: 90,
+    prazoAbandonoDias: 90,
+    termosGarantiaTexto: TERMOS_GARANTIA_PADRAO,
+    metaFaturamentoMensal: META_FATURAMENTO_PADRAO,
+    historicoMetasMensais: {},
+  };
+
   const { data, error } = await supabase.auth.signUp({
     email: dados.email,
     password: dados.password,
     options: {
       data: {
         nome_responsavel: dados.nomeResponsavel,
-        nome_assistencia: dados.nomeAssistencia,
-        whatsapp: dados.whatsapp,
-        cpf_cnpj: dados.cpfCnpj || '',
+        nome_assistencia: dados.nomeAssistencia.trim(),
+        whatsapp: dados.whatsapp.trim(),
+        cpf_cnpj: dados.cpfCnpj?.trim() || '',
+        configuracoes_loja: configInicialLimpa,
       },
     },
   });
   if (error) throw error;
+
+  if (data?.user?.id) {
+    const configComOwner: ConfiguracoesLojaIsolada = {
+      ...configInicialLimpa,
+      ownerUserId: data.user.id,
+    };
+
+    if (typeof window !== 'undefined' && window.localStorage) {
+      // Grava no cofre exclusivo da nova conta
+      window.localStorage.setItem(
+        `${PREFIXO_CONFIG_CONTA}${data.user.id}`,
+        JSON.stringify(configComOwner)
+      );
+
+      // Se já iniciou sessão autenticada, atualiza a sessão ativa para a nova conta limpa
+      if (data.session) {
+        window.localStorage.setItem(
+          CHAVE_USUARIO_ATIVO,
+          JSON.stringify({
+            id: data.user.id,
+            email: data.user.email,
+            user_metadata: {
+              ...(data.user.user_metadata || {}),
+              configuracoes_loja: configComOwner,
+            },
+          })
+        );
+        window.localStorage.setItem(CHAVE_ESPELHO_SESSAO, JSON.stringify(configComOwner));
+        aplicarTemaVisualNoDOM(configComOwner.temaVisual);
+        window.dispatchEvent(new Event('storage_configs_updated'));
+      }
+    }
+  }
+
   return data;
 }
 
@@ -45,11 +827,18 @@ export async function recuperarSenha(email: string) {
 
 export async function fazerLogout() {
   const { error } = await supabase.auth.signOut();
+  // Limpa os ponteiros da sessão ativa sem apagar os cofres individuais (`sig_apple_configs_user_<id>`) de cada conta
+  if (typeof window !== 'undefined' && window.localStorage) {
+    window.localStorage.removeItem(CHAVE_USUARIO_ATIVO);
+    window.localStorage.removeItem(CHAVE_ESPELHO_SESSAO);
+    aplicarTemaVisualNoDOM('midnight');
+    window.dispatchEvent(new Event('storage_configs_updated'));
+  }
   if (error) throw error;
 }
 
 // ==========================================
-// 2. ORÇAMENTO, GARANTIA E AUXILIARES
+// 3. ORÇAMENTO, GARANTIA E AUXILIARES
 // ==========================================
 
 /**
@@ -86,25 +875,14 @@ export function extrairDiasGarantia(valor: any): number | null {
 }
 
 /**
- * Obtém o prazo padrão de garantia configurado na loja (Configurações -> sig_apple_configs).
- * Caso não haja configuração salva no navegador, utiliza 90 dias como padrão inicial.
+ * Obtém o prazo padrão de garantia configurado exclusivamente na conta autenticada atual.
  */
 export function obterPrazoGarantiaConfiguradoLoja(): number {
   try {
-    if (typeof window !== 'undefined' && window.localStorage) {
-      const chaves = ['sig_apple_configs', 'configuracoes_loja', 'dados_loja', 'configuracoes'];
-      for (const chave of chaves) {
-        const raw = window.localStorage.getItem(chave);
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          const dias = extrairDiasGarantia(
-            parsed?.prazoGarantiaDias ?? parsed?.prazo_garantia_dias ?? parsed?.prazoGarantia
-          );
-          if (dias !== null && dias > 0) {
-            return dias;
-          }
-        }
-      }
+    const configIsolada = obterConfiguracoesLojaSincrono();
+    const dias = extrairDiasGarantia(configIsolada?.prazoGarantiaDias);
+    if (dias !== null && dias > 0) {
+      return dias;
     }
   } catch (e) {
     console.error('Erro ao ler configuração de prazo de garantia:', e);
@@ -253,7 +1031,6 @@ export function calcularDiasDecorridosGarantia(
 
   if (typeof dataInicioInput === 'string') {
     const str = dataInicioInput.trim();
-    // Se começar com YYYY-MM-DD, extrai os componentes da data diretamente para evitar desvios de fuso horário
     const mIso = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
     const mBr = str.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
     if (mIso) {
@@ -470,7 +1247,7 @@ function formatarDataParaBanco(dataStr: string): string {
 }
 
 // ==========================================
-// 3. ORDENS DE SERVIÇO (CRIAÇÃO, RASCUNHO E EDIÇÃO)
+// 4. ORDENS DE SERVIÇO (CRIAÇÃO, RASCUNHO E EDIÇÃO)
 // ==========================================
 
 export async function criarOrdemServico(payload: {
@@ -808,8 +1585,15 @@ export async function buscarOrdensServico(): Promise<any[]> {
         }];
       }
 
-      const possuiGarantiaReal = verificarPossuiGarantiaOS(item);
-      const prazoGarantiaDiasReal = obterPrazoGarantiaOS(item, servicosCadastrados);
+      let possuiGarantiaReal = item.possui_garantia ?? true;
+      let prazoGarantiaDiasReal = 90;
+      try {
+        possuiGarantiaReal = verificarPossuiGarantiaOS(item);
+        prazoGarantiaDiasReal = obterPrazoGarantiaOS(item, servicosCadastrados);
+      } catch {
+        possuiGarantiaReal = item.possui_garantia ?? true;
+        prazoGarantiaDiasReal = 90;
+      }
 
       return {
         ...item,

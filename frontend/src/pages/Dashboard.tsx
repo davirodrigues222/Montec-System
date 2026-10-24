@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { buscarOrdensServico } from '../services/api';
+import { buscarOrdensServico, obterMetaFinanceiraConta } from '../services/api';
 import type { OrdemServico, StatusOS } from '../types';
 
 interface Props {
@@ -11,6 +11,17 @@ export const Dashboard: React.FC<Props> = ({ onNavigate, session }) => {
   const [ordens, setOrdens] = useState<OrdemServico[]>([]);
   const [loading, setLoading] = useState(true);
   const [horaAtual, setHoraAtual] = useState('');
+  const [metaFaturamento, setMetaFaturamento] = useState<number>(() =>
+    obterMetaFinanceiraConta({ user: session?.user })
+  );
+
+  // Atualiza o card da meta assim que ela for alterada em Relatórios (ou ao trocar de conta)
+  useEffect(() => {
+    const atualizarMeta = () => setMetaFaturamento(obterMetaFinanceiraConta({ user: session?.user }));
+    atualizarMeta();
+    window.addEventListener('storage_configs_updated', atualizarMeta);
+    return () => window.removeEventListener('storage_configs_updated', atualizarMeta);
+  }, [session]);
 
   const carregarOrdens = async () => {
     setLoading(true);
@@ -165,9 +176,10 @@ export const Dashboard: React.FC<Props> = ({ onNavigate, session }) => {
     [listaOrdens]
   );
 
-  // Meta de Faturamento (ex: R$ 8.000 como padrão do Figma ou configurável)
-  const metaFaturamento = 8000;
-  const percentualMeta = Math.min(100, Math.round((faturamentoMes / metaFaturamento) * 100));
+  // Meta de Faturamento configurada em Relatórios (padrão R$ 8.000)
+  // Percentual real (pode passar de 100%); apenas a largura da barra é limitada a 100%
+  const percentualMeta = metaFaturamento > 0 ? Math.round((faturamentoMes / metaFaturamento) * 100) : 0;
+  const larguraBarraMeta = Math.min(100, Math.max(0, percentualMeta));
 
   // Formatação de data da tabela (ex: "17 out, 09:42")
   const formatarDataEntrada = (dataIso?: string) => {
@@ -505,7 +517,7 @@ export const Dashboard: React.FC<Props> = ({ onNavigate, session }) => {
             <div className="w-full bg-zinc-800/80 rounded-full h-2 mt-4 overflow-hidden">
               <div
                 className="bg-blue-600 h-full rounded-full transition-all duration-500"
-                style={{ width: `${percentualMeta}%` }}
+                style={{ width: `${larguraBarraMeta}%` }}
               />
             </div>
 

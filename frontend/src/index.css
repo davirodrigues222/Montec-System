@@ -66,3 +66,134 @@ button {
 ::-webkit-scrollbar-thumb:hover {
   background: #3b465c;
 }
+/* =====================================================================
+   TEMAS VISUAIS (data-theme aplicado no <html> por aplicarTemaVisualNoDOM)
+   - midnight: visual padrão do sistema (sem overrides)
+   - dark: preto neutro
+   - light: fundos claros e textos escuros
+   Regras fora de @layer prevalecem sobre os utilitários do Tailwind v4.
+   Os cards de pré-visualização em Configurações ([data-theme-preview]) ficam intactos.
+   ===================================================================== */
+
+/* ---------- TEMA ESCURO (neutro) ---------- */
+html[data-theme="dark"] body {
+  background: #0a0a0a;
+}
+
+html[data-theme="dark"]
+  :is([class*="bg-[#07"], [class*="bg-[#08"], [class*="bg-[#09"]):not([data-theme-preview], [data-theme-preview] *) {
+  background-color: #0a0a0a;
+}
+
+html[data-theme="dark"]
+  :is([class*="bg-[#0a"], [class*="bg-[#0b"], [class*="bg-[#0c"], [class*="bg-[#0d"], [class*="bg-[#0e"], [class*="bg-[#11"]):not([data-theme-preview], [data-theme-preview] *) {
+  background-color: #151515;
+}
+
+html[data-theme="dark"] :is([class*="border-slate-8"], [class*="border-zinc-8"]):not([data-theme-preview], [data-theme-preview] *) {
+  border-color: #262626;
+}
+
+/* ---------- TEMA CLARO ---------- */
+html[data-theme="light"] {
+  color-scheme: light;
+}
+
+html[data-theme="light"] body {
+  background: #f4f5f8;
+  color: #0f172a;
+}
+
+/* Fundos de página / áreas internas */
+html[data-theme="light"]
+  :is([class*="bg-[#07"], [class*="bg-[#08"], [class*="bg-[#09"], [class*="bg-zinc-950"], [class*="bg-black/"]):not([data-theme-preview], [data-theme-preview] *):not(.fixed) {
+  background-color: #f4f5f8;
+}
+
+/* Cards, painéis, barra lateral e modais */
+html[data-theme="light"]
+  :is([class*="bg-[#0a"], [class*="bg-[#0b"], [class*="bg-[#0c"], [class*="bg-[#0d"], [class*="bg-[#0e"], [class*="bg-[#11"]):not([data-theme-preview], [data-theme-preview] *) {
+  background-color: #ffffff;
+}
+
+html[data-theme="light"]
+  :is(.bg-zinc-900, [class*="bg-zinc-900/"], .bg-zinc-800, [class*="bg-zinc-800/"], .bg-slate-800, [class*="bg-slate-900"]):not([data-theme-preview], [data-theme-preview] *) {
+  background-color: #e4e4e7;
+}
+
+html[data-theme="light"] :is([class*="hover:bg-zinc-8"], [class*="hover:bg-zinc-7"], [class*="hover:bg-slate-8"]):hover {
+  background-color: #e4e4e7;
+}
+
+/* Bordas */
+html[data-theme="light"]
+  :is([class*="border-zinc-8"], [class*="border-zinc-7"], [class*="border-slate-8"], [class*="border-slate-7"], [class*="border-[#09"]):not([data-theme-preview], [data-theme-preview] *) {
+  border-color: #d4d4d8;
+}
+
+/* Textos */
+html[data-theme="light"] :is(.text-white, .text-zinc-100, .text-zinc-200):not([data-theme-preview], [data-theme-preview] *) {
+  color: #0f172a;
+}
+
+html[data-theme="light"] :is(.text-zinc-300, .text-slate-300) {
+  color: #334155;
+}
+
+html[data-theme="light"] :is(.text-zinc-400, .text-slate-400) {
+  color: #52525b;
+}
+
+html[data-theme="light"] :is(.text-zinc-500, .text-slate-500) {
+  color: #71717a;
+}
+
+html[data-theme="light"] [class*="hover:text-white"]:hover {
+  color: #0f172a;
+}
+
+/* Cores de destaque mais escuras para manter contraste em fundo claro */
+html[data-theme="light"] .text-blue-400 { color: #2563eb; }
+html[data-theme="light"] .text-blue-300 { color: #1d4ed8; }
+html[data-theme="light"] .text-emerald-400 { color: #059669; }
+html[data-theme="light"] .text-amber-400 { color: #d97706; }
+html[data-theme="light"] .text-amber-300 { color: #b45309; }
+html[data-theme="light"] .text-red-400 { color: #dc2626; }
+html[data-theme="light"] .text-purple-400 { color: #9333ea; }
+
+/* Inputs, selects e textareas visíveis */
+html[data-theme="light"] :is(input, select, textarea):not([type="checkbox"], [type="radio"], [type="file"]) {
+  background-color: #ffffff;
+  color: #0f172a;
+  border-color: #cbd5e1;
+  color-scheme: light;
+}
+
+html[data-theme="light"] :is(input, textarea)::placeholder {
+  color: #94a3b8;
+}
+
+html[data-theme="light"] option {
+  background-color: #ffffff;
+  color: #0f172a;
+}
+
+/* Botões principais: texto branco preservado
+   ([data-theme] repetido para superar a especificidade das regras de texto acima) */
+html[data-theme="light"][data-theme]
+  :is(.bg-blue-600, .bg-blue-500, .bg-emerald-600, .bg-emerald-500, .bg-red-600, .bg-red-500, .bg-purple-600, [class*="from-blue-"]),
+html[data-theme="light"][data-theme]
+  :is(.bg-blue-600, .bg-blue-500, .bg-emerald-600, .bg-emerald-500, .bg-red-600, .bg-red-500, .bg-purple-600, [class*="from-blue-"])
+  :is(.text-white, [class*="hover:text-white"], span, svg) {
+  color: #ffffff;
+}
+
+/* Barra de rolagem */
+html[data-theme="light"] ::-webkit-scrollbar-track {
+  background: #f4f5f8;
+}
+
+html[data-theme="light"] ::-webkit-scrollbar-thumb {
+  border-color: #f4f5f8;
+  background: #cbd5e1;
+}

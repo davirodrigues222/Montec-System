@@ -1,60 +1,53 @@
 import React, { useState, useEffect } from 'react';
-
-export interface ConfiguracoesLoja {
-  nomeLoja: string;
-  subtitulo: string;
-  cnpj: string;
-  telefone: string;
-  endereco: string;
-  logoUrl: string;
-  temaVisual: 'dark' | 'midnight' | 'light';
-  prazoGarantiaDias: number;
-  prazoAbandonoDias: number;
-  termosGarantiaTexto: string;
-}
-
-const defaultConfigs: ConfiguracoesLoja = {
-  nomeLoja: 'Sampaio Cell',
-  subtitulo: 'Assistência Técnica',
-  cnpj: '',
-  telefone: '(85) 99999-9999',
-  endereco: 'Fortaleza - CE',
-  logoUrl: '',
-  temaVisual: 'midnight',
-  prazoGarantiaDias: 90,
-  prazoAbandonoDias: 90,
-  termosGarantiaTexto: `1. A garantia legal de 90 (noventa) dias cobre exclusivamente as peças substituídas e os serviços expressamente discriminados nesta ordem de serviço, contados a partir da data de entrega do dispositivo (Art. 26 do Código de Defesa do Consumidor).
-2. A garantia será automaticamente invalidada em caso de: quedas, trincos, pressões mecânicas, oxidação/contato com líquidos, violação dos selos internos de segurança ou intervenção técnica efetuada por terceiros não autorizados.
-3. Não nos responsabilizamos por perdas de dados, contas ou mídias armazenadas no dispositivo. Recomendamos expressamente a realização de backup prévio antes do reparo.
-4. Conforme o Código Civil Brasileiro, aparelhos prontos não retirados no prazo superior a 90 dias após a notificação serão considerados abandonados, podendo ser descartados ou vendidos para custeio de despesas operacionais.`,
-};
+import {
+  type ConfiguracoesLojaIsolada,
+  type TemaVisual,
+  TERMOS_GARANTIA_PADRAO,
+  aplicarTemaVisualNoDOM,
+  carregarConfiguracoesLoja,
+  obterConfiguracoesLojaSincrono,
+  salvarConfiguracoesLoja,
+} from '../services/api';
 
 export const Configuracoes: React.FC = () => {
-  const [config, setConfig] = useState<ConfiguracoesLoja>(defaultConfigs);
+  // Leitura inicial síncrona do cofre da conta ativa (nunca herda logo de outra conta)
+  const [config, setConfig] = useState<ConfiguracoesLojaIsolada>(() => obterConfiguracoesLojaSincrono());
   const [activeTab, setActiveTab] = useState<'dados' | 'aparencia' | 'termos'>('aparencia');
   const [salvandoFeedback, setSalvandoFeedback] = useState(false);
+  const [erroSalvar, setErroSalvar] = useState<string | null>(null);
 
   useEffect(() => {
-    const saved = localStorage.getItem('sig_apple_configs');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        setConfig({
-          ...defaultConfigs,
-          ...parsed,
-          termosGarantiaTexto: parsed.termosGarantiaTexto || defaultConfigs.termosGarantiaTexto,
-        });
-      } catch (e) {
-        console.error('Erro ao ler configurações salvas:', e);
-      }
-    }
+    // Revalida com a sessão autenticada do Supabase (supabase.auth.getUser)
+    carregarConfiguracoesLoja()
+      .then((cfg) => setConfig(cfg))
+      .catch((e) => console.error('Erro ao carregar configurações da conta:', e));
   }, []);
 
-  const handleSalvar = () => {
-    localStorage.setItem('sig_apple_configs', JSON.stringify(config));
-    window.dispatchEvent(new Event('storage_configs_updated'));
-    setSalvandoFeedback(true);
-    setTimeout(() => setSalvandoFeedback(false), 3000);
+  const persistir = async (parcial: Partial<ConfiguracoesLojaIsolada>) => {
+    setErroSalvar(null);
+    try {
+      const salvo = await salvarConfiguracoesLoja(parcial);
+      setConfig(salvo);
+      return true;
+    } catch (e: any) {
+      console.error('Erro ao salvar configurações:', e);
+      setErroSalvar(e?.message || 'Não foi possível salvar as configurações.');
+      return false;
+    }
+  };
+
+  const handleSalvar = async () => {
+    if (await persistir(config)) {
+      setSalvandoFeedback(true);
+      setTimeout(() => setSalvandoFeedback(false), 3000);
+    }
+  };
+
+  const handleSelecionarTema = (tema: TemaVisual) => {
+    // Aplica na hora no <html> e grava a preferência na conta ativa
+    aplicarTemaVisualNoDOM(tema);
+    setConfig((prev) => ({ ...prev, temaVisual: tema }));
+    persistir({ temaVisual: tema });
   };
 
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -67,13 +60,9 @@ export const Configuracoes: React.FC = () => {
       const reader = new FileReader();
       reader.onloadend = () => {
         const novaLogo = reader.result as string;
-        setConfig((prev) => {
-          const atualizado = { ...prev, logoUrl: novaLogo };
-          // Salva imediatamente no localStorage e emite o evento para o topo atualizar na hora!
-          localStorage.setItem('sig_apple_configs', JSON.stringify(atualizado));
-          window.dispatchEvent(new Event('storage_configs_updated'));
-          return atualizado;
-        });
+        setConfig((prev) => ({ ...prev, logoUrl: novaLogo }));
+        // Salva imediatamente na conta ativa; o evento storage_configs_updated atualiza o topo na hora
+        persistir({ logoUrl: novaLogo });
       };
       reader.readAsDataURL(file);
     }
@@ -81,7 +70,7 @@ export const Configuracoes: React.FC = () => {
 
   const handleRestaurarTermosPadrao = () => {
     if (window.confirm('Deseja restaurar os termos e condições padrão de assistência técnica?')) {
-      setConfig((prev) => ({ ...prev, termosGarantiaTexto: defaultConfigs.termosGarantiaTexto }));
+      setConfig((prev) => ({ ...prev, termosGarantiaTexto: TERMOS_GARANTIA_PADRAO }));
     }
   };
 
@@ -257,7 +246,8 @@ export const Configuracoes: React.FC = () => {
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div
-                onClick={() => setConfig({ ...config, temaVisual: 'dark' })}
+                data-theme-preview
+                onClick={() => handleSelecionarTema('dark')}
                 className={`p-4 rounded-xl border cursor-pointer transition flex flex-col justify-between h-32 ${
                   config.temaVisual === 'dark'
                     ? 'border-blue-500 bg-[#07090e] ring-2 ring-blue-500/30'
@@ -269,7 +259,8 @@ export const Configuracoes: React.FC = () => {
               </div>
 
               <div
-                onClick={() => setConfig({ ...config, temaVisual: 'midnight' })}
+                data-theme-preview
+                onClick={() => handleSelecionarTema('midnight')}
                 className={`p-4 rounded-xl border cursor-pointer transition flex flex-col justify-between h-32 ${
                   config.temaVisual === 'midnight'
                     ? 'border-blue-500 bg-[#070b14] ring-2 ring-blue-500/30'
@@ -281,7 +272,8 @@ export const Configuracoes: React.FC = () => {
               </div>
 
               <div
-                onClick={() => setConfig({ ...config, temaVisual: 'light' })}
+                data-theme-preview
+                onClick={() => handleSelecionarTema('light')}
                 className={`p-4 rounded-xl border cursor-pointer transition flex flex-col justify-between h-32 ${
                   config.temaVisual === 'light'
                     ? 'border-blue-500 bg-[#f4f5f8] ring-2 ring-blue-500/30'
@@ -373,6 +365,7 @@ export const Configuracoes: React.FC = () => {
               <span>Configurações salvas e aplicadas em todo o sistema!</span>
             </span>
           )}
+          {erroSalvar && <span className="text-xs font-bold text-red-400">{erroSalvar}</span>}
         </div>
 
         <button

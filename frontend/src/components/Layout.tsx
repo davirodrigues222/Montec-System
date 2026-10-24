@@ -1,5 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { fazerLogout } from '../services/api';
+import {
+  fazerLogout,
+  obterConfiguracoesLojaSincrono,
+  sincronizarSessaoConfiguracoesLoja,
+  aplicarTemaVisualNoDOM,
+} from '../services/api';
 
 interface Props {
   children: React.ReactNode;
@@ -17,26 +22,30 @@ export const Layout: React.FC<Props> = ({ children, activeTab, setActiveTab, ses
   const [subtitulo, setSubtitulo] = useState<string>('Assistência Técnica');
   const [logoUrl, setLogoUrl] = useState<string>('');
 
-  const carregarConfigs = () => {
-    const saved = localStorage.getItem('sig_apple_configs');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (parsed.nomeLoja) setNomeLoja(parsed.nomeLoja);
-        if (parsed.subtitulo) setSubtitulo(parsed.subtitulo);
-        if (parsed.logoUrl) setLogoUrl(parsed.logoUrl);
-      } catch (e) {
-        console.error('Erro ao ler configs salvas:', e);
-      }
-    }
+  const userId: string | undefined = session?.user?.id;
 
-    if (session?.user?.user_metadata?.nome_assistencia) {
-      setNomeLoja(session.user.user_metadata.nome_assistencia);
-    }
+  // Lê apenas a configuração da conta ativa (cofre `sig_apple_configs_user_<id>`).
+  // Nunca dispara o evento storage_configs_updated, para não entrar em loop com o listener abaixo.
+  const carregarConfigs = () => {
+    const cfg = obterConfiguracoesLojaSincrono(session?.user);
+    setNomeLoja(cfg.nomeLoja || session?.user?.user_metadata?.nome_assistencia || 'Minha Assistência');
+    setSubtitulo(cfg.subtitulo || 'Assistência Técnica');
+    // Conta sem logo (ou troca de conta): limpa a imagem da sessão anterior
+    setLogoUrl(cfg.logoUrl || '');
+    aplicarTemaVisualNoDOM(cfg.temaVisual);
   };
 
+  // Ao trocar de conta: zera a identidade visual anterior e sincroniza a configuração da nova conta
   useEffect(() => {
+    setLogoUrl('');
+    if (userId) {
+      sincronizarSessaoConfiguracoesLoja(session.user);
+    }
     carregarConfigs();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
+
+  useEffect(() => {
     window.addEventListener('storage_configs_updated', carregarConfigs);
     return () => window.removeEventListener('storage_configs_updated', carregarConfigs);
   }, [session]);

@@ -1,10 +1,24 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { buscarOrdensServico } from '../services/api';
+import {
+  buscarOrdensServico,
+  obterMetaFinanceiraConta,
+  parsearValorMonetarioBR,
+  salvarMetaFinanceiraConta,
+} from '../services/api';
 import type { OrdemServico } from '../types';
+
+const formatarMoedaBR = (valor: number) =>
+  valor.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export const Relatorios: React.FC = () => {
   const [ordens, setOrdens] = useState<OrdemServico[]>([]);
   const [loading, setLoading] = useState(true);
+  const [metaFinanceira, setMetaFinanceira] = useState<number>(() => obterMetaFinanceiraConta());
+  const [metaInput, setMetaInput] = useState<string>(() => formatarMoedaBR(obterMetaFinanceiraConta()));
+  const [editandoMeta, setEditandoMeta] = useState(false);
+  const [salvandoMeta, setSalvandoMeta] = useState(false);
+  const [erroMeta, setErroMeta] = useState<string | null>(null);
+  const [metaSalvaFeedback, setMetaSalvaFeedback] = useState(false);
   const [mesSelecionado, setMesSelecionado] = useState<string>('ATUAL');
   const [dataInicioPersonalizada, setDataInicioPersonalizada] = useState<string>(() => {
     const hoje = new Date();
@@ -30,6 +44,60 @@ export const Relatorios: React.FC = () => {
   useEffect(() => {
     carregarRelatorios();
   }, []);
+
+  // Mantém a meta sincronizada com a conta ativa (troca de conta ou alteração em outra tela)
+  useEffect(() => {
+    const atualizarMeta = () => setMetaFinanceira(obterMetaFinanceiraConta());
+    window.addEventListener('storage_configs_updated', atualizarMeta);
+    return () => window.removeEventListener('storage_configs_updated', atualizarMeta);
+  }, []);
+
+  // Valor alcançado: mesma regra do card "Meta de faturamento" do Dashboard (faturamentoMes)
+  const valorAlcancadoMeta = useMemo(
+    () =>
+      ordens.reduce(
+        (acc, os: any) =>
+          acc + Number(os?.orcamentoCalculado?.valorTotalOrcamento || (os as any)?.valor_total || 0),
+        0
+      ),
+    [ordens]
+  );
+  const percentualMetaReal = metaFinanceira > 0 ? (valorAlcancadoMeta / metaFinanceira) * 100 : 0;
+  const larguraBarraMeta = Math.min(100, Math.max(0, percentualMetaReal));
+  const valorRestanteMeta = Math.max(0, metaFinanceira - valorAlcancadoMeta);
+
+  const iniciarEdicaoMeta = () => {
+    setMetaInput(formatarMoedaBR(metaFinanceira));
+    setErroMeta(null);
+    setEditandoMeta(true);
+  };
+
+  const handleSalvarMeta = async () => {
+    // Rejeita vazio, negativo, zero ou formato inválido antes de gravar
+    const validacao = parsearValorMonetarioBR(metaInput);
+    if (!validacao.valido) {
+      setErroMeta(validacao.erro || 'Valor de meta inválido.');
+      return;
+    }
+
+    setSalvandoMeta(true);
+    setErroMeta(null);
+    try {
+      const { valorSalvo } = await salvarMetaFinanceiraConta(validacao.valor);
+      setMetaFinanceira(valorSalvo);
+      setMetaInput(formatarMoedaBR(valorSalvo));
+      setEditandoMeta(false);
+      // Avisa o Dashboard para atualizar o card "Meta de faturamento"
+      window.dispatchEvent(new Event('storage_configs_updated'));
+      setMetaSalvaFeedback(true);
+      setTimeout(() => setMetaSalvaFeedback(false), 3000);
+    } catch (err: any) {
+      console.error('Erro ao salvar meta financeira:', err);
+      setErroMeta(err?.message || 'Não foi possível salvar a meta.');
+    } finally {
+      setSalvandoMeta(false);
+    }
+  };
 
   // Filtro de Ordens por Dia / Mês / Ano / Intervalo Personalizado
   const ordensFiltradas = useMemo(() => {
@@ -348,6 +416,98 @@ export const Relatorios: React.FC = () => {
           <p className="text-[10px] sm:text-[11px] text-zinc-400 mt-1 sm:mt-2 font-medium truncate">
             {totalAtendimentos} {totalAtendimentos === 1 ? 'atendimento' : 'atendimentos'}
           </p>
+        </div>
+      </div>
+
+      {/* ================= CARD: META FINANCEIRA ================= */}
+      <div className="bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-4 sm:p-6 shadow-sm min-w-0">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+          <div className="min-w-0">
+            <h3 className="text-sm font-bold text-white">Meta Financeira</h3>
+            <p className="text-xs text-zinc-400 mt-0.5">
+              Meta de faturamento exibida no card "Meta de faturamento" do Painel
+            </p>
+          </div>
+
+          {editandoMeta ? (
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              <div className="flex items-center bg-[#080c14] border border-zinc-800 rounded-xl px-3 py-2 focus-within:border-blue-500">
+                <span className="text-xs font-bold text-zinc-400 mr-1.5">R$</span>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={metaInput}
+                  onChange={(e) => {
+                    setMetaInput(e.target.value);
+                    setErroMeta(null);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleSalvarMeta();
+                    if (e.key === 'Escape') setEditandoMeta(false);
+                  }}
+                  placeholder="8.000,00"
+                  autoFocus
+                  className="w-28 bg-transparent text-xs text-white font-bold outline-none"
+                />
+              </div>
+              <button
+                onClick={handleSalvarMeta}
+                disabled={salvandoMeta}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white font-bold rounded-xl text-xs transition shadow-md shadow-blue-600/20"
+              >
+                {salvandoMeta ? 'Salvando...' : 'Salvar meta'}
+              </button>
+              <button
+                onClick={() => {
+                  setEditandoMeta(false);
+                  setErroMeta(null);
+                }}
+                className="px-3 py-2 text-xs font-semibold text-zinc-400 hover:text-white transition"
+              >
+                Cancelar
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={iniciarEdicaoMeta}
+              className="px-4 py-2 bg-[#080c14] hover:bg-zinc-800 border border-zinc-700/80 text-white rounded-xl text-xs font-semibold transition shadow-sm shrink-0"
+            >
+              Editar meta
+            </button>
+          )}
+        </div>
+
+        {erroMeta && <p className="text-xs font-bold text-red-400 mt-2">{erroMeta}</p>}
+        {metaSalvaFeedback && (
+          <p className="text-xs font-bold text-emerald-400 mt-2">✓ Meta salva e aplicada no Painel!</p>
+        )}
+
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4 mt-5">
+          <div className="p-3 sm:p-4 bg-[#080c14] border border-zinc-800/80 rounded-xl min-w-0">
+            <span className="text-[10px] sm:text-[11px] font-bold text-zinc-400 uppercase tracking-wider">Meta definida</span>
+            <p className="text-sm sm:text-lg font-extrabold text-white mt-1 truncate">R$ {formatarMoedaBR(metaFinanceira)}</p>
+          </div>
+          <div className="p-3 sm:p-4 bg-[#080c14] border border-zinc-800/80 rounded-xl min-w-0">
+            <span className="text-[10px] sm:text-[11px] font-bold text-zinc-400 uppercase tracking-wider">Valor alcançado</span>
+            <p className="text-sm sm:text-lg font-extrabold text-emerald-400 mt-1 truncate">R$ {formatarMoedaBR(valorAlcancadoMeta)}</p>
+          </div>
+          <div className="p-3 sm:p-4 bg-[#080c14] border border-zinc-800/80 rounded-xl min-w-0">
+            <span className="text-[10px] sm:text-[11px] font-bold text-zinc-400 uppercase tracking-wider">Progresso</span>
+            <p className="text-sm sm:text-lg font-extrabold text-blue-400 mt-1 truncate">
+              {percentualMetaReal.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 1 })}%
+            </p>
+          </div>
+          <div className="p-3 sm:p-4 bg-[#080c14] border border-zinc-800/80 rounded-xl min-w-0">
+            <span className="text-[10px] sm:text-[11px] font-bold text-zinc-400 uppercase tracking-wider">Valor restante</span>
+            <p className="text-sm sm:text-lg font-extrabold text-amber-400 mt-1 truncate">R$ {formatarMoedaBR(valorRestanteMeta)}</p>
+          </div>
+        </div>
+
+        <div className="w-full bg-zinc-800/80 rounded-full h-2.5 mt-5 overflow-hidden">
+          <div
+            className={`h-full rounded-full transition-all duration-500 ${percentualMetaReal >= 100 ? 'bg-emerald-600' : 'bg-blue-600'}`}
+            style={{ width: `${larguraBarraMeta}%` }}
+          />
         </div>
       </div>
 
