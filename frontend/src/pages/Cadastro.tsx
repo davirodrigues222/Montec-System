@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, type FormEvent } from 'react';
 import { supabase } from '../services/supabaseClient';
+import type { SecaoCadastro } from '../types';
 
 export type RegistryType = 'client' | 'supplier' | 'service';
 export type RegistryFilter = 'all' | RegistryType;
@@ -36,7 +37,14 @@ const registryMeta = {
   },
 };
 
-export function Cadastro() {
+// Submódulo do menu lateral -> tipo de cadastro desta tela
+const SECAO_PARA_TIPO: Partial<Record<SecaoCadastro, RegistryType>> = {
+  clientes: 'client',
+  fornecedores: 'supplier',
+  servicos: 'service',
+};
+
+export function Cadastro({ secao }: { secao?: SecaoCadastro } = {}) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [clientes, setClientes] = useState<any[]>([]);
@@ -79,6 +87,15 @@ export function Cadastro() {
   // Modais
   const [viewItem, setViewItem] = useState<RegistryItem | null>(null);
   const [itemToDelete, setItemToDelete] = useState<RegistryItem | null>(null);
+
+  // Ao escolher Clientes / Serviços / Fornecedores no menu, abre o formulário e a lista daquele tipo
+  useEffect(() => {
+    const tipo = secao ? SECAO_PARA_TIPO[secao] : undefined;
+    if (tipo) {
+      setTipoCadastro(tipo);
+      setActiveFilter(tipo);
+    }
+  }, [secao]);
 
   // 1. CARREGAMENTO REAL DO SUPABASE
   const carregarDados = async () => {

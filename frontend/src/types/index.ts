@@ -43,6 +43,7 @@ export interface OrcamentoCalculado {
   freteReal?: number;
   fornecedorPeca?: string;
   tipoDesconto?: 'VALOR' | 'PERCENTUAL';
+  descontoInput?: number; // valor digitado (R$ ou %), conforme tipoDesconto
 }
 
 export interface HistoricoItem {
@@ -90,3 +91,12 @@ export interface UsuarioAutenticado {
   whatsapp?: string;
   cpfCnpj?: string;
 }
+
+// Submódulos do menu "Cadastros" (navegação em árvore na barra lateral)
+export type SecaoCadastro =
+  | 'clientes'
+  | 'servicos'
+  | 'fornecedores'
+  | 'lojas'
+  | 'funcionarios'
+  | 'formas-pagamento';

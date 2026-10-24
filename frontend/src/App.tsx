@@ -9,6 +9,8 @@ import { Configuracoes } from './pages/Configuracoes';
 import { NovaOS } from './pages/NovaOS';
 import { GarantiaRetorno } from './pages/Garantiaretorno';
 import { Cadastro } from './pages/Cadastro';
+import { CadastroPendente } from './pages/CadastroPendente';
+import type { SecaoCadastro } from './types';
 
 export default function App() {
   const [session, setSession] = useState<any>(null);
@@ -16,6 +18,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<
     'dashboard' | 'relatorios' | 'historico' | 'configuracoes' | 'nova-os' | 'garantia-retorno' | 'cadastros'
   >('dashboard');
+  const [secaoCadastro, setSecaoCadastro] = useState<SecaoCadastro>('clientes');
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -49,14 +52,25 @@ export default function App() {
   }
 
   return (
-    <Layout activeTab={activeTab} setActiveTab={setActiveTab} session={session}>
+    <Layout
+      activeTab={activeTab}
+      setActiveTab={setActiveTab}
+      session={session}
+      secaoCadastro={secaoCadastro}
+      setSecaoCadastro={setSecaoCadastro}
+    >
       {activeTab === 'dashboard' && <Dashboard onNavigate={setActiveTab} session={session} />}
       {activeTab === 'relatorios' && <Relatorios />}
       {activeTab === 'historico' && <HistoricoServicos />}
       {activeTab === 'configuracoes' && <Configuracoes />}
       {activeTab === 'nova-os' && <NovaOS onNavigate={setActiveTab} />}
       {activeTab === 'garantia-retorno' && <GarantiaRetorno />}
-      {activeTab === 'cadastros' && <Cadastro />}
+      {activeTab === 'cadastros' &&
+        (['clientes', 'servicos', 'fornecedores'].includes(secaoCadastro) ? (
+          <Cadastro secao={secaoCadastro} />
+        ) : (
+          <CadastroPendente secao={secaoCadastro} />
+        ))}
     </Layout>
   );
 }

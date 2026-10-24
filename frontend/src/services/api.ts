@@ -1351,6 +1351,11 @@ export async function criarOrdemServico(payload: {
     __pagamentos: payload.pagamentos || (payload.checklistEntrada as any)?.__pagamentos || null,
     __possuiGarantia: possuiGarantiaFinal,
     __prazoGarantiaDias: prazoGarantiaFinal,
+    // Metadados do desconto ficam no JSON checklist_entrada (a tabela não tem colunas próprias para eles)
+    __subtotalServicos: Number(payload.orcamentoCalculado?.subtotalServicos ?? payload.orcamentoCalculado?.valorTotalOrcamento ?? 0),
+    __tipoDesconto: payload.orcamentoCalculado?.tipoDesconto || 'VALOR',
+    __descontoValor: Number(payload.orcamentoCalculado?.descontoGeralAplicado || 0),
+    __descontoInput: Number(payload.orcamentoCalculado?.descontoInput ?? payload.orcamentoCalculado?.descontoGeralAplicado ?? 0),
   };
 
   const valorLiqFinal = payload.valorLiquido !== undefined && payload.valorLiquido !== null
@@ -1452,11 +1457,13 @@ export async function editarOrdemServico(id_os: string, payload: any): Promise<v
   }
 
   const checklistExistente = osAtual?.checklist_entrada || {};
+  const orc = payload.orcamentoCalculado;
   if (
     payload.checklistEntrada !== undefined ||
     payload.pagamentos !== undefined ||
     payload.prazoGarantiaDias !== undefined ||
-    possuiGarantiaInput !== undefined
+    possuiGarantiaInput !== undefined ||
+    orc !== undefined
   ) {
     const checklistBase = payload.checklistEntrada !== undefined ? payload.checklistEntrada : checklistExistente;
     const possuiGarantiaPreservado =
@@ -1480,6 +1487,21 @@ export async function editarOrdemServico(id_os: string, payload: any): Promise<v
           : ((checklistBase as any)?.__pagamentos ?? checklistExistente.__pagamentos),
       __possuiGarantia: possuiGarantiaPreservado,
       __prazoGarantiaDias: prazoPreservado,
+      // Desconto: atualiza com o orçamento enviado; campos ausentes preservam o que já estava salvo
+      __subtotalServicos:
+        orc?.subtotalServicos !== undefined || orc?.valorTotalOrcamento !== undefined
+          ? Number(orc.subtotalServicos ?? orc.valorTotalOrcamento ?? 0)
+          : ((checklistBase as any)?.__subtotalServicos ?? checklistExistente.__subtotalServicos),
+      __tipoDesconto:
+        orc?.tipoDesconto || (checklistBase as any)?.__tipoDesconto || checklistExistente.__tipoDesconto || 'VALOR',
+      __descontoValor:
+        orc?.descontoGeralAplicado !== undefined
+          ? Number(orc.descontoGeralAplicado || 0)
+          : ((checklistBase as any)?.__descontoValor ?? checklistExistente.__descontoValor),
+      __descontoInput:
+        orc?.descontoInput !== undefined || orc?.descontoGeralAplicado !== undefined
+          ? Number(orc.descontoInput ?? orc.descontoGeralAplicado ?? 0)
+          : ((checklistBase as any)?.__descontoInput ?? checklistExistente.__descontoInput),
     };
   }
 
@@ -1601,6 +1623,8 @@ export async function buscarOrdensServico(): Promise<any[]> {
         numero_os: item.numero_os,
         status_os: item.status_os || 'AGUARDANDO_AVALIACAO',
         defeitoRelatado: item.defeito_relatado || '',
+        // Serviço do catálogo escolhido na abertura (salvo em checklist_entrada)
+        servicoRealizado: item.servico_realizado || item.checklist_entrada?.__servicoNome || '',
         diagnostico: item.diagnostico_tecnico || '',
         observacoes: item.observacoes_internas || '',
         formaPagamento: item.forma_pagamento || 'PIX',
@@ -1619,9 +1643,13 @@ export async function buscarOrdensServico(): Promise<any[]> {
           imei1: item.aparelhos_cliente?.imei_1 || item.aparelho_imei || '',
         },
         orcamentoCalculado: {
-          subtotalServicos: Number(item.subtotal_servicos || valorBruto),
-          tipoDesconto: item.tipo_desconto || 'VALOR',
-          descontoGeralAplicado: Number(item.desconto_valor || 0),
+          // Desconto: prioriza colunas diretas (se existirem) e depois os metadados salvos em checklist_entrada
+          subtotalServicos: Number(item.subtotal_servicos ?? item.checklist_entrada?.__subtotalServicos ?? valorBruto),
+          tipoDesconto: item.tipo_desconto || item.checklist_entrada?.__tipoDesconto || 'VALOR',
+          descontoGeralAplicado: Number(item.desconto_valor ?? item.checklist_entrada?.__descontoValor ?? 0),
+          descontoInput: Number(
+            item.checklist_entrada?.__descontoInput ?? item.desconto_valor ?? item.checklist_entrada?.__descontoValor ?? 0
+          ),
           valorTotalOrcamento: valorBruto,
           lucroTotalEstimadoInterno: lucroLiquidoReal,
           custoPeca: pecaBase,

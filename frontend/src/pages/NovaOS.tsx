@@ -118,7 +118,8 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
     setServicoPadraoId(id);
     const serv = listaServicos.find((s) => s.id_servico === id || s.id === id);
     if (serv) {
-      setDefeitoRelatado(serv.nome);
+      // Não sobrescreve o relato do cliente; só preenche se ainda estiver vazio
+      setDefeitoRelatado((atual) => (atual.trim() ? atual : serv.nome));
       if (serv.preco_sugerido || serv.preco) {
         setValorServico(Number(serv.preco_sugerido || serv.preco));
       }
@@ -280,6 +281,14 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
     };
   };
 
+  // Serviço do catálogo escolhido (salvo no JSON checklist_entrada, sem coluna nova no banco)
+  const servicoSelecionado = listaServicos.find(
+    (s) => servicoPadraoId && (s.id_servico === servicoPadraoId || s.id === servicoPadraoId),
+  );
+  const dadosServicoCatalogo = servicoSelecionado
+    ? { __servicoId: servicoPadraoId, __servicoNome: servicoSelecionado.nome }
+    : {};
+
   // Submissão do Formulário
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -324,7 +333,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
         },
         defeitoRelatado: defeitoRelatado.trim(),
         diagnostico: diagnostico.trim(),
-        servicoRealizado: defeitoRelatado.trim(),
+        servicoRealizado: servicoSelecionado?.nome || defeitoRelatado.trim(),
         observacoes: (diagnostico || observacoes).trim(),
         dataAbertura: dataAbertura,
         dataPrevistaEntrega: dataPrevista || undefined,
@@ -335,6 +344,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
         prazoGarantiaDias: possuiGarantia ? (Number(prazoGarantiaDias) || obterPrazoGarantiaConfiguradoLoja()) : 0,
         checklistEntrada: {
           ...checklist,
+          ...dadosServicoCatalogo,
           __pagamentos: pagamentosArray,
           __possuiGarantia: possuiGarantia,
           __prazoGarantiaDias: possuiGarantia ? (Number(prazoGarantiaDias) || obterPrazoGarantiaConfiguradoLoja()) : 0,
@@ -344,6 +354,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
           subtotalServicos: numPrecoServico,
           descontoGeralAplicado: descontoCalculado,
           tipoDesconto: tipoDesconto,
+          descontoInput: numDescontoInput,
           valorTotalOrcamento: valorCobrado,
           custoPeca: numCustoPeca,
           freteReal: numFreteReal,
@@ -402,7 +413,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
         },
         defeitoRelatado: defeitoRelatado.trim() || 'Defeito a diagnosticar',
         diagnostico: diagnostico.trim(),
-        servicoRealizado: defeitoRelatado.trim() || 'Aguardando diagnóstico',
+        servicoRealizado: servicoSelecionado?.nome || defeitoRelatado.trim() || 'Aguardando diagnóstico',
         observacoes: (diagnostico || observacoes).trim(),
         dataAbertura: dataAbertura,
         dataPrevistaEntrega: dataPrevista || undefined,
@@ -413,6 +424,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
         prazoGarantiaDias: possuiGarantia ? (Number(prazoGarantiaDias) || obterPrazoGarantiaConfiguradoLoja()) : 0,
         checklistEntrada: {
           ...checklist,
+          ...dadosServicoCatalogo,
           __pagamentos: pagamentosArray,
           __possuiGarantia: possuiGarantia,
           __prazoGarantiaDias: possuiGarantia ? (Number(prazoGarantiaDias) || obterPrazoGarantiaConfiguradoLoja()) : 0,
@@ -422,6 +434,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
           subtotalServicos: numPrecoServico,
           descontoGeralAplicado: descontoCalculado,
           tipoDesconto: tipoDesconto,
+          descontoInput: numDescontoInput,
           valorTotalOrcamento: valorCobrado,
           custoPeca: numCustoPeca,
           freteReal: numFreteReal,
@@ -741,7 +754,32 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5 pt-2">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-3.5 pt-2">
+            <div>
+              <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
+                SERVIÇO A REALIZAR (CATÁLOGO)
+              </label>
+              <select
+                value={servicoPadraoId}
+                onChange={handleSelecionarServico}
+                className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs text-white outline-none focus:border-blue-500 transition cursor-pointer"
+              >
+                <option value="">
+                  {listaServicos.length > 0 ? 'Selecione um serviço cadastrado...' : 'Nenhum serviço cadastrado'}
+                </option>
+                {listaServicos.map((s) => (
+                  <option key={s.id_servico || s.id} value={s.id_servico || s.id}>
+                    {s.nome} — R$ {Number(s.preco_sugerido || s.preco || 0).toFixed(2)}
+                  </option>
+                ))}
+              </select>
+              {servicoSelecionado && (
+                <p className="text-[11px] text-blue-400 mt-1.5">
+                  Valor e garantia do serviço aplicados em "Custos, Desconto e Pagamento".
+                </p>
+              )}
+            </div>
+
             <div>
               <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
                 DEFEITO RELATADO PELO CLIENTE *
@@ -785,26 +823,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
             <span className="text-[11px] text-zinc-400">Cálculo transparente de despesas, taxas e lucro líquido</span>
           </div>
 
-          {/* Linha 1: Serviço Padrão Rápido */}
-          <div>
-            <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
-              CARREGAR SERVIÇO PADRÃO DO CATÁLOGO (OPCIONAL)
-            </label>
-            <select
-              value={servicoPadraoId}
-              onChange={handleSelecionarServico}
-              className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs text-white outline-none focus:border-blue-500 transition cursor-pointer"
-            >
-              <option value="">Selecione para preencher valor automaticamente...</option>
-              {listaServicos.map((s) => (
-                <option key={s.id_servico || s.id} value={s.id_servico || s.id}>
-                  {s.nome} — R$ {Number(s.preco_sugerido || s.preco || 0).toFixed(2)}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Linha 2: Custos de Peça, Frete, Fornecedor, Desconto e Preço Base */}
+          {/* Linha: Custos de Peça, Frete, Fornecedor, Desconto e Preço Base */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
             <div>
               <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">

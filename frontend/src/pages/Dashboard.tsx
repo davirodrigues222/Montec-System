@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { buscarOrdensServico, obterMetaFinanceiraConta } from '../services/api';
+import { buscarOrdensServico, calcularResumoMetaFinanceira, obterMetaFinanceiraConta } from '../services/api';
 import type { OrdemServico, StatusOS } from '../types';
 
 interface Props {
@@ -178,8 +178,13 @@ export const Dashboard: React.FC<Props> = ({ onNavigate, session }) => {
 
   // Meta de Faturamento configurada em Relatórios (padrão R$ 8.000)
   // Percentual real (pode passar de 100%); apenas a largura da barra é limitada a 100%
-  const percentualMeta = metaFaturamento > 0 ? Math.round((faturamentoMes / metaFaturamento) * 100) : 0;
-  const larguraBarraMeta = Math.min(100, Math.max(0, percentualMeta));
+  // Meta mensal: considera apenas as OS abertas no mês atual (reinicia quando o mês vira)
+  const resumoMeta = useMemo(
+    () => calcularResumoMetaFinanceira(listaOrdens, { metaOverride: metaFaturamento }),
+    [listaOrdens, metaFaturamento]
+  );
+  const percentualMeta = Math.round(resumoMeta.percentualAtingido);
+  const larguraBarraMeta = resumoMeta.percentualBarraVisual;
 
   // Formatação de data da tabela (ex: "17 out, 09:42")
   const formatarDataEntrada = (dataIso?: string) => {
@@ -506,7 +511,7 @@ export const Dashboard: React.FC<Props> = ({ onNavigate, session }) => {
             <p className="text-xs font-medium text-zinc-400">Meta de faturamento</p>
             <div className="flex items-baseline justify-between mt-2">
               <h4 className="text-2xl font-extrabold text-white">
-                R$ {faturamentoMes.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                R$ {resumoMeta.valorAlcancado.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
               </h4>
               <span className="text-xs text-zinc-400">
                 de R$ {metaFaturamento.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}

@@ -5,17 +5,59 @@ import {
   sincronizarSessaoConfiguracoesLoja,
   aplicarTemaVisualNoDOM,
 } from '../services/api';
+import type { SecaoCadastro } from '../types';
 
 interface Props {
   children: React.ReactNode;
   activeTab: 'dashboard' | 'relatorios' | 'historico' | 'configuracoes' | 'nova-os' | 'garantia-retorno' | 'cadastros';
   setActiveTab: (tab: 'dashboard' | 'relatorios' | 'historico' | 'configuracoes' | 'nova-os' | 'garantia-retorno' | 'cadastros') => void;
   session?: any;
+  secaoCadastro?: SecaoCadastro;
+  setSecaoCadastro?: (secao: SecaoCadastro) => void;
 }
 
-export const Layout: React.FC<Props> = ({ children, activeTab, setActiveTab, session }) => {
+// Árvore do menu Cadastros: dois grupos para não virar uma lista longa e sem hierarquia
+const GRUPOS_CADASTRO: { titulo: string; itens: { id: SecaoCadastro; label: string; novo?: boolean }[] }[] = [
+  {
+    titulo: 'Atendimento',
+    itens: [
+      { id: 'clientes', label: 'Clientes' },
+      { id: 'servicos', label: 'Serviços' },
+      { id: 'fornecedores', label: 'Fornecedores' },
+    ],
+  },
+  {
+    titulo: 'Empresa',
+    itens: [
+      { id: 'lojas', label: 'Lojas', novo: true },
+      { id: 'funcionarios', label: 'Funcionários', novo: true },
+      { id: 'formas-pagamento', label: 'Formas de pagamento', novo: true },
+    ],
+  },
+];
+
+export const Layout: React.FC<Props> = ({
+  children,
+  activeTab,
+  setActiveTab,
+  session,
+  secaoCadastro,
+  setSecaoCadastro,
+}) => {
   // Controle de abertura do menu lateral no Mobile/Tablet
   const [menuAberto, setMenuAberto] = useState(false);
+
+  // Submenu Cadastros: abre sozinho quando a tela ativa é um cadastro
+  const [cadastrosExpandido, setCadastrosExpandido] = useState(activeTab === 'cadastros');
+  useEffect(() => {
+    if (activeTab === 'cadastros') setCadastrosExpandido(true);
+  }, [activeTab]);
+
+  const abrirSecaoCadastro = (secao: SecaoCadastro) => {
+    setSecaoCadastro?.(secao);
+    setActiveTab('cadastros');
+    setMenuAberto(false);
+  };
 
   // Dados da Assistência Técnica do Cliente (ex: Sampaio Cell)
   const [nomeLoja, setNomeLoja] = useState<string>('Sampaio Cell');
@@ -246,11 +288,14 @@ export const Layout: React.FC<Props> = ({ children, activeTab, setActiveTab, ses
                 ADMINISTRAÇÃO
               </span>
               <div className="space-y-1.5">
+                {/* Cadastros: item pai expansível (não navega, só abre/fecha a árvore) */}
                 <button
-                  onClick={() => mudarAba('cadastros')}
+                  onClick={() => setCadastrosExpandido((v) => !v)}
+                  aria-expanded={cadastrosExpandido}
+                  aria-controls="submenu-cadastros"
                   className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-bold transition-all ${
                     activeTab === 'cadastros'
-                      ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
+                      ? 'text-white bg-zinc-800/50'
                       : 'text-zinc-300 hover:text-white hover:bg-zinc-800/50'
                   }`}
                 >
@@ -260,10 +305,50 @@ export const Layout: React.FC<Props> = ({ children, activeTab, setActiveTab, ses
                     </svg>
                     <span>Cadastros</span>
                   </div>
-                  {activeTab === 'cadastros' && (
-                    <span className="w-2 h-2 rounded-full bg-white" />
-                  )}
+                  <svg
+                    className={`w-4 h-4 text-zinc-400 transition-transform duration-200 ${cadastrosExpandido ? 'rotate-90' : ''}`}
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                  </svg>
                 </button>
+
+                {cadastrosExpandido && (
+                  <div id="submenu-cadastros" className="ml-6 pl-3 border-l border-zinc-800/80 space-y-3 py-1">
+                    {GRUPOS_CADASTRO.map((grupo) => (
+                      <div key={grupo.titulo} className="space-y-0.5">
+                        <span className="block px-3 pt-1 pb-1 text-[10px] font-bold text-zinc-500 tracking-wider uppercase">
+                          {grupo.titulo}
+                        </span>
+                        {grupo.itens.map((item) => {
+                          const ativo = activeTab === 'cadastros' && secaoCadastro === item.id;
+                          return (
+                            <button
+                              key={item.id}
+                              onClick={() => abrirSecaoCadastro(item.id)}
+                              aria-current={ativo ? 'page' : undefined}
+                              className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-[13px] font-semibold transition-all ${
+                                ativo
+                                  ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
+                                  : 'text-zinc-400 hover:text-white hover:bg-zinc-800/50'
+                              }`}
+                            >
+                              <span>{item.label}</span>
+                              {item.novo && !ativo && (
+                                <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                                  Novo
+                                </span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ))}
+                  </div>
+                )}
 
                 <button
                   onClick={() => mudarAba('configuracoes')}
@@ -337,6 +422,14 @@ export const Layout: React.FC<Props> = ({ children, activeTab, setActiveTab, ses
               <span className="font-bold text-white text-xs sm:text-sm truncate">
                 {titulosAbas[activeTab] || 'Painel'}
               </span>
+              {activeTab === 'cadastros' && secaoCadastro && (
+                <>
+                  <span className="text-zinc-600">/</span>
+                  <span className="font-bold text-blue-400 text-xs sm:text-sm truncate">
+                    {GRUPOS_CADASTRO.flatMap((g) => g.itens).find((i) => i.id === secaoCadastro)?.label}
+                  </span>
+                </>
+              )}
             </div>
           </div>
 

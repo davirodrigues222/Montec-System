@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   buscarOrdensServico,
+  calcularResumoMetaFinanceira,
   obterMetaFinanceiraConta,
   parsearValorMonetarioBR,
   salvarMetaFinanceiraConta,
@@ -52,18 +53,14 @@ export const Relatorios: React.FC = () => {
     return () => window.removeEventListener('storage_configs_updated', atualizarMeta);
   }, []);
 
-  // Valor alcançado: mesma regra do card "Meta de faturamento" do Dashboard (faturamentoMes)
-  const valorAlcancadoMeta = useMemo(
-    () =>
-      ordens.reduce(
-        (acc, os: any) =>
-          acc + Number(os?.orcamentoCalculado?.valorTotalOrcamento || (os as any)?.valor_total || 0),
-        0
-      ),
-    [ordens]
+  // Meta mensal: considera apenas as OS abertas no mês atual (reinicia quando o mês vira)
+  const resumoMeta = useMemo(
+    () => calcularResumoMetaFinanceira(ordens, { metaOverride: metaFinanceira }),
+    [ordens, metaFinanceira]
   );
-  const percentualMetaReal = metaFinanceira > 0 ? (valorAlcancadoMeta / metaFinanceira) * 100 : 0;
-  const larguraBarraMeta = Math.min(100, Math.max(0, percentualMetaReal));
+  const valorAlcancadoMeta = resumoMeta.valorAlcancado;
+  const percentualMetaReal = resumoMeta.percentualAtingido;
+  const larguraBarraMeta = resumoMeta.percentualBarraVisual;
   const valorRestanteMeta = Math.max(0, metaFinanceira - valorAlcancadoMeta);
 
   const iniciarEdicaoMeta = () => {
@@ -423,9 +420,9 @@ export const Relatorios: React.FC = () => {
       <div className="bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-4 sm:p-6 shadow-sm min-w-0">
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
           <div className="min-w-0">
-            <h3 className="text-sm font-bold text-white">Meta Financeira</h3>
+            <h3 className="text-sm font-bold text-white">Meta Financeira — {resumoMeta.rotuloCompetencia}</h3>
             <p className="text-xs text-zinc-400 mt-0.5">
-              Meta de faturamento exibida no card "Meta de faturamento" do Painel
+              Meta mensal exibida no Painel. O progresso reinicia a cada novo mês.
             </p>
           </div>
 

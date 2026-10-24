@@ -108,22 +108,59 @@ export const HistoricoServicos: React.FC = () => {
     {},
   );
 
-  const carregarHistorico = async () => {
+  const carregarHistorico = async (): Promise<OrdemServico[]> => {
     setLoading(true);
     try {
       const data = await buscarOrdensServico();
-      setOrdens(Array.isArray(data) ? data : []);
+      const lista = Array.isArray(data) ? data : [];
+      setOrdens(lista);
 
       const resFornecedores = await buscarFornecedores();
       if (Array.isArray(resFornecedores)) {
         setFornecedoresCadastrados(resFornecedores);
       }
+      return lista;
     } catch (err) {
       console.error("Erro ao buscar histórico ou fornecedores:", err);
       setOrdens([]);
+      return [];
     } finally {
       setLoading(false);
     }
+  };
+
+  // Taxa efetiva da maquineta já registrada nos pagamentos da OS (0 para Dinheiro/PIX)
+  const obterTaxaEfetivaPagamentos = (os: any): number => {
+    const pgs: any[] = os?.pagamentos || os?.orcamentoCalculado?.pagamentos || [];
+    const totalPago = pgs.reduce((acc, pg) => acc + Number(pg?.valor || 0), 0);
+    const totalTaxa = pgs.reduce((acc, pg) => acc + Number(pg?.valorTaxa || 0), 0);
+    return totalPago > 0 ? Math.min(1, Math.max(0, totalTaxa / totalPago)) : 0;
+  };
+
+  // Cálculo do desconto a partir do valor bruto, do tipo (VALOR/PERCENTUAL) e do desconto digitado
+  const calcularDescontoEdicao = (
+    valorBruto: number,
+    tipo: 'VALOR' | 'PERCENTUAL',
+    desconto: number,
+  ) => {
+    const valorDesconto = Math.max(0, tipo === 'PERCENTUAL' ? (valorBruto * desconto) / 100 : desconto);
+    const valorComDesconto = Math.max(0, valorBruto - valorDesconto);
+    return { valorDesconto, valorComDesconto };
+  };
+
+  // Atualiza o Valor Líquido Final na tela sempre que bruto, tipo ou desconto mudarem
+  const recalcularValorLiquido = (
+    bruto: number | "",
+    tipo: 'VALOR' | 'PERCENTUAL',
+    desconto: number | "",
+  ) => {
+    const { valorComDesconto } = calcularDescontoEdicao(
+      bruto === "" ? 0 : Number(bruto),
+      tipo,
+      desconto === "" ? 0 : Number(desconto),
+    );
+    const taxa = obterTaxaEfetivaPagamentos(osParaEditar);
+    setEditValorLiquido((valorComDesconto * (1 - taxa)).toFixed(2));
   };
 
   useEffect(() => {
@@ -164,21 +201,29 @@ export const HistoricoServicos: React.FC = () => {
 
     setEditFornecedor(os.orcamentoCalculado?.fornecedorPeca || "");
 
-    setEditTipoDesconto(os.orcamentoCalculado?.tipoDesconto || 'VALOR');
+    const tipoDesc: 'VALOR' | 'PERCENTUAL' =
+      os.orcamentoCalculado?.tipoDesconto === 'PERCENTUAL' ? 'PERCENTUAL' : 'VALOR';
+    setEditTipoDesconto(tipoDesc);
 
-    const desc = os.orcamentoCalculado?.descontoGeralAplicado;
-    setEditDesconto(desc !== undefined && desc !== null ? desc : "");
+    // PERCENTUAL: mostra o % digitado; VALOR: mostra o desconto em R$
+    const desc =
+      tipoDesc === 'PERCENTUAL'
+        ? os.orcamentoCalculado?.descontoInput
+        : os.orcamentoCalculado?.descontoGeralAplicado;
+    setEditDesconto(desc !== undefined && desc !== null && Number(desc) !== 0 ? Number(desc) : "");
 
-    const total = os.orcamentoCalculado?.valorTotalOrcamento;
-    setEditValorTotal(total !== undefined && total !== null ? total : "");
+    // Valor bruto (antes do desconto)
+    const total = os.orcamentoCalculado?.subtotalServicos ?? os.orcamentoCalculado?.valorTotalOrcamento;
+    setEditValorTotal(total !== undefined && total !== null ? Number(total) : "");
 
     setEditFormaPagamento(os.formaPagamento || "PIX");
     setEditParcelas(os.parcelas || 1);
     
+    const valorFinalAtual = os.orcamentoCalculado?.valorTotalOrcamento;
     setEditValorLiquido(
       os.valorLiquido !== undefined && os.valorLiquido !== null
         ? os.valorLiquido
-        : (total !== undefined && total !== null ? total : "")
+        : (valorFinalAtual !== undefined && valorFinalAtual !== null ? valorFinalAtual : "")
     );
 
     setEditDataAbertura(
@@ -207,17 +252,18 @@ export const HistoricoServicos: React.FC = () => {
       const numFrete = editFrete === "" ? 0 : Number(editFrete);
       const numDesconto = editDesconto === "" ? 0 : Number(editDesconto);
 
-      let valorDescontoCalculado = numDesconto;
-      if (editTipoDesconto === 'PERCENTUAL') {
-        valorDescontoCalculado = (numValorTotal * numDesconto) / 100;
-      }
+      const { valorDesconto: valorDescontoCalculado, valorComDesconto } = calcularDescontoEdicao(
+        numValorTotal,
+        editTipoDesconto,
+        numDesconto,
+      );
 
-      const valorCalculadoAutomatico = Math.max(0, numValorTotal - valorDescontoCalculado);
-      
       // Tratamento robusto do valor líquido (aceitando ponto e vírgula)
-      const numValorLiquidoFinal = editValorLiquido !== "" && editValorLiquido !== undefined
-        ? Number(String(editValorLiquido).replace(",", "."))
-        : valorCalculadoAutomatico;
+      const liquidoDigitado = Number(String(editValorLiquido).replace(",", "."));
+      const numValorLiquidoFinal =
+        editValorLiquido !== "" && editValorLiquido !== undefined && Number.isFinite(liquidoDigitado)
+          ? Math.max(0, liquidoDigitado)
+          : valorComDesconto * (1 - obterTaxaEfetivaPagamentos(osParaEditar));
 
       if (editStatus !== osParaEditar.status_os) {
         logs.push(`Status alterado para ${editStatus.replace("_", " ")}`);
@@ -258,10 +304,11 @@ export const HistoricoServicos: React.FC = () => {
         data_conclusao: editDataConclusao || undefined,
         checklistEntrada: editChecklist,
         orcamentoCalculado: {
-          subtotalServicos: numValorTotal + valorDescontoCalculado,
+          subtotalServicos: numValorTotal,
           tipoDesconto: editTipoDesconto,
+          descontoInput: numDesconto,
           descontoGeralAplicado: valorDescontoCalculado,
-          valorTotalOrcamento: numValorTotal,
+          valorTotalOrcamento: valorComDesconto,
           lucroTotalEstimadoInterno: lucroCalculado,
           custoPeca: numCustoPeca,
           freteReal: numFrete,
@@ -271,8 +318,16 @@ export const HistoricoServicos: React.FC = () => {
         modificacoesLog: logs,
       });
 
+      const idEditado = osParaEditar.id_os;
       setOsParaEditar(null);
-      await carregarHistorico();
+      const listaAtualizada = await carregarHistorico();
+
+      // Reflete os novos valores no modal de detalhes, se ele estiver aberto nesta OS
+      setOsSelecionada((atual) =>
+        atual && atual.id_os === idEditado
+          ? listaAtualizada.find((o) => o.id_os === idEditado) ?? atual
+          : atual,
+      );
     } catch (err: any) {
       alert(err.message || "Erro ao atualizar a Ordem de Serviço.");
     } finally {
@@ -722,7 +777,10 @@ export const HistoricoServicos: React.FC = () => {
               {abaModal === "checklist" && (
                 <div className="grid grid-cols-2 gap-2 text-xs">
                   {osSelecionada.checklistEntrada ? (
-                    Object.entries(osSelecionada.checklistEntrada).map(
+                    Object.entries(osSelecionada.checklistEntrada)
+                      // Chaves "__" são metadados internos (pagamentos, garantia, desconto), não itens do checklist
+                      .filter(([item]) => !item.startsWith("__"))
+                      .map(
                       ([item, status]) => (
                         <div
                           key={item}
@@ -1083,11 +1141,11 @@ export const HistoricoServicos: React.FC = () => {
                         step="0.01"
                         placeholder="0.00"
                         value={editValorTotal}
-                        onChange={(e) =>
-                          setEditValorTotal(
-                            e.target.value === "" ? "" : Number(e.target.value),
-                          )
-                        }
+                        onChange={(e) => {
+                          const novoBruto = e.target.value === "" ? "" : Number(e.target.value);
+                          setEditValorTotal(novoBruto);
+                          recalcularValorLiquido(novoBruto, editTipoDesconto, editDesconto);
+                        }}
                         className="w-full bg-zinc-950 border border-emerald-500/50 rounded-lg p-2.5 text-emerald-400 font-bold outline-none"
                       />
                     </div>
@@ -1147,7 +1205,11 @@ export const HistoricoServicos: React.FC = () => {
                       </label>
                       <select
                         value={editTipoDesconto}
-                        onChange={(e) => setEditTipoDesconto(e.target.value as 'VALOR' | 'PERCENTUAL')}
+                        onChange={(e) => {
+                          const novoTipo = e.target.value as 'VALOR' | 'PERCENTUAL';
+                          setEditTipoDesconto(novoTipo);
+                          recalcularValorLiquido(editValorTotal, novoTipo, editDesconto);
+                        }}
                         className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-white outline-none font-bold"
                       >
                         <option value="VALOR">Valor (R$)</option>
@@ -1162,12 +1224,13 @@ export const HistoricoServicos: React.FC = () => {
                         type="number"
                         step="0.01"
                         placeholder="0.00"
+                        min={0}
                         value={editDesconto}
-                        onChange={(e) =>
-                          setEditDesconto(
-                            e.target.value === "" ? "" : Number(e.target.value),
-                          )
-                        }
+                        onChange={(e) => {
+                          const novoDesconto = e.target.value === "" ? "" : Number(e.target.value);
+                          setEditDesconto(novoDesconto);
+                          recalcularValorLiquido(editValorTotal, editTipoDesconto, novoDesconto);
+                        }}
                         className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-white outline-none focus:border-blue-500"
                       />
                     </div>
@@ -1189,6 +1252,57 @@ export const HistoricoServicos: React.FC = () => {
                       </select>
                     </div>
                   </div>
+
+                  {/* Resumo financeiro em tempo real (antes de salvar) */}
+                  {(() => {
+                    const bruto = editValorTotal === "" ? 0 : Number(editValorTotal);
+                    const { valorDesconto, valorComDesconto } = calcularDescontoEdicao(
+                      bruto,
+                      editTipoDesconto,
+                      editDesconto === "" ? 0 : Number(editDesconto),
+                    );
+                    const liquidoDigitado = Number(String(editValorLiquido).replace(",", "."));
+                    const liquido = editValorLiquido !== "" && Number.isFinite(liquidoDigitado)
+                      ? Math.max(0, liquidoDigitado)
+                      : valorComDesconto;
+                    const custoGarantia = Number(
+                      (osParaEditar as any)?.orcamentoCalculado?.custoPecaGarantia ||
+                        (osParaEditar as any)?.garantia?.custoPecaGarantia ||
+                        0,
+                    );
+                    const lucro =
+                      liquido -
+                      ((editCustoPeca === "" ? 0 : Number(editCustoPeca)) +
+                        (editFrete === "" ? 0 : Number(editFrete)) +
+                        custoGarantia);
+                    const fmt = (v: number) =>
+                      v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+                    return (
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-3 border-t border-zinc-800/80">
+                        <div className="p-3 bg-zinc-950 border border-zinc-800 rounded-xl">
+                          <span className="text-zinc-400 uppercase text-[10px] font-bold block">Valor Bruto</span>
+                          <p className="text-sm font-black text-white mt-1">R$ {fmt(bruto)}</p>
+                        </div>
+                        <div className="p-3 bg-zinc-950 border border-zinc-800 rounded-xl">
+                          <span className="text-zinc-400 uppercase text-[10px] font-bold block">
+                            Desconto Aplicado{editTipoDesconto === 'PERCENTUAL' && editDesconto !== "" ? ` (${editDesconto}%)` : ""}
+                          </span>
+                          <p className="text-sm font-black text-red-400 mt-1">- R$ {fmt(valorDesconto)}</p>
+                        </div>
+                        <div className="p-3 bg-zinc-950 border border-emerald-500/30 rounded-xl">
+                          <span className="text-emerald-400 uppercase text-[10px] font-bold block">Valor Final Cobrado</span>
+                          <p className="text-sm font-black text-emerald-400 mt-1">R$ {fmt(valorComDesconto)}</p>
+                        </div>
+                        <div className="p-3 bg-zinc-950 border border-purple-500/30 rounded-xl">
+                          <span className="text-purple-400 uppercase text-[10px] font-bold block">Lucro Líquido Estimado</span>
+                          <p className={`text-sm font-black mt-1 ${lucro >= 0 ? "text-purple-400" : "text-red-400"}`}>
+                            R$ {fmt(lucro)}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
 
