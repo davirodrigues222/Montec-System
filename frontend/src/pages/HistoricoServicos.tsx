@@ -5,8 +5,21 @@ import {
   editarOrdemServico,
   buscarFornecedores,
   obterConfiguracoesLojaSincrono,
+  preencherModeloMensagem,
+  variaveisMensagemOS,
+  linkWhatsapp,
+  type MensagensWhatsapp,
 } from "../services/api";
 import { StatusBadge } from "../components/StatusBadge";
+import { AutorizacaoAdministrativa } from "../components/AutorizacaoAdministrativa";
+import {
+  CabecalhoLojaImpressao,
+  DocumentoParaImpressao,
+  RodapeLojaImpressao,
+  TermosImpressos,
+  ViasImpressao,
+  classeFormato,
+} from "../components/impressao";
 import { useOperador } from "../contexts/OperadorContext";
 import type { OrdemServico, StatusOS } from "../types";
 import { ITENS_CHECKLIST, OPCOES_CHECKLIST, itensVisiveisChecklist, rotuloItemChecklist } from "../utils/checklist";
@@ -17,16 +30,24 @@ const classeAba = (ativa: boolean) =>
     ativa ? "border-blue-500 text-blue-400 bg-zinc-900/50" : "border-transparent text-zinc-400"
   }`;
 
-// Dados da conta ativa impressos no cabeçalho da OS (a loja principal grava nome, CNPJ, telefone e endereço)
-const lerDadosLoja = () => {
+// Modelos editáveis em Configurações › Mensagens de WhatsApp
+const MODELOS_WHATSAPP: { chave: keyof MensagensWhatsapp; rotulo: string }[] = [
+  { chave: "entrada", rotulo: "Entrada do aparelho" },
+  { chave: "orcamento", rotulo: "Orçamento pronto" },
+  { chave: "pronto", rotulo: "Pronto para retirada" },
+  { chave: "entrega", rotulo: "Entrega e garantia" },
+];
+
+/** Abre o WhatsApp do cliente com o modelo escolhido já preenchido com os dados da OS. */
+const enviarWhatsapp = (os: OrdemServico, chave: keyof MensagensWhatsapp) => {
   const cfg = obterConfiguracoesLojaSincrono();
-  return {
-    nomeLoja: cfg.nomeLoja || "Davi.tec",
-    subtitulo: cfg.subtitulo || "Assistência Técnica & Microeletrônica Especializada",
-    telefone: cfg.telefone,
-    cnpjCpf: cfg.cnpj,
-    endereco: cfg.endereco,
-  };
+  const mensagem = preencherModeloMensagem(cfg.mensagensWhatsapp[chave], variaveisMensagemOS(os, cfg));
+  const link = linkWhatsapp(os.cliente?.whatsapp || "", mensagem);
+  if (!link) {
+    alert("O WhatsApp do cliente não está cadastrado ou é inválido. Edite a OS e informe o número com DDD.");
+    return;
+  }
+  window.open(link, "_blank", "noopener");
 };
 
 export const HistoricoServicos: React.FC = () => {
@@ -37,7 +58,6 @@ export const HistoricoServicos: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [termoBusca, setTermoBusca] = useState("");
 
-  const [dadosLoja] = useState(lerDadosLoja);
 
   const [osSelecionada, setOsSelecionada] = useState<OrdemServico | null>(null);
   const [osParaEditar, setOsParaEditar] = useState<OrdemServico | null>(null);
@@ -157,6 +177,7 @@ export const HistoricoServicos: React.FC = () => {
     setOsParaImprimir(os);
     setTimeout(() => {
       window.print();
+      setOsParaImprimir(null);
     }, 300);
   };
 
@@ -467,15 +488,14 @@ export const HistoricoServicos: React.FC = () => {
                           👁️ Detalhes
                         </button>
 
-                        {pode("excluir_os") && (
-                          <button
-                            onClick={() => setOsParaExcluir(os)}
-                            className="px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 rounded-lg text-xs font-semibold transition"
-                            title="Excluir Ordem de Serviço"
-                          >
-                            🗑️ Excluir
-                          </button>
-                        )}
+                        {/* Sempre visível: sem a permissão, a exclusão pede autorização de um administrador */}
+                        <button
+                          onClick={() => setOsParaExcluir(os)}
+                          className="px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 rounded-lg text-xs font-semibold transition"
+                          title={pode("excluir_os") ? "Excluir Ordem de Serviço" : "Excluir (requer autorização de um administrador)"}
+                        >
+                          {pode("excluir_os") ? "🗑️" : "🔒"} Excluir
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -559,6 +579,27 @@ export const HistoricoServicos: React.FC = () => {
             <div className="p-6 overflow-y-auto space-y-4 flex-1">
               {abaModal === "detalhes" && (
                 <div className="space-y-4 text-xs">
+                  {/* Mensagens automáticas: abre o WhatsApp do cliente com o texto pronto */}
+                  <div className="p-3 bg-emerald-500/5 border border-emerald-500/20 rounded-xl space-y-2">
+                    <span className="text-emerald-400 block uppercase text-[10px] font-bold">
+                      Enviar mensagem pelo WhatsApp
+                    </span>
+                    <div className="flex flex-wrap gap-2">
+                      {MODELOS_WHATSAPP.map((m) => (
+                        <button
+                          key={m.chave}
+                          type="button"
+                          onClick={() => enviarWhatsapp(osSelecionada, m.chave)}
+                          disabled={!osSelecionada.cliente?.whatsapp}
+                          title={osSelecionada.cliente?.whatsapp ? undefined : "Cliente sem WhatsApp cadastrado"}
+                          className="px-3 py-1.5 bg-emerald-600/15 hover:bg-emerald-600/25 disabled:opacity-40 disabled:cursor-not-allowed text-emerald-300 border border-emerald-500/30 rounded-lg text-[11px] font-semibold transition"
+                        >
+                          {m.rotulo}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
                   {/* Badge de Alerta de Garantia / Retorno nos Detalhes da OS */}
                   {osSelecionada.garantia && (
                     <div className="p-3.5 bg-rose-500/10 border border-rose-500/30 rounded-xl text-rose-400 space-y-1">
@@ -1269,7 +1310,11 @@ export const HistoricoServicos: React.FC = () => {
 
               {abaEdicao === "checklist" && (
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                  {ITENS_CHECKLIST.map(({ chave: item, rotulo }) => (
+                  {((ativos) =>
+                    // Itens ativos nas Configurações e os que já estavam gravados nesta OS
+                    ITENS_CHECKLIST.filter((i) => ativos.includes(i.chave) || i.chave in editChecklist))(
+                    obterConfiguracoesLojaSincrono().checklistItensAtivos,
+                  ).map(({ chave: item, rotulo }) => (
                     <div
                       key={item}
                       className="p-3 bg-zinc-950 border border-zinc-800 rounded-xl space-y-1.5"
@@ -1339,183 +1384,122 @@ export const HistoricoServicos: React.FC = () => {
               . Esta ação não poderá ser desfeita.
             </p>
 
-            <div className="flex justify-end space-x-3 pt-2">
-              <button
-                onClick={() => setOsParaExcluir(null)}
-                disabled={excluindo}
-                className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-xl text-xs font-semibold transition"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleConfirmarExclusao}
-                disabled={excluindo}
-                className="px-4 py-2 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition"
-              >
-                {excluindo ? "Excluindo..." : "Sim, Excluir"}
-              </button>
-            </div>
+            {pode("excluir_os") ? (
+              <div className="flex justify-end space-x-3 pt-2">
+                <button
+                  onClick={() => setOsParaExcluir(null)}
+                  disabled={excluindo}
+                  className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-xl text-xs font-semibold transition"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleConfirmarExclusao}
+                  disabled={excluindo}
+                  className="px-4 py-2 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition"
+                >
+                  {excluindo ? "Excluindo..." : "Sim, Excluir"}
+                </button>
+              </div>
+            ) : (
+              <AutorizacaoAdministrativa
+                variante="compacta"
+                recurso="excluir ordens de serviço"
+                textoBotao={excluindo ? "Excluindo..." : "Autorizar e excluir"}
+                onAutorizado={handleConfirmarExclusao}
+                onVoltar={() => setOsParaExcluir(null)}
+              />
+            )}
           </div>
         </div>
       )}
 
-      {/* TEMPLATE DE IMPRESSÃO */}
-      {osParaImprimir && (
-        <div className="hidden print:block text-slate-900 font-sans p-6 bg-white leading-relaxed text-left max-w-[210mm] mx-auto text-[11px]">
-          <div className="border-b-2 border-slate-900 pb-4 mb-4 flex justify-between items-start">
-            <div>
-              <h1 className="text-2xl font-black tracking-tight text-slate-900 uppercase">
-                {dadosLoja.nomeLoja}
-              </h1>
-              <p className="text-xs text-slate-600 font-semibold">
-                {dadosLoja.subtitulo}
-              </p>
-              <p className="text-[10px] text-slate-500 mt-1">
-                CNPJ: {dadosLoja.cnpjCpf || "Não configurado"} | Tel:{" "}
-                {dadosLoja.telefone || "Não configurado"} | End:{" "}
-                {dadosLoja.endereco || "Não configurado"}
-              </p>
-            </div>
-            <div className="text-right border-l-2 border-slate-300 pl-4">
-              <div className="bg-slate-100 px-4 py-2 rounded-lg border border-slate-300">
-                <span className="text-[10px] uppercase font-bold text-slate-500 block">
-                  Ordem de Serviço
-                </span>
-                <span className="text-lg font-black font-mono text-blue-900">
-                  #{osParaImprimir.numero_os}
-                </span>
-              </div>
-              <div className="text-[10px] text-slate-600 mt-2 space-y-0.5">
-                <p>
-                  <strong>Abertura:</strong>{" "}
-                  {osParaImprimir.data_abertura
-                    ? new Date(osParaImprimir.data_abertura).toLocaleDateString(
-                        "pt-BR",
-                      )
-                    : "-"}
-                </p>
-              </div>
-            </div>
-          </div>
+      {/* TEMPLATE DE IMPRESSÃO: identidade, termos, contatos e formato do papel vêm das Configurações */}
+      {osParaImprimir && (() => {
+        const cfg = obterConfiguracoesLojaSincrono();
+        const formato = cfg.formatoImpressao;
+        const termica = formato === "TERMICA_80";
+        const os = osParaImprimir;
+        const prazoGarantia = Number(os.prazoGarantiaDias) || cfg.prazoGarantiaDias;
+        return (
+          <DocumentoParaImpressao formato={formato}>
+            <ViasImpressao formato={formato}>
+              {(via) => (
+                <div className={`${classeFormato(formato)} mx-auto space-y-3 text-slate-800`}>
+                  <div className={`flex ${termica ? "flex-col gap-2" : "justify-between items-start"} border-b-2 border-slate-900 pb-3`}>
+                    <CabecalhoLojaImpressao cfg={cfg} formato={formato} />
+                    <div className={termica ? "text-center" : "text-right shrink-0"}>
+                      {via && <p className="text-[9px] font-bold uppercase text-slate-500">{via}</p>}
+                      <p className="text-[9px] uppercase font-bold text-slate-500">Ordem de Serviço</p>
+                      <p className={`${termica ? "text-xs" : "text-base"} font-black font-mono text-blue-900`}>#{os.numero_os}</p>
+                      <p className="text-slate-600">
+                        <strong>Abertura:</strong>{" "}
+                        {os.data_abertura ? new Date(os.data_abertura).toLocaleDateString("pt-BR") : "-"}
+                      </p>
+                    </div>
+                  </div>
 
-          <div className="grid grid-cols-2 gap-3 mb-4">
-            <div className="border border-slate-300 rounded-lg p-3 bg-slate-50/50">
-              <h3 className="font-bold uppercase text-slate-700 border-b border-slate-200 pb-1 mb-2 text-xs">
-                👤 Dados do Cliente
-              </h3>
-              <p>
-                <strong>Nome:</strong> {osParaImprimir.cliente?.nome}
-              </p>
-              <p>
-                <strong>WhatsApp:</strong>{" "}
-                {osParaImprimir.cliente?.whatsapp || "Não informado"}
-              </p>
-              <p>
-                <strong>CPF/CNPJ:</strong>{" "}
-                {osParaImprimir.cliente?.cpfCnpj || "Não informado"}
-              </p>
-            </div>
-            <div className="border border-slate-300 rounded-lg p-3 bg-slate-50/50">
-              <h3 className="font-bold uppercase text-slate-700 border-b border-slate-200 pb-1 mb-2 text-xs">
-                📱 Dados do Aparelho
-              </h3>
-              <p>
-                <strong>Modelo:</strong> {osParaImprimir.aparelho?.modelo}
-              </p>
-              <p>
-                <strong>IMEI / S/N:</strong>{" "}
-                {osParaImprimir.aparelho?.imei1 || "Não informado"}
-              </p>
-              <p>
-                <strong>Senha:</strong>{" "}
-                {osParaImprimir.aparelho?.senhaDesbloqueio || "Não informada"}
-              </p>
-            </div>
-          </div>
+                  <div className={`grid ${termica ? "grid-cols-1" : "grid-cols-2"} gap-3`}>
+                    <div className="border border-slate-300 rounded p-2">
+                      <h3 className="font-bold uppercase text-slate-700 border-b border-slate-200 pb-0.5 mb-1">Dados do cliente</h3>
+                      <p><strong>Nome:</strong> {os.cliente?.nome}</p>
+                      <p><strong>WhatsApp:</strong> {os.cliente?.whatsapp || "Não informado"}</p>
+                      <p><strong>CPF/CNPJ:</strong> {os.cliente?.cpfCnpj || "Não informado"}</p>
+                    </div>
+                    <div className="border border-slate-300 rounded p-2">
+                      <h3 className="font-bold uppercase text-slate-700 border-b border-slate-200 pb-0.5 mb-1">Dados do aparelho</h3>
+                      <p><strong>Modelo:</strong> {os.aparelho?.modelo}</p>
+                      <p><strong>IMEI / S/N:</strong> {os.aparelho?.imei1 || "Não informado"}</p>
+                      <p><strong>Senha:</strong> {os.aparelho?.senhaDesbloqueio || "Não informada"}</p>
+                    </div>
+                  </div>
 
-          <div className="border border-slate-300 rounded-lg p-3 mb-4 bg-slate-50/50">
-            <h3 className="font-bold uppercase text-slate-700 border-b border-slate-200 pb-1 mb-1.5 text-xs">
-              📋 Relato & Diagnóstico Técnico
-            </h3>
-            <p className="mb-1">
-              <strong>Defeito Relatado:</strong>{" "}
-              {osParaImprimir.defeitoRelatado || "Sem descrição"}
-            </p>
-            {osParaImprimir.diagnostico && (
-              <p className="mb-1">
-                <strong>Diagnóstico Técnico:</strong>{" "}
-                {osParaImprimir.diagnostico}
-              </p>
-            )}
-            {osParaImprimir.servicoRealizado && (
-              <p className="mb-1">
-                <strong>Serviço Realizado:</strong>{" "}
-                {osParaImprimir.servicoRealizado}
-              </p>
-            )}
-            {osParaImprimir.pecasUtilizadas && (
-              <p>
-                <strong>Peças Utilizadas:</strong>{" "}
-                {osParaImprimir.pecasUtilizadas}
-              </p>
-            )}
-          </div>
+                  <div className="border border-slate-300 rounded p-2">
+                    <h3 className="font-bold uppercase text-slate-700 border-b border-slate-200 pb-0.5 mb-1">Relato e diagnóstico técnico</h3>
+                    <p><strong>Defeito relatado:</strong> {os.defeitoRelatado || "Sem descrição"}</p>
+                    {os.diagnostico && <p><strong>Diagnóstico técnico:</strong> {os.diagnostico}</p>}
+                    {os.servicoRealizado && <p><strong>Serviço realizado:</strong> {os.servicoRealizado}</p>}
+                    {os.pecasUtilizadas && <p><strong>Peças utilizadas:</strong> {os.pecasUtilizadas}</p>}
+                  </div>
 
-          <div className="border border-slate-300 rounded-lg p-3 mb-4 flex justify-between items-center bg-slate-100 font-bold">
-            <div>
-              <span>
-                Forma de Pagamento:{" "}
-                {osParaImprimir.formaPagamento || "PIX"} (
-                {osParaImprimir.parcelas || 1}x)
-              </span>
-            </div>
-            <div className="text-sm text-blue-900">
-              Valor Total: R${" "}
-              {(
-                osParaImprimir.orcamentoCalculado?.valorTotalOrcamento || 0
-              ).toFixed(2)}
-            </div>
-          </div>
+                  <div className={`border border-slate-300 rounded p-2 flex ${termica ? "flex-col gap-1" : "justify-between items-center"} bg-slate-100 font-bold`}>
+                    <span>
+                      Forma de pagamento: {os.formaPagamento || "PIX"} ({os.parcelas || 1}x)
+                    </span>
+                    <span className="text-blue-900">
+                      Valor total: R$ {(os.orcamentoCalculado?.valorTotalOrcamento || 0).toFixed(2)}
+                    </span>
+                  </div>
 
-          <div className="border border-slate-400 rounded-lg p-3 mb-6 bg-white text-[9px] text-slate-700 leading-tight space-y-1.5">
-            <h3 className="font-bold uppercase text-slate-900 border-b border-slate-300 pb-1 text-[10px]">
-              ⚖️ Termos de Garantia, Riscos e Condições de Serviço
-            </h3>
-            <p>
-              <strong>1. Prazo e Cobertura de Garantia:</strong> A garantia
-              legal é de 90 dias (conforme CDC) cobrindo exclusivamente a peça
-              substituída e/ou o serviço executado.
-            </p>
-            <p>
-              <strong>2. Exclusão:</strong> Perde validade por mau uso, quedas,
-              umidade, violação de selos ou reparo por terceiros.
-            </p>
-          </div>
+                  <div className="border border-slate-400 rounded p-2 text-slate-700 space-y-1">
+                    <h3 className="font-bold uppercase text-slate-900 border-b border-slate-300 pb-0.5">
+                      Garantia de {prazoGarantia} dias — termos e condições
+                    </h3>
+                    <TermosImpressos texto={cfg.termosGarantiaTexto} />
+                  </div>
 
-          <div className="grid grid-cols-2 gap-8 pt-6 mt-6 border-t border-slate-300 text-center">
-            <div>
-              <div className="border-b border-slate-400 pb-8 mb-1"></div>
-              <p className="font-bold text-slate-700">{dadosLoja.nomeLoja}</p>
-              <p className="text-[10px] text-slate-500">
-                Assinatura do Técnico / Responsável
-              </p>
-            </div>
-            <div>
-              <div className="border-b border-slate-400 pb-8 mb-1"></div>
-              <p className="font-bold text-slate-700">
-                {osParaImprimir.cliente?.nome}
-              </p>
-              <p className="text-[10px] text-slate-500">
-                Assinatura do Cliente
-              </p>
-            </div>
-          </div>
+                  <div className={`grid ${termica ? "grid-cols-1 gap-6" : "grid-cols-2 gap-8"} pt-6 text-center`}>
+                    <div>
+                      <div className="border-b border-slate-400 pb-6 mb-1"></div>
+                      <p className="font-bold text-slate-700">{cfg.nomeLoja}</p>
+                      <p className="text-slate-500">Assinatura do técnico / responsável</p>
+                    </div>
+                    <div>
+                      <div className="border-b border-slate-400 pb-6 mb-1"></div>
+                      <p className="font-bold text-slate-700">{os.cliente?.nome}</p>
+                      <p className="text-slate-500">Assinatura do cliente</p>
+                    </div>
+                  </div>
 
-          <div className="text-center text-[9px] text-slate-400 mt-8 pt-2 border-t border-slate-200">
-            Documento gerado por Davi.tec — Gestão Técnica Especializada
-          </div>
-        </div>
-      )}
+                  <div className="border-t border-slate-200 pt-2">
+                    <RodapeLojaImpressao cfg={cfg} />
+                  </div>
+                </div>
+              )}
+            </ViasImpressao>
+          </DocumentoParaImpressao>
+        );
+      })()}
     </div>
   );
 };

@@ -6,6 +6,26 @@ import { supabase } from './supabaseClient';
 
 export type TemaVisual = 'dark' | 'midnight' | 'light';
 
+/** Formato do comprovante de entrada e da certidão de garantia. */
+export type FormatoImpressao = 'A4' | 'A4_DUAS_VIAS' | 'TERMICA_80';
+
+/** Taxas (%) cobradas pela maquininha da loja, usadas na Nova OS. */
+export interface TaxasMaquininha {
+  debito: number;
+  credito1x: number;
+  credito2a3: number;
+  credito4a6: number;
+  credito7a12: number;
+}
+
+/** Modelos de mensagem de WhatsApp com variáveis {cliente}, {aparelho}, {numero_os}, {valor}, {loja}, {prazo_garantia}. */
+export interface MensagensWhatsapp {
+  entrada: string;
+  orcamento: string;
+  pronto: string;
+  entrega: string;
+}
+
 export interface ConfiguracoesLojaIsolada {
   ownerUserId?: string;
   nomeLoja: string;
@@ -20,6 +40,100 @@ export interface ConfiguracoesLojaIsolada {
   termosGarantiaTexto: string;
   metaFaturamentoMensal?: number;
   historicoMetasMensais?: Record<string, number>;
+
+  // Dados complementares impressos nos documentos
+  inscricaoEstadual: string;
+  emailAtendimento: string;
+  instagram: string;
+  horarioFuncionamento: string;
+  formatoImpressao: FormatoImpressao;
+  exibirPixImpressao: boolean;
+  exibirContatosImpressao: boolean;
+
+  // Financeiro
+  chavePix: string;
+  favorecidoPix: string;
+  taxasMaquininha: TaxasMaquininha;
+
+  // Operacional
+  prazoEntregaDiasUteis: number; // 0 = não sugere data prevista
+  prefixoOS: string;
+  checklistItensAtivos: string[];
+
+  mensagensWhatsapp: MensagensWhatsapp;
+}
+
+export const TAXAS_MAQUININHA_PADRAO: TaxasMaquininha = {
+  debito: 1.49,
+  credito1x: 3.19,
+  credito2a3: 4.89,
+  credito4a6: 6.49,
+  credito7a12: 8.99,
+};
+
+export const MENSAGENS_WHATSAPP_PADRAO: MensagensWhatsapp = {
+  entrada:
+    'Olá {cliente}, recebemos seu {aparelho} na {loja} (OS #{numero_os}). Assim que o diagnóstico ficar pronto, avisaremos por aqui.',
+  orcamento:
+    'Olá {cliente}, o diagnóstico do seu {aparelho} (OS #{numero_os}) foi concluído. O valor ficou em {valor}. Podemos seguir com o reparo?',
+  pronto:
+    'Boas notícias, {cliente}! Seu {aparelho} (OS #{numero_os}) já está pronto para retirada na {loja}.',
+  entrega:
+    'Obrigado pela preferência, {cliente}! Seu {aparelho} foi entregue com garantia de {prazo_garantia} dias. Qualquer dúvida, é só chamar a {loja}.',
+};
+
+const ITENS_CHECKLIST_PADRAO = [
+  'ligando', 'touchScreen', 'display', 'cameraTraseira', 'cameraFrontal', 'microfone',
+  'altoFalante', 'conectorCarga', 'bateria', 'wifi', 'bluetooth', 'botoesLaterais', 'faceId', 'carcaca',
+];
+
+const FORMATOS_IMPRESSAO: FormatoImpressao[] = ['A4', 'A4_DUAS_VIAS', 'TERMICA_80'];
+
+/** Prefixo do número da OS: letras, números e hífen, até 6 caracteres (padrão "OS-"). */
+export function normalizarPrefixoOS(valor: any): string {
+  const limpo = String(valor ?? '').toUpperCase().replace(/[^A-Z0-9-]/g, '').slice(0, 6);
+  return limpo || 'OS-';
+}
+
+const numeroEntre = (valor: any, padrao: number, min: number, max: number) => {
+  const n = Number(valor);
+  return Number.isFinite(n) && n >= min && n <= max ? n : padrao;
+};
+
+/**
+ * Completa uma configuração salva com os valores padrão dos campos novos ou ausentes
+ * (contas antigas não têm taxas, mensagens, checklist...), sem perder o que já foi gravado.
+ */
+function completarConfigLoja(cfg: Partial<ConfiguracoesLojaIsolada>, padrao: ConfiguracoesLojaIsolada): ConfiguracoesLojaIsolada {
+  const taxas: Partial<TaxasMaquininha> = cfg.taxasMaquininha || {};
+  const mensagens: Partial<MensagensWhatsapp> = cfg.mensagensWhatsapp || {};
+  return {
+    ...padrao,
+    ...cfg,
+    formatoImpressao: FORMATOS_IMPRESSAO.includes(cfg.formatoImpressao as FormatoImpressao)
+      ? (cfg.formatoImpressao as FormatoImpressao)
+      : 'A4',
+    exibirPixImpressao: cfg.exibirPixImpressao ?? padrao.exibirPixImpressao,
+    exibirContatosImpressao: cfg.exibirContatosImpressao ?? padrao.exibirContatosImpressao,
+    taxasMaquininha: {
+      debito: numeroEntre(taxas.debito, TAXAS_MAQUININHA_PADRAO.debito, 0, 100),
+      credito1x: numeroEntre(taxas.credito1x, TAXAS_MAQUININHA_PADRAO.credito1x, 0, 100),
+      credito2a3: numeroEntre(taxas.credito2a3, TAXAS_MAQUININHA_PADRAO.credito2a3, 0, 100),
+      credito4a6: numeroEntre(taxas.credito4a6, TAXAS_MAQUININHA_PADRAO.credito4a6, 0, 100),
+      credito7a12: numeroEntre(taxas.credito7a12, TAXAS_MAQUININHA_PADRAO.credito7a12, 0, 100),
+    },
+    prazoGarantiaDias: numeroEntre(cfg.prazoGarantiaDias, padrao.prazoGarantiaDias, 1, 3650),
+    prazoAbandonoDias: numeroEntre(cfg.prazoAbandonoDias, padrao.prazoAbandonoDias, 1, 3650),
+    prazoEntregaDiasUteis: Math.floor(numeroEntre(cfg.prazoEntregaDiasUteis, padrao.prazoEntregaDiasUteis, 0, 120)),
+    prefixoOS: normalizarPrefixoOS(cfg.prefixoOS),
+    checklistItensAtivos: Array.isArray(cfg.checklistItensAtivos) ? cfg.checklistItensAtivos : padrao.checklistItensAtivos,
+    mensagensWhatsapp: {
+      entrada: mensagens.entrada || MENSAGENS_WHATSAPP_PADRAO.entrada,
+      orcamento: mensagens.orcamento || MENSAGENS_WHATSAPP_PADRAO.orcamento,
+      pronto: mensagens.pronto || MENSAGENS_WHATSAPP_PADRAO.pronto,
+      entrega: mensagens.entrega || MENSAGENS_WHATSAPP_PADRAO.entrega,
+    },
+  };
 }
 
 export const TERMOS_GARANTIA_PADRAO = `1. A garantia legal de 90 (noventa) dias cobre exclusivamente as peças substituídas e os serviços expressamente discriminados nesta ordem de serviço, contados a partir da data de entrega do dispositivo (Art. 26 do Código de Defesa do Consumidor).
@@ -112,6 +226,20 @@ export function obterConfigPadraoConta(user?: any): ConfiguracoesLojaIsolada {
     termosGarantiaTexto: TERMOS_GARANTIA_PADRAO,
     metaFaturamentoMensal: META_FATURAMENTO_PADRAO,
     historicoMetasMensais: {},
+    inscricaoEstadual: '',
+    emailAtendimento: user?.email || '',
+    instagram: '',
+    horarioFuncionamento: '',
+    formatoImpressao: 'A4',
+    exibirPixImpressao: false,
+    exibirContatosImpressao: true,
+    chavePix: '',
+    favorecidoPix: '',
+    taxasMaquininha: { ...TAXAS_MAQUININHA_PADRAO },
+    prazoEntregaDiasUteis: 0,
+    prefixoOS: 'OS-',
+    checklistItensAtivos: [...ITENS_CHECKLIST_PADRAO],
+    mensagensWhatsapp: { ...MENSAGENS_WHATSAPP_PADRAO },
   };
 }
 
@@ -213,8 +341,7 @@ export function obterConfiguracoesLojaSincrono(userParam?: any): ConfiguracoesLo
         if (!parsedConta.ownerUserId || parsedConta.ownerUserId === user.id) {
           const metaRemotaValida =
             metaConfig && (!metaConfig.ownerUserId || metaConfig.ownerUserId === user.id) ? metaConfig : {};
-          const mesclado: ConfiguracoesLojaIsolada = {
-            ...padrao,
+          const mesclado: ConfiguracoesLojaIsolada = completarConfigLoja({
             ...metaRemotaValida,
             ...parsedConta,
             ownerUserId: user.id,
@@ -227,7 +354,7 @@ export function obterConfiguracoesLojaSincrono(userParam?: any): ConfiguracoesLo
               ...sanitizarHistoricoMetas(metaRemotaValida?.historicoMetasMensais),
               ...sanitizarHistoricoMetas(parsedConta.historicoMetasMensais),
             },
-          };
+          }, padrao);
           return mesclado;
         }
       }
@@ -235,15 +362,14 @@ export function obterConfiguracoesLojaSincrono(userParam?: any): ConfiguracoesLo
       // 2. Se não houver cofre local ainda, mas houver configuracoes_loja salvas no user_metadata da conta no Supabase
       if (metaConfig && typeof metaConfig === 'object') {
         if (!metaConfig.ownerUserId || metaConfig.ownerUserId === user.id) {
-          const restaurado: ConfiguracoesLojaIsolada = {
-            ...padrao,
+          const restaurado: ConfiguracoesLojaIsolada = completarConfigLoja({
             ...metaConfig,
             ownerUserId: user.id,
             temaVisual: normalizarTemaVisual(metaConfig.temaVisual ?? padrao.temaVisual),
             termosGarantiaTexto: metaConfig.termosGarantiaTexto || padrao.termosGarantiaTexto,
             metaFaturamentoMensal: sanitizarNumeroMeta(metaConfig.metaFaturamentoMensal ?? 0),
             historicoMetasMensais: sanitizarHistoricoMetas(metaConfig.historicoMetasMensais),
-          };
+          }, padrao);
           window.localStorage.setItem(chaveConta, JSON.stringify(restaurado));
           window.localStorage.setItem(CHAVE_ESPELHO_SESSAO, JSON.stringify(restaurado));
           return restaurado;
@@ -258,14 +384,13 @@ export function obterConfiguracoesLojaSincrono(userParam?: any): ConfiguracoesLo
           const nomeAssistenciaUsuario = String(user.user_metadata?.nome_assistencia || '').trim().toLowerCase();
           const nomeLojaLegado = String(legado.nomeLoja || '').trim().toLowerCase();
           if (nomeAssistenciaUsuario && nomeLojaLegado && nomeAssistenciaUsuario === nomeLojaLegado) {
-            const migrado: ConfiguracoesLojaIsolada = {
-              ...padrao,
+            const migrado: ConfiguracoesLojaIsolada = completarConfigLoja({
               ...legado,
               ownerUserId: user.id,
               temaVisual: normalizarTemaVisual(legado.temaVisual ?? padrao.temaVisual),
               metaFaturamentoMensal: sanitizarNumeroMeta(legado.metaFaturamentoMensal ?? 0),
               historicoMetasMensais: sanitizarHistoricoMetas(legado.historicoMetasMensais),
-            };
+            }, padrao);
             window.localStorage.setItem(chaveConta, JSON.stringify(migrado));
             window.localStorage.setItem(CHAVE_ESPELHO_SESSAO, JSON.stringify(migrado));
             return migrado;
@@ -341,14 +466,17 @@ export async function salvarConfiguracoesLoja(
     ...sanitizarHistoricoMetas(novaConfig.historicoMetasMensais),
   };
 
-  const configFinal: ConfiguracoesLojaIsolada = {
-    ...configAtual,
-    ...novaConfig,
-    temaVisual: temaEscolhido,
-    metaFaturamentoMensal: metaMensalFinal,
-    historicoMetasMensais: historicoMetasFinal,
-    ownerUserId: user.id,
-  };
+  const configFinal: ConfiguracoesLojaIsolada = completarConfigLoja(
+    {
+      ...configAtual,
+      ...novaConfig,
+      temaVisual: temaEscolhido,
+      metaFaturamentoMensal: metaMensalFinal,
+      historicoMetasMensais: historicoMetasFinal,
+      ownerUserId: user.id,
+    },
+    obterConfigPadraoConta(user)
+  );
 
   // Aplica imediatamente o tema no DOM
   aplicarTemaVisualNoDOM(configFinal.temaVisual);
@@ -404,6 +532,63 @@ export async function salvarConfiguracoesLoja(
   }
 
   return configFinal;
+}
+
+/**
+ * Taxa (%) da maquininha configurada na conta para a forma de pagamento e o número de parcelas.
+ * Dinheiro, PIX e formas desconhecidas não têm taxa.
+ */
+export function obterTaxaMaquininha(forma: string, parcelas: number = 1): number {
+  const taxas = obterConfiguracoesLojaSincrono().taxasMaquininha;
+  if (forma === 'Cartão de débito') return taxas.debito;
+  if (forma === 'Cartão de crédito') {
+    if (parcelas <= 1) return taxas.credito1x;
+    if (parcelas <= 3) return taxas.credito2a3;
+    if (parcelas <= 6) return taxas.credito4a6;
+    return taxas.credito7a12;
+  }
+  return 0;
+}
+
+/** Data (AAAA-MM-DD) somando dias úteis (segunda a sexta) a partir de hoje. */
+export function calcularDataPrevistaEntrega(diasUteis: number, base: Date = new Date()): string {
+  const data = new Date(base.getFullYear(), base.getMonth(), base.getDate(), 12);
+  let restantes = Math.max(0, Math.floor(diasUteis));
+  while (restantes > 0) {
+    data.setDate(data.getDate() + 1);
+    const diaSemana = data.getDay();
+    if (diaSemana !== 0 && diaSemana !== 6) restantes--;
+  }
+  return `${data.getFullYear()}-${String(data.getMonth() + 1).padStart(2, '0')}-${String(data.getDate()).padStart(2, '0')}`;
+}
+
+/** Troca as variáveis {cliente}, {aparelho}, {numero_os}, {valor}, {loja} e {prazo_garantia} de um modelo de mensagem. */
+export function preencherModeloMensagem(modelo: string, variaveis: Record<string, string>): string {
+  return modelo.replace(/\{(\w+)\}/g, (trecho, nome) => (nome in variaveis ? variaveis[nome] : trecho));
+}
+
+/** Valores das variáveis de mensagem a partir de uma OS real e da configuração da loja. */
+export function variaveisMensagemOS(os: any, cfg: ConfiguracoesLojaIsolada = obterConfiguracoesLojaSincrono()) {
+  const valor = Number(os?.orcamentoCalculado?.valorTotalOrcamento ?? os?.valor_total ?? 0);
+  return {
+    cliente: String(os?.cliente?.nome || 'cliente').trim(),
+    aparelho: String(os?.aparelho?.modelo || 'aparelho').trim(),
+    numero_os: String(os?.numero_os || ''),
+    valor: valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),
+    loja: cfg.nomeLoja,
+    prazo_garantia: String(os?.possuiGarantia === false ? 0 : Number(os?.prazoGarantiaDias) || cfg.prazoGarantiaDias),
+  };
+}
+
+/**
+ * Link do WhatsApp (wa.me) com a mensagem pronta. Telefones brasileiros com DDD (10 ou 11 dígitos)
+ * recebem o código do país 55. Retorna null se o número for inválido.
+ */
+export function linkWhatsapp(telefone: string, mensagem: string): string | null {
+  let digitos = String(telefone || '').replace(/\D/g, '');
+  if (digitos.length === 10 || digitos.length === 11) digitos = `55${digitos}`;
+  if (digitos.length < 12 || digitos.length > 13) return null;
+  return `https://wa.me/${digitos}?text=${encodeURIComponent(mensagem)}`;
 }
 
 // ==========================================
@@ -753,19 +938,12 @@ export async function cadastrarUsuario(dados: {
 }) {
   // Inicializa configurações limpas e exclusivas para a nova conta (sem herdar logo, tema ou meta de nenhuma outra conta)
   const configInicialLimpa: ConfiguracoesLojaIsolada = {
+    ...obterConfigPadraoConta({ email: dados.email }),
     ownerUserId: '',
     nomeLoja: dados.nomeAssistencia.trim() || 'Minha Assistência',
-    subtitulo: 'Assistência Técnica',
     cnpj: dados.cpfCnpj?.trim() || '',
     telefone: dados.whatsapp.trim() || '',
-    endereco: '',
     logoUrl: '', // Sempre vazia para novas contas
-    temaVisual: 'midnight',
-    prazoGarantiaDias: 90,
-    prazoAbandonoDias: 90,
-    termosGarantiaTexto: TERMOS_GARANTIA_PADRAO,
-    metaFaturamentoMensal: META_FATURAMENTO_PADRAO,
-    historicoMetasMensais: {},
   };
 
   const { data, error } = await supabase.auth.signUp({
@@ -823,6 +1001,41 @@ export async function recuperarSenha(email: string) {
   const { data, error } = await supabase.auth.resetPasswordForEmail(email);
   if (error) throw error;
   return data;
+}
+
+/** Troca a senha da conta autenticada (Supabase Auth). */
+export async function alterarSenhaConta(novaSenha: string): Promise<void> {
+  if (!novaSenha || novaSenha.length < 6) throw new Error('A nova senha deve ter pelo menos 6 caracteres.');
+  const { error } = await supabase.auth.updateUser({ password: novaSenha });
+  if (error) {
+    const msg = error.message || '';
+    if (/different from the old/i.test(msg)) throw new Error('A nova senha precisa ser diferente da atual.');
+    if (/reauthentication|recent login/i.test(msg)) throw new Error('Por segurança, saia e entre novamente na conta antes de trocar a senha.');
+    throw new Error(msg || 'Não foi possível alterar a senha.');
+  }
+}
+
+/**
+ * Backup somente leitura da conta: configurações, ordens de serviço, clientes, fornecedores e serviços,
+ * exatamente como estão no banco. Nada é alterado.
+ */
+export async function gerarBackupConta() {
+  const [ordens, clientes, fornecedores, servicos, { data: authData }] = await Promise.all([
+    buscarOrdensServico(),
+    buscarClientes(),
+    buscarFornecedores(),
+    buscarServicosCadastrados(),
+    supabase.auth.getUser(),
+  ]);
+  return {
+    geradoEm: new Date().toISOString(),
+    conta: authData?.user?.email || '',
+    configuracoes: obterConfiguracoesLojaSincrono(),
+    ordens_servico: ordens,
+    clientes,
+    cad_fornecedores: fornecedores,
+    cad_servicos: servicos,
+  };
 }
 
 export async function fazerLogout() {
@@ -1277,7 +1490,9 @@ export async function criarOrdemServico(payload: {
   status_os?: string;
   pagamentos?: any[];
 }): Promise<{ idOs: string; numeroOs: string }> {
-  const numeroOsGerado = `OS-${Math.floor(100000 + Math.random() * 900000)}`;
+  // Prefixo configurável em Configurações › Operacional (padrão "OS-")
+  const prefixoOS = obterConfiguracoesLojaSincrono().prefixoOS;
+  const numeroOsGerado = `${prefixoOS}${Math.floor(100000 + Math.random() * 900000)}`;
   const idOsGerado = gerarId('os');
 
   let idClienteFinal = payload.cliente?.idCliente;

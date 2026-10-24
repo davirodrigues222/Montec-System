@@ -4,13 +4,16 @@ import {
   buscarFornecedores,
   buscarServicosCadastrados,
   criarOrdemServico,
+  calcularDataPrevistaEntrega,
   extrairDiasGarantia,
+  obterConfiguracoesLojaSincrono,
   obterPrazoGarantiaConfiguradoLoja,
+  obterTaxaMaquininha,
 } from '../services/api';
 import { CertidaoGarantia } from '../components/CertidaoGarantia';
 import type { AbaSistema } from '../services/acesso';
 import type { OrdemServico } from '../types';
-import { ITENS_CHECKLIST, OPCOES_CHECKLIST, criarChecklistPadrao } from '../utils/checklist';
+import { OPCOES_CHECKLIST, criarChecklistPadrao, itensChecklistAtivos } from '../utils/checklist';
 import { formatarValor } from '../utils/formatadores';
 
 interface Props {
@@ -20,17 +23,9 @@ interface Props {
 // ================= REGRAS DE TAXAS DE MAQUINETA =================
 const FORMAS_SEM_TAXA = ['Dinheiro', 'PIX'];
 
-const obterTaxaPadrao = (forma: string, p: number = 1): number => {
-  if (FORMAS_SEM_TAXA.includes(forma)) return 0;
-  if (forma === 'Cartão de débito') return 1.49;
-  if (forma === 'Cartão de crédito') {
-    if (p === 1) return 3.19;
-    if (p <= 3) return 4.89;
-    if (p <= 6) return 6.49;
-    return 8.99;
-  }
-  return 0;
-};
+// Taxas da maquininha da própria loja (Configurações › Financeiro & taxas)
+const obterTaxaPadrao = (forma: string, p: number = 1): number =>
+  FORMAS_SEM_TAXA.includes(forma) ? 0 : obterTaxaMaquininha(forma, p);
 
 /** Ao trocar a forma ou as parcelas: aplica a taxa padrão e força 1x fora do crédito. */
 const aplicarRegraTaxa = (
@@ -48,6 +43,14 @@ const aplicarRegraTaxa = (
 };
 
 const dataHojeISO = () => new Date().toISOString().substring(0, 10);
+
+// Data prevista sugerida pelo prazo de entrega em dias úteis (Configurações › Operacional); 0 = não sugere
+const dataPrevistaSugerida = () => {
+  const dias = obterConfiguracoesLojaSincrono().prazoEntregaDiasUteis;
+  return dias > 0 ? calcularDataPrevistaEntrega(dias) : '';
+};
+
+const checklistInicial = () => criarChecklistPadrao(obterConfiguracoesLojaSincrono().checklistItensAtivos);
 
 export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
   const [listaClientes, setListaClientes] = useState<any[]>([]);
@@ -69,7 +72,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
   const [imeiAparelho, setImeiAparelho] = useState('');
   const [senhaAparelho, setSenhaAparelho] = useState('');
   const [dataAbertura, setDataAbertura] = useState(dataHojeISO);
-  const [dataPrevista, setDataPrevista] = useState('');
+  const [dataPrevista, setDataPrevista] = useState(dataPrevistaSugerida);
 
   // Card 03: Serviço, diagnóstico e custos
   const [servicoPadraoId, setServicoPadraoId] = useState('');
@@ -91,7 +94,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
   const [formaPagamento1, setFormaPagamento1] = useState('Cartão de crédito');
   const [valorPg1, setValorPg1] = useState<number | ''>('');
   const [parcelas1, setParcelas1] = useState(1);
-  const [taxaMaquinetaPercentual1, setTaxaMaquinetaPercentual1] = useState<number | ''>(3.19);
+  const [taxaMaquinetaPercentual1, setTaxaMaquinetaPercentual1] = useState<number | ''>(() => obterTaxaPadrao('Cartão de crédito', 1));
 
   // Forma 2 (quando dividirPagamento === true)
   const [formaPagamento2, setFormaPagamento2] = useState('Dinheiro');
@@ -101,7 +104,14 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
 
   // Checklist de Entrada
   const [mostrarChecklist, setMostrarChecklist] = useState(false);
-  const [checklist, setChecklist] = useState<Record<string, string>>(criarChecklistPadrao);
+  const [checklist, setChecklist] = useState<Record<string, string>>(checklistInicial);
+  // Itens exibidos: os ativos nas Configurações
+  const [itensChecklist] = useState(() => itensChecklistAtivos(obterConfiguracoesLojaSincrono().checklistItensAtivos));
+  // Chave PIX da loja, exibida quando uma das formas de pagamento for PIX
+  const [pixLoja] = useState(() => {
+    const cfg = obterConfiguracoesLojaSincrono();
+    return { chave: cfg.chavePix.trim(), favorecido: cfg.favorecidoPix.trim() };
+  });
 
   const [carregando, setCarregando] = useState(false);
   const [osCriadaSucesso, setOsCriadaSucesso] = useState<{ idOs: string; numeroOs: string; dadosCompletos: OrdemServico } | null>(null);
@@ -417,7 +427,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
     setDiagnostico('');
     setObservacoes('');
     setDataAbertura(dataHojeISO());
-    setDataPrevista('');
+    setDataPrevista(dataPrevistaSugerida());
     setPossuiGarantia(true);
     setCustoPeca('');
     setFreteReal(0);
@@ -430,7 +440,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
     setDividirPagamento(false);
     setFormaPagamento1('Cartão de crédito');
     setParcelas1(1);
-    setTaxaMaquinetaPercentual1(3.19);
+    setTaxaMaquinetaPercentual1(obterTaxaPadrao('Cartão de crédito', 1));
     setValorPg1('');
 
     setFormaPagamento2('Dinheiro');
@@ -438,7 +448,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
     setTaxaMaquinetaPercentual2(0);
     setValorPg2('');
 
-    setChecklist(criarChecklistPadrao());
+    setChecklist(checklistInicial());
     setOsCriadaSucesso(null);
   };
 
@@ -1173,6 +1183,24 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
                 </div>
               </div>
             )}
+
+            {/* Chave PIX da loja para o cliente pagar (Configurações › Financeiro & taxas) */}
+            {pixLoja.chave && (formaPagamento1 === 'PIX' || (dividirPagamento && formaPagamento2 === 'PIX')) && (
+              <div className="flex flex-wrap items-center justify-between gap-2 p-3.5 bg-emerald-500/10 border border-emerald-500/25 rounded-xl text-xs">
+                <div className="min-w-0">
+                  <span className="block text-[10px] font-bold text-emerald-400 uppercase tracking-wider">Chave PIX da loja</span>
+                  <span className="font-mono font-bold text-white break-all">{pixLoja.chave}</span>
+                  {pixLoja.favorecido && <span className="text-zinc-400"> · {pixLoja.favorecido}</span>}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => navigator.clipboard?.writeText(pixLoja.chave)}
+                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg transition shrink-0"
+                >
+                  Copiar chave
+                </button>
+              </div>
+            )}
           </div>
 
           {/* ================= QUADRO DE RESUMO FINANCEIRO (FIGMA) ================= */}
@@ -1239,14 +1267,14 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
           >
             <div className="flex items-center space-x-2">
               <span className="w-5 h-5 rounded-md bg-blue-600/20 text-blue-400 flex items-center justify-center text-[11px]">✓</span>
-              <span>Checklist de entrada do dispositivo ({Object.values(checklist).filter((v) => v === 'OK').length}/{ITENS_CHECKLIST.length} OK)</span>
+              <span>Checklist de entrada do dispositivo ({Object.values(checklist).filter((v) => v === 'OK').length}/{itensChecklist.length} OK)</span>
             </div>
             <span className="text-zinc-400 font-mono text-sm">{mostrarChecklist ? '▲' : '▼'}</span>
           </button>
 
           {mostrarChecklist && (
             <div className="p-5 border-t border-zinc-800/60 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 text-xs">
-              {ITENS_CHECKLIST.map(({ chave, rotulo }) => (
+              {itensChecklist.map(({ chave, rotulo }) => (
                 <div key={chave}>
                   <label className="block text-[11px] font-medium text-zinc-400 mb-1">{rotulo}</label>
                   <select

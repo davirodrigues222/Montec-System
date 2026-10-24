@@ -322,3 +322,22 @@ html[data-theme="light"] .divide-zinc-800 > :not([hidden]) ~ :not([hidden]),
 html[data-theme="light"] .divide-slate-800 > :not([hidden]) ~ :not([hidden]) {
   border-color: #e2e8f0 !important;
 }
+/* ================= IMPRESSÃO DE DOCUMENTOS =================
+   Comprovantes e certidões são enviados ao <body> como .area-impressao (components/impressao.tsx).
+   Enquanto existir um, a impressão mostra só ele: o restante do sistema fica fora do papel. */
+@media print {
+  html,
+  body {
+    background: #fff !important;
+    color: #0f172a !important;
+  }
+
+  body:has(> .area-impressao) > *:not(.area-impressao) {
+    display: none !important;
+  }
+
+  .area-impressao {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
