@@ -1,53 +1,93 @@
 import React, { useState, useEffect } from 'react';
 import {
+  obterConfiguracoesLojaSincrono,
+  carregarConfiguracoesLoja,
+  salvarConfiguracoesLoja,
+  aplicarTemaVisualNoDOM,
+  TERMOS_GARANTIA_PADRAO,
   type ConfiguracoesLojaIsolada,
   type TemaVisual,
-  TERMOS_GARANTIA_PADRAO,
-  aplicarTemaVisualNoDOM,
-  carregarConfiguracoesLoja,
-  obterConfiguracoesLojaSincrono,
-  salvarConfiguracoesLoja,
 } from '../services/api';
 
+export type ConfiguracoesLoja = ConfiguracoesLojaIsolada;
+
 export const Configuracoes: React.FC = () => {
-  // Leitura inicial síncrona do cofre da conta ativa (nunca herda logo de outra conta)
-  const [config, setConfig] = useState<ConfiguracoesLojaIsolada>(() => obterConfiguracoesLojaSincrono());
+  const [config, setConfig] = useState<ConfiguracoesLoja>(() => {
+    const inicial = obterConfiguracoesLojaSincrono();
+    aplicarTemaVisualNoDOM(inicial.temaVisual);
+    return inicial;
+  });
   const [activeTab, setActiveTab] = useState<'dados' | 'aparencia' | 'termos'>('aparencia');
   const [salvandoFeedback, setSalvandoFeedback] = useState(false);
-  const [erroSalvar, setErroSalvar] = useState<string | null>(null);
+  const [mensagemFeedback, setMensagemFeedback] = useState(
+    'Configurações salvas e vinculadas exclusivamente à sua conta!'
+  );
 
   useEffect(() => {
-    // Revalida com a sessão autenticada do Supabase (supabase.auth.getUser)
+    let ativo = true;
+    // Carrega e valida as configurações exclusivas da conta autenticada atual
     carregarConfiguracoesLoja()
-      .then((cfg) => setConfig(cfg))
-      .catch((e) => console.error('Erro ao carregar configurações da conta:', e));
+      .then((cfgIsolada) => {
+        if (ativo) {
+          setConfig(cfgIsolada);
+          aplicarTemaVisualNoDOM(cfgIsolada.temaVisual);
+        }
+      })
+      .catch(() => {
+        if (ativo) {
+          const fallback = obterConfiguracoesLojaSincrono();
+          setConfig(fallback);
+          aplicarTemaVisualNoDOM(fallback.temaVisual);
+        }
+      });
+
+    const handleStorageUpdate = () => {
+      if (ativo) {
+        const atual = obterConfiguracoesLojaSincrono();
+        setConfig(atual);
+        aplicarTemaVisualNoDOM(atual.temaVisual);
+      }
+    };
+
+    window.addEventListener('storage_configs_updated', handleStorageUpdate);
+    return () => {
+      ativo = false;
+      window.removeEventListener('storage_configs_updated', handleStorageUpdate);
+    };
   }, []);
 
-  const persistir = async (parcial: Partial<ConfiguracoesLojaIsolada>) => {
-    setErroSalvar(null);
-    try {
-      const salvo = await salvarConfiguracoesLoja(parcial);
-      setConfig(salvo);
-      return true;
-    } catch (e: any) {
-      console.error('Erro ao salvar configurações:', e);
-      setErroSalvar(e?.message || 'Não foi possível salvar as configurações.');
-      return false;
-    }
+  const exibirFeedback = (msg: string) => {
+    setMensagemFeedback(msg);
+    setSalvandoFeedback(true);
+    setTimeout(() => setSalvandoFeedback(false), 3000);
   };
 
   const handleSalvar = async () => {
-    if (await persistir(config)) {
-      setSalvandoFeedback(true);
-      setTimeout(() => setSalvandoFeedback(false), 3000);
+    try {
+      aplicarTemaVisualNoDOM(config.temaVisual);
+      const salvo = await salvarConfiguracoesLoja(config);
+      setConfig(salvo);
+      exibirFeedback('Configurações salvas e vinculadas exclusivamente à sua conta!');
+    } catch (err: any) {
+      alert(err.message || 'Não foi possível salvar as configurações da loja.');
     }
   };
 
-  const handleSelecionarTema = (tema: TemaVisual) => {
-    // Aplica na hora no <html> e grava a preferência na conta ativa
-    aplicarTemaVisualNoDOM(tema);
-    setConfig((prev) => ({ ...prev, temaVisual: tema }));
-    persistir({ temaVisual: tema });
+  /**
+   * Aplica imediatamente o tema selecionado em toda a aplicação e persiste na conta autenticada.
+   */
+  const handleSelecionarTema = async (novoTema: TemaVisual) => {
+    const atualizado: ConfiguracoesLoja = { ...config, temaVisual: novoTema };
+    setConfig(atualizado);
+    aplicarTemaVisualNoDOM(novoTema);
+
+    try {
+      const salvo = await salvarConfiguracoesLoja(atualizado);
+      setConfig(salvo);
+      exibirFeedback('Tema aplicado e salvo na sua conta!');
+    } catch (err: any) {
+      console.error('Erro ao persistir tema da conta:', err);
+    }
   };
 
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -58,13 +98,29 @@ export const Configuracoes: React.FC = () => {
         return;
       }
       const reader = new FileReader();
-      reader.onloadend = () => {
+      reader.onloadend = async () => {
         const novaLogo = reader.result as string;
-        setConfig((prev) => ({ ...prev, logoUrl: novaLogo }));
-        // Salva imediatamente na conta ativa; o evento storage_configs_updated atualiza o topo na hora
-        persistir({ logoUrl: novaLogo });
+        const atualizado = { ...config, logoUrl: novaLogo };
+        setConfig(atualizado);
+        try {
+          await salvarConfiguracoesLoja(atualizado);
+          exibirFeedback('Logotipo atualizado na sua conta!');
+        } catch (err: any) {
+          console.error('Erro ao salvar logo da conta:', err);
+        }
       };
       reader.readAsDataURL(file);
+    }
+  };
+
+  const handleRemoverLogo = async () => {
+    const atualizado = { ...config, logoUrl: '' };
+    setConfig(atualizado);
+    try {
+      await salvarConfiguracoesLoja(atualizado);
+      exibirFeedback('Logotipo removido da sua conta!');
+    } catch (err: any) {
+      console.error('Erro ao remover logo:', err);
     }
   };
 
@@ -82,13 +138,15 @@ export const Configuracoes: React.FC = () => {
           Configurações
         </h2>
         <p className="text-xs text-zinc-400 mt-1">
-          Identidade da loja, preferências visuais e regras operacionais.
+          Identidade da loja, preferências visuais e regras operacionais exclusivas da sua conta.
         </p>
       </div>
 
-      {/* ================= BARRA DE ABAS ================= */}
+      {/* ================= BARRA DE ABAS (FIGMA) ================= */}
       <div className="flex items-center space-x-2 border-b border-zinc-800/80 pb-4">
+        {/* Aba Dados da Loja */}
         <button
+          type="button"
           onClick={() => setActiveTab('dados')}
           className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-semibold transition ${
             activeTab === 'dados'
@@ -102,7 +160,9 @@ export const Configuracoes: React.FC = () => {
           <span>Dados da loja</span>
         </button>
 
+        {/* Aba Aparência */}
         <button
+          type="button"
           onClick={() => setActiveTab('aparencia')}
           className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-semibold transition ${
             activeTab === 'aparencia'
@@ -116,7 +176,9 @@ export const Configuracoes: React.FC = () => {
           <span>Aparência</span>
         </button>
 
+        {/* Aba Garantia e termos */}
         <button
+          type="button"
           onClick={() => setActiveTab('termos')}
           className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-semibold transition ${
             activeTab === 'termos'
@@ -213,7 +275,7 @@ export const Configuracoes: React.FC = () => {
           <div className="space-y-3">
             <div>
               <h3 className="text-sm font-bold text-white">Identidade visual</h3>
-              <p className="text-xs text-zinc-400 mt-0.5">Aparece no sistema e nos documentos impressos.</p>
+              <p className="text-xs text-zinc-400 mt-0.5">Aparece no sistema e nos documentos impressos desta conta.</p>
             </div>
 
             <div className="p-4 bg-[#080c14] border border-zinc-800/80 rounded-xl flex items-center space-x-4">
@@ -228,12 +290,23 @@ export const Configuracoes: React.FC = () => {
                 )}
               </div>
 
-              <div>
-                <label className="px-4 py-2 bg-[#0c101a] hover:bg-zinc-800 border border-zinc-700/80 text-white rounded-xl text-xs font-semibold cursor-pointer inline-block transition shadow-sm">
-                  Trocar logotipo
-                  <input type="file" accept="image/png, image/jpeg" onChange={handleLogoUpload} className="hidden" />
-                </label>
-                <p className="text-[11px] text-zinc-400 mt-1">PNG ou JPG, até 2 MB.</p>
+              <div className="space-y-1.5">
+                <div className="flex items-center space-x-2">
+                  <label className="px-4 py-2 bg-[#0c101a] hover:bg-zinc-800 border border-zinc-700/80 text-white rounded-xl text-xs font-semibold cursor-pointer inline-block transition shadow-sm">
+                    Trocar logotipo
+                    <input type="file" accept="image/png, image/jpeg" onChange={handleLogoUpload} className="hidden" />
+                  </label>
+                  {config.logoUrl && (
+                    <button
+                      type="button"
+                      onClick={handleRemoverLogo}
+                      className="px-3 py-2 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 text-rose-400 rounded-xl text-xs font-semibold transition"
+                    >
+                      Remover logo
+                    </button>
+                  )}
+                </div>
+                <p className="text-[11px] text-zinc-400">PNG ou JPG, até 2 MB.</p>
               </div>
             </div>
           </div>
@@ -242,47 +315,95 @@ export const Configuracoes: React.FC = () => {
           <div className="space-y-3 pt-2">
             <div>
               <h3 className="text-sm font-bold text-white">Tema da aplicação</h3>
+              <p className="text-xs text-zinc-400 mt-0.5">
+                Clique em um tema para aplicá-lo imediatamente em todo o sistema e salvá-lo na sua conta.
+              </p>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div
-                data-theme-preview
+              {/* Opção 1: Tema Escuro */}
+              <button
+                type="button"
+                data-theme-preview="true"
                 onClick={() => handleSelecionarTema('dark')}
-                className={`p-4 rounded-xl border cursor-pointer transition flex flex-col justify-between h-32 ${
+                className={`p-4 rounded-xl border text-left cursor-pointer transition flex flex-col justify-between h-32 ${
                   config.temaVisual === 'dark'
-                    ? 'border-blue-500 bg-[#07090e] ring-2 ring-blue-500/30'
-                    : 'border-zinc-800/80 bg-[#07090e] hover:border-zinc-700'
+                    ? 'border-blue-500 bg-[#09090b] ring-2 ring-blue-500/40 shadow-md'
+                    : 'border-zinc-700/80 bg-[#09090b] hover:border-blue-500/60'
                 }`}
               >
-                <div className="w-full h-12 rounded-lg bg-zinc-900 border border-zinc-800 opacity-60" />
-                <span className="text-xs font-semibold text-zinc-200">Escuro</span>
-              </div>
+                <div className="w-full h-12 rounded-lg bg-[#18181b] border border-zinc-700 flex items-center justify-between px-3">
+                  <div className="flex items-center space-x-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-zinc-400" />
+                    <span className="w-8 h-2 rounded bg-zinc-600" />
+                  </div>
+                  {config.temaVisual === 'dark' && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-600 text-white">
+                      Ativo
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center justify-between w-full">
+                  <span className="text-xs font-bold text-zinc-100">Escuro</span>
+                  <span className="text-[10px] text-zinc-400">Grafite neutro</span>
+                </div>
+              </button>
 
-              <div
-                data-theme-preview
+              {/* Opção 2: Tema Meia-noite */}
+              <button
+                type="button"
+                data-theme-preview="true"
                 onClick={() => handleSelecionarTema('midnight')}
-                className={`p-4 rounded-xl border cursor-pointer transition flex flex-col justify-between h-32 ${
+                className={`p-4 rounded-xl border text-left cursor-pointer transition flex flex-col justify-between h-32 ${
                   config.temaVisual === 'midnight'
-                    ? 'border-blue-500 bg-[#070b14] ring-2 ring-blue-500/30'
-                    : 'border-zinc-800/80 bg-[#070b14] hover:border-zinc-700'
+                    ? 'border-blue-500 bg-[#070b14] ring-2 ring-blue-500/40 shadow-md'
+                    : 'border-zinc-700/80 bg-[#070b14] hover:border-blue-500/60'
                 }`}
               >
-                <div className="w-full h-12 rounded-lg bg-[#0e1424] border border-blue-900/40 opacity-70" />
-                <span className="text-xs font-semibold text-blue-400">Meia-noite</span>
-              </div>
+                <div className="w-full h-12 rounded-lg bg-[#0e1424] border border-blue-900/50 flex items-center justify-between px-3">
+                  <div className="flex items-center space-x-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-blue-400" />
+                    <span className="w-8 h-2 rounded bg-blue-900/80" />
+                  </div>
+                  {config.temaVisual === 'midnight' && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-600 text-white">
+                      Ativo
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center justify-between w-full">
+                  <span className="text-xs font-bold text-blue-400">Meia-noite</span>
+                  <span className="text-[10px] text-slate-400">Azul profundo</span>
+                </div>
+              </button>
 
-              <div
-                data-theme-preview
+              {/* Opção 3: Tema Claro */}
+              <button
+                type="button"
+                data-theme-preview="true"
                 onClick={() => handleSelecionarTema('light')}
-                className={`p-4 rounded-xl border cursor-pointer transition flex flex-col justify-between h-32 ${
+                className={`p-4 rounded-xl border text-left cursor-pointer transition flex flex-col justify-between h-32 ${
                   config.temaVisual === 'light'
-                    ? 'border-blue-500 bg-[#f4f5f8] ring-2 ring-blue-500/30'
-                    : 'border-zinc-800/80 bg-[#f4f5f8] hover:border-zinc-700'
+                    ? 'border-blue-500 bg-[#f1f5f9] ring-2 ring-blue-500/40 shadow-md'
+                    : 'border-slate-300 bg-[#f1f5f9] hover:border-blue-500/60'
                 }`}
               >
-                <div className="w-full h-12 rounded-lg bg-white border border-gray-300 opacity-80" />
-                <span className="text-xs font-semibold text-gray-800">Claro</span>
-              </div>
+                <div className="w-full h-12 rounded-lg bg-white border border-slate-300 flex items-center justify-between px-3 shadow-xs">
+                  <div className="flex items-center space-x-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-blue-600" />
+                    <span className="w-8 h-2 rounded bg-slate-300" />
+                  </div>
+                  {config.temaVisual === 'light' && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-600 text-white">
+                      Ativo
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center justify-between w-full">
+                  <span className="text-xs font-bold text-slate-900">Claro</span>
+                  <span className="text-[10px] text-slate-600">Fundo branco</span>
+                </div>
+              </button>
             </div>
           </div>
         </div>
@@ -356,19 +477,19 @@ export const Configuracoes: React.FC = () => {
         </div>
       )}
 
-      {/* ================= BARRA INFERIOR ================= */}
+      {/* ================= BARRA INFERIOR: SALVAR CONFIGURAÇÕES ================= */}
       <div className="flex items-center justify-between pt-2">
         <div>
           {salvandoFeedback && (
             <span className="text-xs font-bold text-emerald-400 flex items-center space-x-1.5">
               <span>✓</span>
-              <span>Configurações salvas e aplicadas em todo o sistema!</span>
+              <span>{mensagemFeedback}</span>
             </span>
           )}
-          {erroSalvar && <span className="text-xs font-bold text-red-400">{erroSalvar}</span>}
         </div>
 
         <button
+          type="button"
           onClick={handleSalvar}
           className="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-bold rounded-xl text-xs transition shadow-md shadow-blue-600/20"
         >
