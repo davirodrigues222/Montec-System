@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from './services/supabaseClient';
 import { Auth } from './pages/Auth';
 import { Layout } from './components/Layout';
@@ -16,6 +16,9 @@ import { FuncionariosCadastro } from './pages/cadastros/FuncionariosCadastro';
 import { FormasPagamentoCadastro } from './pages/cadastros/FormasPagamentoCadastro';
 import { AcessoFuncionario } from './pages/AcessoFuncionario';
 import { LandingPage } from './pages/landing/LandingPage';
+import { OperadorContext } from './contexts/OperadorContext';
+import { type AbaSistema, type Operador, podeAcessar, podeAcessarAba, primeiraAbaPermitida } from './services/acesso';
+import type { SecaoCadastro } from './types';
 
 // Marca que este navegador já entrou no sistema: na próxima visita vai direto ao login
 const CHAVE_JA_ACESSOU = 'montec_ja_acessou';
@@ -37,22 +40,58 @@ const limparParametroInicio = () => {
   url.searchParams.delete('inicio');
   window.history.replaceState(null, '', url.pathname + url.search + url.hash);
 };
-import { OperadorContext } from './contexts/OperadorContext';
-import { type AbaSistema, type Operador, podeAcessar, podeAcessarAba, primeiraAbaPermitida } from './services/acesso';
-import type { SecaoCadastro } from './types';
+
+// Funcionário identificado na aba atual. Fica no sessionStorage (apagado ao fechar a aba ou o app)
+// e só é reaproveitado quando a página foi RECARREGADA (F5). Abrir o sistema de novo, voltar de
+// outro site ou duplicar a aba pede código e senha outra vez; sair da conta também limpa.
+const CHAVE_OPERADOR_SESSAO = 'montec_operador_sessao';
+
+interface SessaoOperador {
+  userId: string;
+  operador: Operador;
+  aba: AbaSistema;
+  secao: SecaoCadastro;
+}
+
+const foiRecarregamento = () => {
+  try {
+    const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
+    return nav?.type === 'reload';
+  } catch {
+    return false;
+  }
+};
+
+const lerSessaoOperador = (): SessaoOperador | null => {
+  try {
+    if (!foiRecarregamento()) {
+      sessionStorage.removeItem(CHAVE_OPERADOR_SESSAO);
+      return null;
+    }
+    const salvo = sessionStorage.getItem(CHAVE_OPERADOR_SESSAO);
+    const sessao = salvo ? (JSON.parse(salvo) as SessaoOperador) : null;
+    return sessao?.userId && sessao.operador ? sessao : null;
+  } catch {
+    return null;
+  }
+};
+
+// Lido uma única vez, quando a página carrega
+const sessaoOperadorRestaurada = lerSessaoOperador();
 
 export default function App() {
   const [session, setSession] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<AbaSistema>('dashboard');
-  const [secaoCadastro, setSecaoCadastro] = useState<SecaoCadastro>('clientes');
+  const [activeTab, setActiveTab] = useState<AbaSistema>(sessaoOperadorRestaurada?.aba ?? 'dashboard');
+  const [secaoCadastro, setSecaoCadastro] = useState<SecaoCadastro>(sessaoOperadorRestaurada?.secao ?? 'clientes');
 
-  // Funcionário que está operando o sistema. Fica só em memória: toda abertura do sistema
-  // (inclusive com a sessão da conta já salva, ou após F5) pede código e senha de novo.
-  const [operador, setOperador] = useState<Operador | null>(null);
+  // Funcionário que está operando o sistema (restaurado só após F5 na mesma aba e na mesma conta)
+  const [operador, setOperador] = useState<Operador | null>(sessaoOperadorRestaurada?.operador ?? null);
+  const contaDoOperador = useRef<string | null>(sessaoOperadorRestaurada?.userId ?? null);
   const userId: string | undefined = session?.user?.id;
+
   useEffect(() => {
-    setOperador(null); // troca de conta ou logout: exige nova identificação
+    if (loading) return; // sessão da conta ainda sendo lida
     if (userId) {
       try {
         localStorage.setItem(CHAVE_JA_ACESSOU, '1');
@@ -60,7 +99,26 @@ export default function App() {
         /* armazenamento indisponível: só não lembra na próxima visita */
       }
     }
-  }, [userId]);
+    // Mesma conta (ex.: depois do F5): mantém o funcionário. Troca de conta ou logout: exige nova identificação.
+    if (userId && contaDoOperador.current === userId) return;
+    contaDoOperador.current = userId ?? null;
+    setOperador(null);
+  }, [loading, userId]);
+
+  // Guarda o funcionário e a tela atual para sobreviver ao F5; remove ao sair ou trocar de funcionário
+  useEffect(() => {
+    if (loading) return;
+    try {
+      if (operador && userId) {
+        const sessao: SessaoOperador = { userId, operador, aba: activeTab, secao: secaoCadastro };
+        sessionStorage.setItem(CHAVE_OPERADOR_SESSAO, JSON.stringify(sessao));
+      } else {
+        sessionStorage.removeItem(CHAVE_OPERADOR_SESSAO);
+      }
+    } catch {
+      /* armazenamento indisponível: o F5 volta a pedir a identificação */
+    }
+  }, [loading, operador, userId, activeTab, secaoCadastro]);
 
   // Fluxo público (sem login): página inicial -> entrar / criar conta
   const [telaPublica, setTelaPublica] = useState<TelaPublica>(() =>
@@ -111,7 +169,7 @@ export default function App() {
       <div className="min-h-screen bg-[#080c14] flex flex-col items-center justify-center text-white space-y-4">
         <div className="w-10 h-10 border-4 border-blue-500/20 border-t-blue-500 rounded-full animate-spin" />
         <p className="text-xs text-zinc-400 font-medium tracking-wider uppercase">
-          Carregando Sampaio Cell...
+          Carregando sistema...
         </p>
       </div>
     );
@@ -125,7 +183,7 @@ export default function App() {
     return (
       <Auth
         key={telaPublica}
-        modoInicial={telaPublica}
+        modoInicial={telaPublica === 'cadastro' ? 'cadastro' : 'login'}
         onVoltar={() => {
           setTelaPublica('inicio');
           window.scrollTo(0, 0);

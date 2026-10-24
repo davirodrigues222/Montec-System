@@ -1188,24 +1188,6 @@ export function validarElegibilidadeGarantiaOS(
   };
 }
 
-export async function calcularOrcamento(
-  itens: any[],
-  descontoGeral: { valor: number } = { valor: 0 }
-): Promise<any> {
-  const custoPeca = Number(itens[0]?.custoPeca) || 0;
-  const freteReal = Number(itens[0]?.freteReal) || 0;
-  const desconto = Number(descontoGeral?.valor) || 0;
-  const subtotalEstimado = custoPeca * 2 + freteReal;
-  const valorTotal = Math.max(0, subtotalEstimado - desconto);
-
-  return {
-    subtotalServicos: subtotalEstimado,
-    descontoGeralAplicado: desconto,
-    valorTotalOrcamento: valorTotal,
-    lucroTotalEstimadoInterno: valorTotal - (custoPeca + freteReal),
-  };
-}
-
 export async function buscarClientes(): Promise<any[]> {
   try {
     const { data, error } = await supabase.from('clientes').select('*').order('nome', { ascending: true });
@@ -1246,6 +1228,31 @@ function formatarDataParaBanco(dataStr: string): string {
   return new Date(`${dataStr}T12:00:00`).toISOString();
 }
 
+/** UUID para novos registros; o prefixo só é usado em ambientes sem crypto.randomUUID. */
+function gerarId(prefixo: string): string {
+  return crypto.randomUUID ? crypto.randomUUID() : `${prefixo}_${Math.random().toString(36).substring(2, 11)}`;
+}
+
+/**
+ * Normaliza a coluna garantia_json para a lista de retornos em garantia.
+ * Aceita o formato atual (array), o objeto { listaRetornos } e o legado com um único retorno.
+ */
+function extrairListaRetornosGarantia(garantiaJson: any): any[] {
+  let garantiaRaw = garantiaJson;
+  if (typeof garantiaRaw === 'string') {
+    try {
+      garantiaRaw = JSON.parse(garantiaRaw);
+    } catch {
+      return [];
+    }
+  }
+  if (Array.isArray(garantiaRaw)) return garantiaRaw;
+  if (garantiaRaw && typeof garantiaRaw === 'object') {
+    return Array.isArray(garantiaRaw.listaRetornos) ? garantiaRaw.listaRetornos : [garantiaRaw];
+  }
+  return [];
+}
+
 // ==========================================
 // 4. ORDENS DE SERVIÇO (CRIAÇÃO, RASCUNHO E EDIÇÃO)
 // ==========================================
@@ -1271,7 +1278,7 @@ export async function criarOrdemServico(payload: {
   pagamentos?: any[];
 }): Promise<{ idOs: string; numeroOs: string }> {
   const numeroOsGerado = `OS-${Math.floor(100000 + Math.random() * 900000)}`;
-  const idOsGerado = crypto.randomUUID ? crypto.randomUUID() : 'os_' + Math.random().toString(36).substring(2, 11);
+  const idOsGerado = gerarId('os');
 
   let idClienteFinal = payload.cliente?.idCliente;
   if (!idClienteFinal && payload.cliente?.nome) {
@@ -1284,7 +1291,7 @@ export async function criarOrdemServico(payload: {
     if (clienteExistente?.id_cliente) {
       idClienteFinal = clienteExistente.id_cliente;
     } else {
-      const novoIdCliente = crypto.randomUUID ? crypto.randomUUID() : 'cli_' + Math.random().toString(36).substring(2, 11);
+      const novoIdCliente = gerarId('cli');
       const { error: erroCli } = await supabase.from('clientes').insert([{
         id_cliente: novoIdCliente,
         nome: payload.cliente.nome.trim(),
@@ -1316,7 +1323,7 @@ export async function criarOrdemServico(payload: {
     if (aparelhoExistente?.id_aparelho) {
       idAparelhoFinal = aparelhoExistente.id_aparelho;
     } else {
-      const novoIdAparelho = crypto.randomUUID ? crypto.randomUUID() : 'apr_' + Math.random().toString(36).substring(2, 11);
+      const novoIdAparelho = gerarId('apr');
       const { error: erroApr } = await supabase.from('aparelhos_cliente').insert([{
         id_aparelho: novoIdAparelho,
         id_cliente: idClienteFinal,
@@ -1560,21 +1567,7 @@ export async function buscarOrdensServico(): Promise<any[]> {
     if (error) throw error;
 
     return (data || []).map((item: any) => {
-      let garantiaRaw = item.garantia_json;
-      if (typeof garantiaRaw === 'string') {
-        try { garantiaRaw = JSON.parse(garantiaRaw); } catch (e) { garantiaRaw = null; }
-      }
-
-      let listaRetornos: any[] = [];
-      if (Array.isArray(garantiaRaw)) {
-        listaRetornos = garantiaRaw;
-      } else if (garantiaRaw && typeof garantiaRaw === 'object') {
-        if (Array.isArray(garantiaRaw.listaRetornos)) {
-          listaRetornos = garantiaRaw.listaRetornos;
-        } else {
-          listaRetornos = [garantiaRaw];
-        }
-      }
+      const listaRetornos = extrairListaRetornosGarantia(item.garantia_json);
 
       let custoTotalGarantiaOS = 0;
       listaRetornos.forEach((g: any) => {
@@ -1592,7 +1585,7 @@ export async function buscarOrdensServico(): Promise<any[]> {
 
       // Resgata pagamentos estruturados (misto ou único)
       let pagamentosLista: any[] = [];
-      const pagamentosRaw = item.checklist_entrada?.__pagamentos || (item as any).pagamentos || item.orcamentoCalculado?.pagamentos;
+      const pagamentosRaw = item.checklist_entrada?.__pagamentos || item.pagamentos || item.orcamentoCalculado?.pagamentos;
       if (Array.isArray(pagamentosRaw) && pagamentosRaw.length > 0) {
         pagamentosLista = pagamentosRaw;
       } else if (item.forma_pagamento) {
@@ -1710,23 +1703,7 @@ export async function registrarGarantiaOS(
     throw new Error(validacao.motivo || 'Esta Ordem de Serviço não é elegível para retorno em garantia.');
   }
 
-  let listaRetornos: any[] = [];
-  let garantiaRaw = osAtual?.garantia_json;
-
-  if (typeof garantiaRaw === 'string') {
-    try { garantiaRaw = JSON.parse(garantiaRaw); } catch (e) { garantiaRaw = null; }
-  }
-
-  if (Array.isArray(garantiaRaw)) {
-    listaRetornos = garantiaRaw;
-  } else if (garantiaRaw && typeof garantiaRaw === 'object') {
-    if (Array.isArray(garantiaRaw.listaRetornos)) {
-      listaRetornos = garantiaRaw.listaRetornos;
-    } else {
-      listaRetornos = [garantiaRaw];
-    }
-  }
-
+  const listaRetornos = extrairListaRetornosGarantia(osAtual.garantia_json);
   listaRetornos.push({
     ...garantia,
     prazoGarantiaDiasOriginal: validacao.prazoDias,

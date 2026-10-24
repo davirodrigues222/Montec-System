@@ -29,7 +29,7 @@ function createWindow() {
   });
 
   // Listener IPC caso queiras disparar impressão diretamente de botões no React
-  ipcMain.handle('print-to-pdf-or-printer', async (event) => {
+  ipcMain.handle('print-to-pdf-or-printer', async () => {
     mainWindow.webContents.print({ silent: false, printBackground: true }, (success, failureReason) => {
       if (!success) console.log('Falha ao imprimir: ', failureReason);
     });

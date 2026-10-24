@@ -7,15 +7,13 @@ import {
   salvarMetaFinanceiraConta,
 } from '../services/api';
 import type { OrdemServico } from '../types';
-
-const formatarMoedaBR = (valor: number) =>
-  valor.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+import { formatarValor } from '../utils/formatadores';
 
 export const Relatorios: React.FC = () => {
   const [ordens, setOrdens] = useState<OrdemServico[]>([]);
   const [loading, setLoading] = useState(true);
   const [metaFinanceira, setMetaFinanceira] = useState<number>(() => obterMetaFinanceiraConta());
-  const [metaInput, setMetaInput] = useState<string>(() => formatarMoedaBR(obterMetaFinanceiraConta()));
+  const [metaInput, setMetaInput] = useState<string>(() => formatarValor(obterMetaFinanceiraConta()));
   const [editandoMeta, setEditandoMeta] = useState(false);
   const [salvandoMeta, setSalvandoMeta] = useState(false);
   const [erroMeta, setErroMeta] = useState<string | null>(null);
@@ -34,7 +32,7 @@ export const Relatorios: React.FC = () => {
     setLoading(true);
     try {
       const data = await buscarOrdensServico();
-      setOrdens(Array.isArray(data) ? data : []);
+      setOrdens(data);
     } catch (err) {
       console.error('Erro ao buscar relatórios:', err);
     } finally {
@@ -64,7 +62,7 @@ export const Relatorios: React.FC = () => {
   const valorRestanteMeta = Math.max(0, metaFinanceira - valorAlcancadoMeta);
 
   const iniciarEdicaoMeta = () => {
-    setMetaInput(formatarMoedaBR(metaFinanceira));
+    setMetaInput(formatarValor(metaFinanceira));
     setErroMeta(null);
     setEditandoMeta(true);
   };
@@ -82,7 +80,7 @@ export const Relatorios: React.FC = () => {
     try {
       const { valorSalvo } = await salvarMetaFinanceiraConta(validacao.valor);
       setMetaFinanceira(valorSalvo);
-      setMetaInput(formatarMoedaBR(valorSalvo));
+      setMetaInput(formatarValor(valorSalvo));
       setEditandoMeta(false);
       // Avisa o Dashboard para atualizar o card "Meta de faturamento"
       window.dispatchEvent(new Event('storage_configs_updated'));
@@ -132,10 +130,7 @@ export const Relatorios: React.FC = () => {
         if (dataFimPersonalizada && dataOsStr > dataFimPersonalizada) return false;
         return true;
       }
-      if (mesSelecionado === 'TODOS') {
-        return true;
-      }
-      return true;
+      return true; // TODOS
     });
   }, [ordens, mesSelecionado, dataInicioPersonalizada, dataFimPersonalizada]);
 
@@ -144,7 +139,7 @@ export const Relatorios: React.FC = () => {
   const faturamentoBruto = useMemo(() => {
     return ordensFiltradas.reduce((acc, os) => {
       const valor = Number(
-        os.orcamentoCalculado?.valorTotalOrcamento || (os as any).valor_total || 0
+        os.orcamentoCalculado?.valorTotalOrcamento || os.valor_total || 0
       );
       return acc + valor;
     }, 0);
@@ -152,7 +147,7 @@ export const Relatorios: React.FC = () => {
 
   // Faturamento Líquido (se houver desconto aplicado na OS)
   const faturamentoLiquido = useMemo(() => {
-    return ordensFiltradas.reduce((acc, os: any) => {
+    return ordensFiltradas.reduce((acc, os) => {
       const bruto = Number(os.orcamentoCalculado?.valorTotalOrcamento || os.valor_total || 0);
       const liq = os.valorLiquido !== undefined && os.valorLiquido !== null ? Number(os.valorLiquido) : bruto;
       return acc + liq;
@@ -161,19 +156,19 @@ export const Relatorios: React.FC = () => {
 
   // 2. Custos Operacionais detalhados
   const custoPecas = useMemo(() => {
-    return ordensFiltradas.reduce((acc, os: any) => {
+    return ordensFiltradas.reduce((acc, os) => {
       return acc + Number(os.orcamentoCalculado?.custoPeca || os.custo_peca || 0);
     }, 0);
   }, [ordensFiltradas]);
 
   const custoFretes = useMemo(() => {
-    return ordensFiltradas.reduce((acc, os: any) => {
+    return ordensFiltradas.reduce((acc, os) => {
       return acc + Number(os.orcamentoCalculado?.freteReal || os.frete_real || 0);
     }, 0);
   }, [ordensFiltradas]);
 
   const custoGarantias = useMemo(() => {
-    return ordensFiltradas.reduce((acc, os: any) => {
+    return ordensFiltradas.reduce((acc, os) => {
       return (
         acc +
         Number(
@@ -205,7 +200,7 @@ export const Relatorios: React.FC = () => {
   // CÁLCULO DE RECEITA POR SEMANA (Dividido em 5 semanas do mês)
   const dadosSemanas = useMemo(() => {
     const semanas = [0, 0, 0, 0, 0];
-    ordensFiltradas.forEach((os: any) => {
+    ordensFiltradas.forEach((os) => {
       if (!os.data_abertura) return;
       const dia = new Date(os.data_abertura).getDate();
       const valor = Number(os.orcamentoCalculado?.valorTotalOrcamento || os.valor_total || 0);
@@ -229,7 +224,7 @@ export const Relatorios: React.FC = () => {
     }
 
     const cabecalho = 'Numero OS,Cliente,Aparelho,Servico,Data Abertura,Status,Valor Total,Custo Peca,Frete,Garantia,Lucro Estimado\n';
-    const linhas = ordensFiltradas.map((os: any) => {
+    const linhas = ordensFiltradas.map((os) => {
       const numOs = os.numero_os || '';
       const cli = `"${(os.cliente?.nome || '').replace(/"/g, '""')}"`;
       const apr = `"${(os.aparelho?.modelo || '').replace(/"/g, '""')}"`;
@@ -347,7 +342,7 @@ export const Relatorios: React.FC = () => {
             </div>
           </div>
           <h3 className="text-base sm:text-2xl lg:text-3xl font-extrabold text-white mt-1 sm:mt-3 tracking-tight truncate">
-            R$ {faturamentoBruto.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            R$ {formatarValor(faturamentoBruto)}
           </h3>
           <p className="text-[10px] sm:text-[11px] text-emerald-400 mt-1 sm:mt-2 font-semibold flex items-center truncate">
             <span>+8,4% no período</span>
@@ -368,7 +363,7 @@ export const Relatorios: React.FC = () => {
             </div>
           </div>
           <h3 className="text-base sm:text-2xl lg:text-3xl font-extrabold text-white mt-1 sm:mt-3 tracking-tight truncate">
-            R$ {custosTotais.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            R$ {formatarValor(custosTotais)}
           </h3>
           <p className="text-[10px] sm:text-[11px] text-zinc-400 mt-1 sm:mt-2 font-medium truncate">
             Peças, fretes e garantias
@@ -388,7 +383,7 @@ export const Relatorios: React.FC = () => {
             </div>
           </div>
           <h3 className="text-base sm:text-2xl lg:text-3xl font-extrabold text-white mt-1 sm:mt-3 tracking-tight truncate">
-            R$ {lucroLiquido.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            R$ {formatarValor(lucroLiquido)}
           </h3>
           <p className="text-[10px] sm:text-[11px] text-zinc-400 mt-1 sm:mt-2 font-medium truncate">
             {margemLucro}% de margem
@@ -408,7 +403,7 @@ export const Relatorios: React.FC = () => {
             </div>
           </div>
           <h3 className="text-base sm:text-2xl lg:text-3xl font-extrabold text-white mt-1 sm:mt-3 tracking-tight truncate">
-            R$ {ticketMedio.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            R$ {formatarValor(ticketMedio)}
           </h3>
           <p className="text-[10px] sm:text-[11px] text-zinc-400 mt-1 sm:mt-2 font-medium truncate">
             {totalAtendimentos} {totalAtendimentos === 1 ? 'atendimento' : 'atendimentos'}
@@ -482,11 +477,11 @@ export const Relatorios: React.FC = () => {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4 mt-5">
           <div className="p-3 sm:p-4 bg-[#080c14] border border-zinc-800/80 rounded-xl min-w-0">
             <span className="text-[10px] sm:text-[11px] font-bold text-zinc-400 uppercase tracking-wider">Meta definida</span>
-            <p className="text-sm sm:text-lg font-extrabold text-white mt-1 truncate">R$ {formatarMoedaBR(metaFinanceira)}</p>
+            <p className="text-sm sm:text-lg font-extrabold text-white mt-1 truncate">R$ {formatarValor(metaFinanceira)}</p>
           </div>
           <div className="p-3 sm:p-4 bg-[#080c14] border border-zinc-800/80 rounded-xl min-w-0">
             <span className="text-[10px] sm:text-[11px] font-bold text-zinc-400 uppercase tracking-wider">Valor alcançado</span>
-            <p className="text-sm sm:text-lg font-extrabold text-emerald-400 mt-1 truncate">R$ {formatarMoedaBR(valorAlcancadoMeta)}</p>
+            <p className="text-sm sm:text-lg font-extrabold text-emerald-400 mt-1 truncate">R$ {formatarValor(valorAlcancadoMeta)}</p>
           </div>
           <div className="p-3 sm:p-4 bg-[#080c14] border border-zinc-800/80 rounded-xl min-w-0">
             <span className="text-[10px] sm:text-[11px] font-bold text-zinc-400 uppercase tracking-wider">Progresso</span>
@@ -496,7 +491,7 @@ export const Relatorios: React.FC = () => {
           </div>
           <div className="p-3 sm:p-4 bg-[#080c14] border border-zinc-800/80 rounded-xl min-w-0">
             <span className="text-[10px] sm:text-[11px] font-bold text-zinc-400 uppercase tracking-wider">Valor restante</span>
-            <p className="text-sm sm:text-lg font-extrabold text-amber-400 mt-1 truncate">R$ {formatarMoedaBR(valorRestanteMeta)}</p>
+            <p className="text-sm sm:text-lg font-extrabold text-amber-400 mt-1 truncate">R$ {formatarValor(valorRestanteMeta)}</p>
           </div>
         </div>
 
@@ -564,7 +559,7 @@ export const Relatorios: React.FC = () => {
             <div className="pb-5 border-b border-zinc-800/60 mb-6">
               <h3 className="text-sm font-bold text-white">Composição dos custos</h3>
               <p className="text-xs text-zinc-400 mt-0.5">
-                Total de R$ {custosTotais.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} no período
+                Total de R$ {formatarValor(custosTotais)} no período
               </p>
             </div>
 
@@ -575,7 +570,7 @@ export const Relatorios: React.FC = () => {
                   <span className="font-medium text-zinc-300">Peças e componentes</span>
                   <div className="space-x-2">
                     <span className="font-bold text-white">
-                      R$ {custoPecas.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      R$ {formatarValor(custoPecas)}
                     </span>
                     <span className="text-zinc-400 font-semibold">{percentPecas}%</span>
                   </div>
@@ -594,7 +589,7 @@ export const Relatorios: React.FC = () => {
                   <span className="font-medium text-zinc-300">Fretes</span>
                   <div className="space-x-2">
                     <span className="font-bold text-white">
-                      R$ {custoFretes.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      R$ {formatarValor(custoFretes)}
                     </span>
                     <span className="text-zinc-400 font-semibold">{percentFretes}%</span>
                   </div>
@@ -613,7 +608,7 @@ export const Relatorios: React.FC = () => {
                   <span className="font-medium text-zinc-300">Garantias e retornos</span>
                   <div className="space-x-2">
                     <span className="font-bold text-white">
-                      R$ {custoGarantias.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      R$ {formatarValor(custoGarantias)}
                     </span>
                     <span className="text-zinc-400 font-semibold">{percentGarantias}%</span>
                   </div>

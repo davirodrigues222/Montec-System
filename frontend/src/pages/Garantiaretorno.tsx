@@ -30,33 +30,20 @@ export const GarantiaRetorno: React.FC = () => {
   const carregarOrdens = async () => {
     setLoading(true);
     try {
-      const [dataOrdens, dataServicos] = await Promise.all([
+      const [listaOrdens, listaServicos] = await Promise.all([
         buscarOrdensServico(),
         buscarServicosCadastrados(),
       ]);
 
-      const listaOrdens = Array.isArray(dataOrdens) ? dataOrdens : [];
-      const listaServicos = Array.isArray(dataServicos) ? dataServicos : [];
-
       setOrdens(listaOrdens);
       setServicosCadastrados(listaServicos);
 
-      // Seleciona automaticamente apenas a primeira OS que seja efetivamente ELEGÍVEL
-      if (listaOrdens.length > 0) {
-        if (osSelecionada) {
-          const osAtualizada = listaOrdens.find((o) => o.id_os === osSelecionada.id_os);
-          if (osAtualizada && validarElegibilidadeGarantiaOS(osAtualizada, { servicosCadastrados: listaServicos }).elegivel) {
-            setOsSelecionada(osAtualizada);
-            return;
-          }
-        }
-        const primeiraElegivel = listaOrdens.find(
-          (os) => validarElegibilidadeGarantiaOS(os, { servicosCadastrados: listaServicos }).elegivel
-        );
-        setOsSelecionada(primeiraElegivel || null);
-      } else {
-        setOsSelecionada(null);
-      }
+      // Mantém a OS já selecionada (se continuar elegível); senão, seleciona a primeira elegível
+      const elegivel = (os: OrdemServico) => checarElegibilidade(os, listaServicos).elegivel;
+      const osAtualizada = osSelecionada && listaOrdens.find((o) => o.id_os === osSelecionada.id_os);
+      setOsSelecionada(
+        osAtualizada && elegivel(osAtualizada) ? osAtualizada : listaOrdens.find(elegivel) || null
+      );
     } catch (err) {
       console.error('Erro ao carregar ordens para garantia:', err);
       setOrdens([]);

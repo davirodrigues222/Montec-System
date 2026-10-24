@@ -1,5 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import type { OrdemServico } from '../types';
+import { obterConfiguracoesLojaSincrono } from '../services/api';
+import { itensVisiveisChecklist, rotuloItemChecklist } from '../utils/checklist';
 
 interface Props {
   os: OrdemServico;
@@ -7,20 +9,15 @@ interface Props {
 }
 
 export const CertidaoGarantia: React.FC<Props> = ({ os, onClose }) => {
-  const [nomeLoja, setNomeLoja] = useState<string>('Sampaio Cell');
-
-  useEffect(() => {
-    const savedName = localStorage.getItem('sig_apple_nome_loja');
-    if (savedName) {
-      setNomeLoja(savedName);
-    }
-  }, []);
+  // Identidade da conta ativa (a loja principal grava nome, CNPJ, telefone e endereço nestas configurações)
+  const { nomeLoja } = obterConfiguracoesLojaSincrono();
 
   const handlePrint = () => {
     window.print();
   };
 
   const valorTotal = os.orcamentoCalculado?.valorTotalOrcamento || 0;
+  const itensChecklist = itensVisiveisChecklist(os.checklistEntrada);
 
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto print:static print:bg-white print:p-0 print:block">
@@ -79,13 +76,13 @@ export const CertidaoGarantia: React.FC<Props> = ({ os, onClose }) => {
           </div>
 
           {/* Checklist de Entrada */}
-          {os.checklistEntrada && (
+          {itensChecklist.length > 0 && (
             <div>
               <h3 className="font-bold text-zinc-800 mb-2">Checklist de Entrada do Dispositivo</h3>
               <div className="grid grid-cols-4 gap-2 text-xs">
-                {Object.entries(os.checklistEntrada).map(([item, status]) => (
+                {itensChecklist.map(([item, status]) => (
                   <div key={item} className="p-2 border rounded bg-zinc-50 flex justify-between items-center">
-                    <span className="capitalize">{item.replace(/([A-Z])/g, ' $1')}:</span>
+                    <span>{rotuloItemChecklist(item)}:</span>
                     <span className={`font-semibold ${status === 'OK' ? 'text-emerald-700' : status === 'DEFEITO' ? 'text-rose-700' : 'text-amber-700'}`}>
                       {status}
                     </span>

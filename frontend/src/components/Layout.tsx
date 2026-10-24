@@ -12,8 +12,8 @@ import { CARGOS, EVENTO_LOJAS_ATUALIZADAS, type Loja, listarLojas } from '../ser
 
 interface Props {
   children: React.ReactNode;
-  activeTab: 'dashboard' | 'relatorios' | 'historico' | 'configuracoes' | 'nova-os' | 'garantia-retorno' | 'cadastros';
-  setActiveTab: (tab: 'dashboard' | 'relatorios' | 'historico' | 'configuracoes' | 'nova-os' | 'garantia-retorno' | 'cadastros') => void;
+  activeTab: AbaSistema;
+  setActiveTab: (tab: AbaSistema) => void;
   session?: any;
   secaoCadastro?: SecaoCadastro;
   setSecaoCadastro?: (secao: SecaoCadastro) => void;
@@ -62,8 +62,8 @@ export const Layout: React.FC<Props> = ({
     setMenuAberto(false);
   };
 
-  // Dados da Assistência Técnica do Cliente (ex: Sampaio Cell)
-  const [nomeLoja, setNomeLoja] = useState<string>('Sampaio Cell');
+  // Identidade da assistência técnica da conta (preenchida por carregarConfigs)
+  const [nomeLoja, setNomeLoja] = useState<string>('Minha Assistência');
   const [subtitulo, setSubtitulo] = useState<string>('Assistência Técnica');
   const [logoUrl, setLogoUrl] = useState<string>('');
 
@@ -460,7 +460,8 @@ export const Layout: React.FC<Props> = ({
             </button>
             <button
               onClick={handleLogout}
-              title="Desconectar do sistema"
+              title="Sair da conta (desconectar do sistema)"
+              aria-label="Sair da conta"
               className="p-2 text-zinc-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-xl transition shrink-0 ml-2"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
@@ -564,6 +565,8 @@ export const Layout: React.FC<Props> = ({
                       <p className="text-[11px] text-zinc-400 truncate">{userCargo}</p>
                       {lojaAtual && <p className="text-[11px] text-zinc-500 truncate mt-1">Loja: {lojaAtual.nome}</p>}
                     </div>
+                    {/* Sai só do funcionário: a conta continua conectada e volta a tela de código e senha.
+                        Desconectar a conta fica apenas no botão do rodapé da barra lateral. */}
                     <button
                       type="button"
                       role="menuitem"
@@ -571,20 +574,12 @@ export const Layout: React.FC<Props> = ({
                         setMenuPerfilAberto(false);
                         trocarFuncionario();
                       }}
-                      className="w-full text-left px-4 py-2.5 text-xs font-semibold text-zinc-300 hover:text-white hover:bg-zinc-800/50 transition"
-                    >
-                      Trocar funcionário
-                    </button>
-                    <button
-                      type="button"
-                      role="menuitem"
-                      onClick={() => {
-                        setMenuPerfilAberto(false);
-                        handleLogout();
-                      }}
                       className="w-full text-left px-4 py-2.5 text-xs font-semibold text-rose-400 hover:bg-rose-500/10 transition"
                     >
-                      Sair da conta
+                      Sair do funcionário
+                      <span className="block text-[10px] font-medium text-zinc-500 mt-0.5">
+                        Pede o código e a senha de novo
+                      </span>
                     </button>
                   </div>
                 </>

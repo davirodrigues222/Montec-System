@@ -4,18 +4,30 @@ import {
   excluirOrdemServico,
   editarOrdemServico,
   buscarFornecedores,
+  obterConfiguracoesLojaSincrono,
 } from "../services/api";
 import { StatusBadge } from "../components/StatusBadge";
 import { useOperador } from "../contexts/OperadorContext";
 import type { OrdemServico, StatusOS } from "../types";
+import { ITENS_CHECKLIST, OPCOES_CHECKLIST, itensVisiveisChecklist, rotuloItemChecklist } from "../utils/checklist";
 
-interface DadosLojaConfig {
-  nomeLoja: string;
-  subtitulo: string;
-  telefone: string;
-  cnpjCpf: string;
-  endereco?: string;
-}
+// Classe das abas dos modais de detalhes e edição
+const classeAba = (ativa: boolean) =>
+  `px-4 py-2.5 font-bold transition border-b-2 ${
+    ativa ? "border-blue-500 text-blue-400 bg-zinc-900/50" : "border-transparent text-zinc-400"
+  }`;
+
+// Dados da conta ativa impressos no cabeçalho da OS (a loja principal grava nome, CNPJ, telefone e endereço)
+const lerDadosLoja = () => {
+  const cfg = obterConfiguracoesLojaSincrono();
+  return {
+    nomeLoja: cfg.nomeLoja || "Davi.tec",
+    subtitulo: cfg.subtitulo || "Assistência Técnica & Microeletrônica Especializada",
+    telefone: cfg.telefone,
+    cnpjCpf: cfg.cnpj,
+    endereco: cfg.endereco,
+  };
+};
 
 export const HistoricoServicos: React.FC = () => {
   const [ordens, setOrdens] = useState<OrdemServico[]>([]);
@@ -25,39 +37,7 @@ export const HistoricoServicos: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [termoBusca, setTermoBusca] = useState("");
 
-  const [dadosLoja, setDadosLoja] = useState<DadosLojaConfig>({
-    nomeLoja: "Davi.tec",
-    subtitulo: "Assistência Técnica & Microeletrônica Especializada",
-    telefone: "(85) 99999-9999",
-    cnpjCpf: "",
-    endereco: "Fortaleza - Ceará",
-  });
-
-  useEffect(() => {
-    const configSalva =
-      localStorage.getItem("sig_apple_configs") ||
-      localStorage.getItem("configuracoes_loja") ||
-      localStorage.getItem("dados_loja") ||
-      localStorage.getItem("configuracoes");
-
-    if (configSalva) {
-      try {
-        const parsed = JSON.parse(configSalva);
-        setDadosLoja({
-          nomeLoja: parsed.nomeLoja || parsed.nome || "Davi.tec",
-          subtitulo:
-            parsed.subtitulo ||
-            parsed.especialidade ||
-            "Assistência Técnica & Microeletrônica Especializada",
-          telefone: parsed.telefone || parsed.whatsapp || "(85) 99999-9999",
-          cnpjCpf: parsed.cnpjCpf || parsed.cnpj || parsed.cpf || "",
-          endereco: parsed.endereco || "Fortaleza - Ceará",
-        });
-      } catch (e) {
-        console.error("Erro ao carregar configurações da loja:", e);
-      }
-    }
-  }, []);
+  const [dadosLoja] = useState(lerDadosLoja);
 
   const [osSelecionada, setOsSelecionada] = useState<OrdemServico | null>(null);
   const [osParaEditar, setOsParaEditar] = useState<OrdemServico | null>(null);
@@ -180,7 +160,7 @@ export const HistoricoServicos: React.FC = () => {
     }, 300);
   };
 
-  const abrirEdicao = (os: any) => {
+  const abrirEdicao = (os: OrdemServico) => {
     setOsParaEditar(os);
     setEditNome(os.cliente?.nome || "");
     setEditWhatsapp(os.cliente?.whatsapp || "");
@@ -272,10 +252,9 @@ export const HistoricoServicos: React.FC = () => {
       }
 
       const custoGarantiaExistente = Number(
-        (osParaEditar as any).orcamentoCalculado?.custoPecaGarantia ||
-        (osParaEditar as any).orcamentoCalculado?.custoTotalGarantia ||
-        (osParaEditar as any).garantia?.custoPecaGarantia ||
-        (osParaEditar as any).garantia?.custoTotalGarantia ||
+        osParaEditar.orcamentoCalculado?.custoPecaGarantia ||
+        osParaEditar.garantia?.custoPecaGarantia ||
+        osParaEditar.garantia?.custoTotalGarantia ||
         0
       );
 
@@ -352,6 +331,10 @@ export const HistoricoServicos: React.FC = () => {
       setExcluindo(false);
     }
   };
+
+  // Último retorno em garantia da OS aberta nos detalhes (a tela Garantias grava dataRetorno e defeitoConstatadoGarantia)
+  const ultimoRetorno = osSelecionada?.garantia?.listaRetornos?.at(-1);
+  const dataUltimoRetorno = ultimoRetorno?.dataRetorno || ultimoRetorno?.dataAcionamento;
 
   const ordensFiltradas = ordens.filter((os) => {
     if (!os) return false;
@@ -430,7 +413,7 @@ export const HistoricoServicos: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-800/50">
-                {ordensFiltradas.map((os: any) => (
+                {ordensFiltradas.map((os) => (
                   <tr
                     key={os.id_os}
                     className="hover:bg-zinc-800/30 transition"
@@ -555,31 +538,19 @@ export const HistoricoServicos: React.FC = () => {
             <div className="flex border-b border-zinc-800 bg-zinc-950/50 text-xs">
               <button
                 onClick={() => setAbaModal("detalhes")}
-                className={`px-4 py-2.5 font-bold transition border-b-2 ${
-                  abaModal === "detalhes"
-                    ? "border-blue-500 text-blue-400 bg-zinc-900/50"
-                    : "border-transparent text-zinc-400"
-                }`}
+                className={classeAba(abaModal === "detalhes")}
               >
                 Informações & Orçamento
               </button>
               <button
                 onClick={() => setAbaModal("checklist")}
-                className={`px-4 py-2.5 font-bold transition border-b-2 ${
-                  abaModal === "checklist"
-                    ? "border-blue-500 text-blue-400 bg-zinc-900/50"
-                    : "border-transparent text-zinc-400"
-                }`}
+                className={classeAba(abaModal === "checklist")}
               >
                 Checklist de Entrada
               </button>
               <button
                 onClick={() => setAbaModal("historico")}
-                className={`px-4 py-2.5 font-bold transition border-b-2 ${
-                  abaModal === "historico"
-                    ? "border-blue-500 text-blue-400 bg-zinc-900/50"
-                    : "border-transparent text-zinc-400"
-                }`}
+                className={classeAba(abaModal === "historico")}
               >
                 Linha do Tempo & Logs
               </button>
@@ -589,7 +560,7 @@ export const HistoricoServicos: React.FC = () => {
               {abaModal === "detalhes" && (
                 <div className="space-y-4 text-xs">
                   {/* Badge de Alerta de Garantia / Retorno nos Detalhes da OS */}
-                  {(osSelecionada as any).garantia && (
+                  {osSelecionada.garantia && (
                     <div className="p-3.5 bg-rose-500/10 border border-rose-500/30 rounded-xl text-rose-400 space-y-1">
                       <div className="flex items-center space-x-2 font-bold text-xs uppercase">
                         <span>🔄</span>
@@ -597,22 +568,23 @@ export const HistoricoServicos: React.FC = () => {
                       </div>
                       <p className="text-[11px] text-zinc-300">
                         <strong>Data do Acionamento:</strong>{" "}
-                        {new Date(
-                          (osSelecionada as any).garantia.dataAcionamento,
-                        ).toLocaleDateString("pt-BR")}
+                        {dataUltimoRetorno
+                          ? new Date(dataUltimoRetorno).toLocaleDateString("pt-BR")
+                          : "Não informada"}
                       </p>
                       <p className="text-[11px] text-zinc-300">
                         <strong>Motivo / Ocorrência:</strong>{" "}
-                        {(osSelecionada as any).garantia.motivoRetorno ||
+                        {ultimoRetorno?.defeitoConstatadoGarantia ||
+                          ultimoRetorno?.motivoRetorno ||
                           "Não especificado"}
                       </p>
                       {Number(
-                        (osSelecionada as any).garantia.custoPecaGarantia || 0,
+                        osSelecionada.garantia.custoPecaGarantia || 0,
                       ) > 0 && (
                         <p className="text-[11px] text-rose-300 font-semibold">
                           <strong>Custo Extra da Peça (Garantia):</strong> R${" "}
                           {Number(
-                            (osSelecionada as any).garantia.custoPecaGarantia,
+                            osSelecionada.garantia.custoPecaGarantia,
                           ).toFixed(2)}{" "}
                           (Abatido do Lucro Líquido)
                         </p>
@@ -638,10 +610,10 @@ export const HistoricoServicos: React.FC = () => {
                         Forma de Pagamento
                       </span>
                       <p className="font-semibold text-amber-400">
-                        {(osSelecionada as any).formaPagamento || "PIX"}{" "}
-                        {(osSelecionada as any).formaPagamento ===
+                        {osSelecionada.formaPagamento || "PIX"}{" "}
+                        {osSelecionada.formaPagamento ===
                         "Cartão de Crédito"
-                          ? `(${(osSelecionada as any).parcelas || 1}x)`
+                          ? `(${osSelecionada.parcelas || 1}x)`
                           : ""}
                       </p>
                     </div>
@@ -767,7 +739,7 @@ export const HistoricoServicos: React.FC = () => {
                       <p className="text-xl font-black text-purple-400 mt-1">
                         R${" "}
                         {Number(
-                          (osSelecionada as any).valorLiquido ||
+                          osSelecionada.valorLiquido ||
                             osSelecionada.orcamentoCalculado
                               ?.valorTotalOrcamento ||
                             0,
@@ -780,18 +752,15 @@ export const HistoricoServicos: React.FC = () => {
 
               {abaModal === "checklist" && (
                 <div className="grid grid-cols-2 gap-2 text-xs">
-                  {osSelecionada.checklistEntrada ? (
-                    Object.entries(osSelecionada.checklistEntrada)
-                      // Chaves "__" são metadados internos (pagamentos, garantia, desconto), não itens do checklist
-                      .filter(([item]) => !item.startsWith("__"))
-                      .map(
+                  {itensVisiveisChecklist(osSelecionada.checklistEntrada).length > 0 ? (
+                    itensVisiveisChecklist(osSelecionada.checklistEntrada).map(
                       ([item, status]) => (
                         <div
                           key={item}
                           className="p-2.5 bg-zinc-950 border border-zinc-800 rounded-lg flex justify-between items-center"
                         >
                           <span className="capitalize font-medium text-zinc-300">
-                            {item.replace(/([A-Z])/g, " $1")}
+                            {rotuloItemChecklist(item)}
                           </span>
                           <span
                             className={`px-2 py-0.5 rounded text-[10px] font-bold ${
@@ -874,31 +843,19 @@ export const HistoricoServicos: React.FC = () => {
             <div className="flex border-b border-zinc-800 bg-zinc-950/50 text-xs">
               <button
                 onClick={() => setAbaEdicao("geral")}
-                className={`px-4 py-2.5 font-bold transition border-b-2 ${
-                  abaEdicao === "geral"
-                    ? "border-blue-500 text-blue-400 bg-zinc-900/50"
-                    : "border-transparent text-zinc-400"
-                }`}
+                className={classeAba(abaEdicao === "geral")}
               >
                 1. Dados Gerais & Aparelho
               </button>
               <button
                 onClick={() => setAbaEdicao("financeiro")}
-                className={`px-4 py-2.5 font-bold transition border-b-2 ${
-                  abaEdicao === "financeiro"
-                    ? "border-blue-500 text-blue-400 bg-zinc-900/50"
-                    : "border-transparent text-zinc-400"
-                }`}
+                className={classeAba(abaEdicao === "financeiro")}
               >
                 2. Orçamento, Custos & Pagamento
               </button>
               <button
                 onClick={() => setAbaEdicao("checklist")}
-                className={`px-4 py-2.5 font-bold transition border-b-2 ${
-                  abaEdicao === "checklist"
-                    ? "border-blue-500 text-blue-400 bg-zinc-900/50"
-                    : "border-transparent text-zinc-400"
-                }`}
+                className={classeAba(abaEdicao === "checklist")}
               >
                 3. Checklist de Entrada
               </button>
@@ -1270,8 +1227,8 @@ export const HistoricoServicos: React.FC = () => {
                       ? Math.max(0, liquidoDigitado)
                       : valorComDesconto;
                     const custoGarantia = Number(
-                      (osParaEditar as any)?.orcamentoCalculado?.custoPecaGarantia ||
-                        (osParaEditar as any)?.garantia?.custoPecaGarantia ||
+                      osParaEditar.orcamentoCalculado?.custoPecaGarantia ||
+                        osParaEditar.garantia?.custoPecaGarantia ||
                         0,
                     );
                     const lucro =
@@ -1312,26 +1269,13 @@ export const HistoricoServicos: React.FC = () => {
 
               {abaEdicao === "checklist" && (
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                  {[
-                    "ligando",
-                    "touchScreen",
-                    "display",
-                    "cameraTraseira",
-                    "cameraFrontal",
-                    "microfone",
-                    "altoFalante",
-                    "conectoresCarga",
-                    "bateria",
-                    "wiFi",
-                    "bluetooth",
-                    "botoesLaterais",
-                  ].map((item) => (
+                  {ITENS_CHECKLIST.map(({ chave: item, rotulo }) => (
                     <div
                       key={item}
                       className="p-3 bg-zinc-950 border border-zinc-800 rounded-xl space-y-1.5"
                     >
-                      <span className="capitalize font-medium text-zinc-300 block text-[11px]">
-                        {item.replace(/([A-Z])/g, " $1")}
+                      <span className="font-medium text-zinc-300 block text-[11px]">
+                        {rotulo}
                       </span>
                       <select
                         value={editChecklist[item] || "OK"}
@@ -1343,9 +1287,9 @@ export const HistoricoServicos: React.FC = () => {
                         }
                         className="w-full bg-zinc-900 border border-zinc-800 rounded-lg p-1.5 text-white text-xs outline-none font-bold"
                       >
-                        <option value="OK">OK</option>
-                        <option value="DEFEITO">Defeito</option>
-                        <option value="NAO_TESTADO">Não Testado</option>
+                        {OPCOES_CHECKLIST.map((opcao) => (
+                          <option key={opcao} value={opcao}>{opcao}</option>
+                        ))}
                       </select>
                     </div>
                   ))}
@@ -1521,8 +1465,8 @@ export const HistoricoServicos: React.FC = () => {
             <div>
               <span>
                 Forma de Pagamento:{" "}
-                {(osParaImprimir as any).formaPagamento || "PIX"} (
-                {(osParaImprimir as any).parcelas || 1}x)
+                {osParaImprimir.formaPagamento || "PIX"} (
+                {osParaImprimir.parcelas || 1}x)
               </span>
             </div>
             <div className="text-sm text-blue-900">
