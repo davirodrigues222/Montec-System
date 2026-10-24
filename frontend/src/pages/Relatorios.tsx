@@ -9,6 +9,77 @@ import {
 import type { OrdemServico } from '../types';
 import { formatarValor } from '../utils/formatadores';
 
+type FiltroPeriodo = 'HOJE' | 'ATUAL' | 'ANTERIOR' | 'ANO_ATUAL' | 'TODOS' | 'PERSONALIZADO';
+
+const chaveDia = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+const somarDias = (chave: string, dias: number) => {
+  const d = new Date(`${chave}T12:00:00`);
+  d.setDate(d.getDate() + dias);
+  return chaveDia(d);
+};
+
+const valorBrutoOS = (os: OrdemServico) => Number(os.orcamentoCalculado?.valorTotalOrcamento || os.valor_total || 0);
+
+/**
+ * Ordens do período escolhido no filtro. Com deslocamento = -1 devolve o período anterior equivalente
+ * (ontem, mês anterior, ano anterior ou intervalo de mesmo tamanho imediatamente antes do personalizado).
+ * Retorna null quando não existe período anterior para comparar ("Todo o histórico" ou intervalo incompleto).
+ */
+function filtrarOrdensPorPeriodo(
+  ordens: OrdemServico[],
+  filtro: FiltroPeriodo,
+  inicioPersonalizado: string,
+  fimPersonalizado: string,
+  deslocamento: 0 | -1 = 0,
+): OrdemServico[] | null {
+  if (filtro === 'TODOS') return deslocamento === 0 ? ordens : null;
+
+  const hoje = new Date();
+  // Mês/ano de referência (ATUAL = mês corrente; ANTERIOR = mês passado), já com o deslocamento aplicado
+  const refMes = new Date(hoje.getFullYear(), hoje.getMonth() + (filtro === 'ANTERIOR' ? -1 : 0) + deslocamento, 1);
+  const anoRef = hoje.getFullYear() + deslocamento;
+  const diaRef = somarDias(chaveDia(hoje), deslocamento);
+
+  let inicio = inicioPersonalizado;
+  let fim = fimPersonalizado;
+  if (filtro === 'PERSONALIZADO' && deslocamento === -1) {
+    if (!inicio || !fim || fim < inicio) return null;
+    const dias = Math.round((new Date(`${fim}T12:00:00`).getTime() - new Date(`${inicio}T12:00:00`).getTime()) / 86400000) + 1;
+    fim = somarDias(inicio, -1);
+    inicio = somarDias(fim, -(dias - 1));
+  }
+
+  return ordens.filter((os) => {
+    if (!os.data_abertura) return false;
+    const dataOs = new Date(os.data_abertura);
+    const matchIso = String(os.data_abertura).match(/^(\d{4}-\d{2}-\d{2})/);
+    const dataOsStr = matchIso ? matchIso[1] : chaveDia(dataOs);
+
+    switch (filtro) {
+      case 'HOJE':
+        return dataOsStr === diaRef;
+      case 'ATUAL':
+      case 'ANTERIOR':
+        return dataOs.getMonth() === refMes.getMonth() && dataOs.getFullYear() === refMes.getFullYear();
+      case 'ANO_ATUAL':
+        return dataOs.getFullYear() === anoRef;
+      case 'PERSONALIZADO':
+        return (!inicio || dataOsStr >= inicio) && (!fim || dataOsStr <= fim);
+    }
+  });
+}
+
+const ROTULO_PERIODO_ANTERIOR: Record<FiltroPeriodo, string> = {
+  HOJE: 'ontem',
+  ATUAL: 'mês anterior',
+  ANTERIOR: 'mês anterior',
+  ANO_ATUAL: 'ano anterior',
+  PERSONALIZADO: 'período anterior',
+  TODOS: '',
+};
+
 export const Relatorios: React.FC = () => {
   const [ordens, setOrdens] = useState<OrdemServico[]>([]);
   const [loading, setLoading] = useState(true);
@@ -18,7 +89,7 @@ export const Relatorios: React.FC = () => {
   const [salvandoMeta, setSalvandoMeta] = useState(false);
   const [erroMeta, setErroMeta] = useState<string | null>(null);
   const [metaSalvaFeedback, setMetaSalvaFeedback] = useState(false);
-  const [mesSelecionado, setMesSelecionado] = useState<string>('ATUAL');
+  const [mesSelecionado, setMesSelecionado] = useState<FiltroPeriodo>('ATUAL');
   const [dataInicioPersonalizada, setDataInicioPersonalizada] = useState<string>(() => {
     const hoje = new Date();
     return `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-01`;
@@ -95,55 +166,50 @@ export const Relatorios: React.FC = () => {
   };
 
   // Filtro de Ordens por Dia / Mês / Ano / Intervalo Personalizado
-  const ordensFiltradas = useMemo(() => {
-    const hoje = new Date();
-    const hojeStr = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-${String(hoje.getDate()).padStart(2, '0')}`;
-
-    return ordens.filter((os) => {
-      if (!os.data_abertura) return mesSelecionado === 'TODOS';
-
-      const dataOs = new Date(os.data_abertura);
-      const matchIso = String(os.data_abertura).match(/^(\d{4}-\d{2}-\d{2})/);
-      const dataOsStr = matchIso
-        ? matchIso[1]
-        : `${dataOs.getFullYear()}-${String(dataOs.getMonth() + 1).padStart(2, '0')}-${String(dataOs.getDate()).padStart(2, '0')}`;
-
-      if (mesSelecionado === 'HOJE') {
-        return dataOsStr === hojeStr;
-      }
-      if (mesSelecionado === 'ATUAL') {
-        return (
-          dataOs.getMonth() === hoje.getMonth() &&
-          dataOs.getFullYear() === hoje.getFullYear()
-        );
-      }
-      if (mesSelecionado === 'ANTERIOR') {
-        const mesAnt = hoje.getMonth() === 0 ? 11 : hoje.getMonth() - 1;
-        const anoAnt = hoje.getMonth() === 0 ? hoje.getFullYear() - 1 : hoje.getFullYear();
-        return dataOs.getMonth() === mesAnt && dataOs.getFullYear() === anoAnt;
-      }
-      if (mesSelecionado === 'ANO_ATUAL') {
-        return dataOs.getFullYear() === hoje.getFullYear();
-      }
-      if (mesSelecionado === 'PERSONALIZADO') {
-        if (dataInicioPersonalizada && dataOsStr < dataInicioPersonalizada) return false;
-        if (dataFimPersonalizada && dataOsStr > dataFimPersonalizada) return false;
-        return true;
-      }
-      return true; // TODOS
-    });
-  }, [ordens, mesSelecionado, dataInicioPersonalizada, dataFimPersonalizada]);
+  const ordensFiltradas = useMemo(
+    () => filtrarOrdensPorPeriodo(ordens, mesSelecionado, dataInicioPersonalizada, dataFimPersonalizada) ?? [],
+    [ordens, mesSelecionado, dataInicioPersonalizada, dataFimPersonalizada]
+  );
 
   // CÁLCULOS FINANCEIROS BLINDADOS
   // 1. Faturamento Bruto
-  const faturamentoBruto = useMemo(() => {
-    return ordensFiltradas.reduce((acc, os) => {
-      const valor = Number(
-        os.orcamentoCalculado?.valorTotalOrcamento || os.valor_total || 0
-      );
-      return acc + valor;
-    }, 0);
-  }, [ordensFiltradas]);
+  const faturamentoBruto = useMemo(
+    () => ordensFiltradas.reduce((acc, os) => acc + valorBrutoOS(os), 0),
+    [ordensFiltradas]
+  );
+
+  // Variação real do faturamento bruto em relação ao período anterior equivalente (nada inventado)
+  const variacaoFaturamento = useMemo(() => {
+    const ordensAnteriores = filtrarOrdensPorPeriodo(
+      ordens,
+      mesSelecionado,
+      dataInicioPersonalizada,
+      dataFimPersonalizada,
+      -1
+    );
+    if (!ordensAnteriores) {
+      return { texto: 'Todo o histórico', badge: '—', cor: 'neutra' as const };
+    }
+    const anterior = ordensAnteriores.reduce((acc, os) => acc + valorBrutoOS(os), 0);
+    const rotulo = ROTULO_PERIODO_ANTERIOR[mesSelecionado];
+    if (faturamentoBruto === 0 && anterior === 0) {
+      return { texto: 'Sem movimentação no período', badge: '0,0%', cor: 'neutra' as const };
+    }
+    if (anterior === 0) {
+      return { texto: `Sem faturamento no ${rotulo}`, badge: 'Novo', cor: 'neutra' as const };
+    }
+    const pct = ((faturamentoBruto - anterior) / anterior) * 100;
+    const pctTexto = `${pct > 0 ? '+' : ''}${pct.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`;
+    const cor = pct > 0 ? ('alta' as const) : pct < 0 ? ('queda' as const) : ('neutra' as const);
+    return { texto: `${pctTexto} vs. ${rotulo}`, badge: pctTexto, cor };
+  }, [ordens, mesSelecionado, dataInicioPersonalizada, dataFimPersonalizada, faturamentoBruto]);
+
+  const corTextoVariacao = { alta: 'text-emerald-400', queda: 'text-rose-400', neutra: 'text-zinc-400' }[variacaoFaturamento.cor];
+  const corBadgeVariacao = {
+    alta: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20',
+    queda: 'text-rose-400 bg-rose-500/10 border-rose-500/20',
+    neutra: 'text-zinc-400 bg-zinc-800/60 border-zinc-700/60',
+  }[variacaoFaturamento.cor];
 
   // Faturamento Líquido (se houver desconto aplicado na OS)
   const faturamentoLiquido = useMemo(() => {
@@ -203,7 +269,7 @@ export const Relatorios: React.FC = () => {
     ordensFiltradas.forEach((os) => {
       if (!os.data_abertura) return;
       const dia = new Date(os.data_abertura).getDate();
-      const valor = Number(os.orcamentoCalculado?.valorTotalOrcamento || os.valor_total || 0);
+      const valor = valorBrutoOS(os);
 
       if (dia <= 7) semanas[0] += valor;
       else if (dia <= 14) semanas[1] += valor;
@@ -214,7 +280,24 @@ export const Relatorios: React.FC = () => {
     return semanas;
   }, [ordensFiltradas]);
 
-  const maxSemana = Math.max(...dadosSemanas, 100);
+  const maxSemana = Math.max(...dadosSemanas);
+
+  // Rótulos do eixo X: com um único mês no filtro mostra o mês real; nos demais, as faixas de dias
+  const mesDoGrafico =
+    mesSelecionado === 'ATUAL' || mesSelecionado === 'HOJE'
+      ? new Date()
+      : mesSelecionado === 'ANTERIOR'
+      ? new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1)
+      : null;
+  const abreviacaoMes = mesDoGrafico
+    ? mesDoGrafico.toLocaleDateString('pt-BR', { month: 'short' }).replace('.', '')
+    : '';
+  const rotulosSemanas = mesDoGrafico
+    ? ['01', '08', '15', '22', '29'].map((dia) => `${dia} ${abreviacaoMes}`)
+    : ['Dias 1-7', '8-14', '15-21', '22-28', '29-31'];
+  const subtituloGrafico = mesDoGrafico
+    ? `Faturamento bruto em ${mesDoGrafico.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}`
+    : 'Faturamento bruto do período, agrupado pelo dia do mês';
 
   // Exportar dados para CSV
   const exportarRelatorioCSV = () => {
@@ -281,7 +364,7 @@ export const Relatorios: React.FC = () => {
         <div className="flex flex-wrap items-center gap-2 shrink-0">
           <select
             value={mesSelecionado}
-            onChange={(e) => setMesSelecionado(e.target.value)}
+            onChange={(e) => setMesSelecionado(e.target.value as FiltroPeriodo)}
             className="bg-[#0c101a] border border-zinc-800 text-white rounded-xl px-3 py-2 sm:px-4 sm:py-2.5 text-xs font-semibold outline-none cursor-pointer focus:border-blue-500 transition shadow-sm"
           >
             <option value="HOJE">Hoje (Do dia)</option>
@@ -344,8 +427,8 @@ export const Relatorios: React.FC = () => {
           <h3 className="text-base sm:text-2xl lg:text-3xl font-extrabold text-white mt-1 sm:mt-3 tracking-tight truncate">
             R$ {formatarValor(faturamentoBruto)}
           </h3>
-          <p className="text-[10px] sm:text-[11px] text-emerald-400 mt-1 sm:mt-2 font-semibold flex items-center truncate">
-            <span>+8,4% no período</span>
+          <p className={`text-[10px] sm:text-[11px] mt-1 sm:mt-2 font-semibold flex items-center truncate ${corTextoVariacao}`}>
+            <span className="truncate" title={variacaoFaturamento.texto}>{variacaoFaturamento.texto}</span>
           </p>
         </div>
 
@@ -511,10 +594,13 @@ export const Relatorios: React.FC = () => {
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-sm font-bold text-white">Receita por semana</h3>
-                <p className="text-xs text-zinc-400 mt-0.5">Faturamento bruto no mês atual</p>
+                <p className="text-xs text-zinc-400 mt-0.5">{subtituloGrafico}</p>
               </div>
-              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20">
-                +8,4%
+              <span
+                title={variacaoFaturamento.texto}
+                className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold border shrink-0 ${corBadgeVariacao}`}
+              >
+                {variacaoFaturamento.badge}
               </span>
             </div>
 
@@ -522,7 +608,8 @@ export const Relatorios: React.FC = () => {
             <div className="mt-8 pt-4">
               <div className="h-44 flex items-end justify-between gap-3 px-2">
                 {dadosSemanas.map((valor, idx) => {
-                  const alturaPercent = maxSemana > 0 ? Math.max(12, Math.round((valor / maxSemana) * 100)) : 15;
+                  // Semana sem faturamento = barra zerada (sem altura artificial)
+                  const alturaPercent = valor > 0 && maxSemana > 0 ? Math.max(8, Math.round((valor / maxSemana) * 100)) : 0;
                   return (
                     <div key={idx} className="flex-1 flex flex-col items-center h-full justify-end group">
                       {/* Tooltip com valor real */}
@@ -541,13 +628,13 @@ export const Relatorios: React.FC = () => {
                 })}
               </div>
 
-              {/* Rótulos do Eixo X do Figma */}
-              <div className="flex justify-between text-[11px] text-zinc-400 mt-4 px-2 font-medium">
-                <span>01 out</span>
-                <span>08 out</span>
-                <span>15 out</span>
-                <span>22 out</span>
-                <span>31 out</span>
+              {/* Rótulos do eixo X: início de cada faixa de 7 dias */}
+              <div className="flex justify-between gap-3 text-[11px] text-zinc-400 mt-4 px-2 font-medium">
+                {rotulosSemanas.map((rotulo) => (
+                  <span key={rotulo} className="flex-1 text-center">
+                    {rotulo}
+                  </span>
+                ))}
               </div>
             </div>
           </div>

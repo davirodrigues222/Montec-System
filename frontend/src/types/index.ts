@@ -120,3 +120,6 @@ export type SecaoCadastro =
   | 'lojas'
   | 'funcionarios'
   | 'formas-pagamento';
+
+// Submódulos do menu "Configurações" (navegação em árvore na barra lateral)
+export type SecaoConfiguracao = 'loja' | 'financeiro' | 'operacional' | 'whatsapp' | 'equipe' | 'conta';

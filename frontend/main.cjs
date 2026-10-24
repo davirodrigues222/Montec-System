@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, shell } = require('electron');
 const path = require('path');
 
 function createWindow() {
@@ -17,6 +17,12 @@ function createWindow() {
   });
 
   mainWindow.loadFile(path.join(__dirname, 'dist', 'index.html'));
+
+  // Links externos (ex.: WhatsApp das mensagens automáticas) abrem no navegador do sistema, nunca dentro do app
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//i.test(url)) shell.openExternal(url);
+    return { action: 'deny' };
+  });
 
   // Intercepta o evento de atalho Ctrl+P ou chamadas de impressão
   mainWindow.webContents.on('before-input-event', (event, input) => {

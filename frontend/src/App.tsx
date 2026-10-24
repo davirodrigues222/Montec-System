@@ -16,9 +16,10 @@ import { FuncionariosCadastro } from './pages/cadastros/FuncionariosCadastro';
 import { FormasPagamentoCadastro } from './pages/cadastros/FormasPagamentoCadastro';
 import { AcessoFuncionario } from './pages/AcessoFuncionario';
 import { LandingPage } from './pages/landing/LandingPage';
+import { AutorizacaoAdministrativa } from './components/AutorizacaoAdministrativa';
 import { OperadorContext } from './contexts/OperadorContext';
 import { type AbaSistema, type Operador, podeAcessar, podeAcessarAba, primeiraAbaPermitida } from './services/acesso';
-import type { SecaoCadastro } from './types';
+import type { SecaoCadastro, SecaoConfiguracao } from './types';
 
 // Marca que este navegador já entrou no sistema: na próxima visita vai direto ao login
 const CHAVE_JA_ACESSOU = 'montec_ja_acessou';
@@ -41,6 +42,22 @@ const limparParametroInicio = () => {
   window.history.replaceState(null, '', url.pathname + url.search + url.hash);
 };
 
+// Nome de cada tela, usado no pedido de autorização administrativa
+const NOMES_TELAS: Record<string, string> = {
+  dashboard: 'Painel',
+  relatorios: 'Análises e relatórios',
+  historico: 'Ordens de serviço',
+  'nova-os': 'Nova ordem',
+  'garantia-retorno': 'Garantias e retornos',
+  configuracoes: 'Configurações',
+  'cadastros:clientes': 'Cadastros › Clientes',
+  'cadastros:servicos': 'Cadastros › Serviços',
+  'cadastros:fornecedores': 'Cadastros › Fornecedores',
+  'cadastros:lojas': 'Cadastros › Lojas',
+  'cadastros:funcionarios': 'Cadastros › Funcionários',
+  'cadastros:formas-pagamento': 'Cadastros › Formas de pagamento',
+};
+
 // Funcionário identificado na aba atual. Fica no sessionStorage (apagado ao fechar a aba ou o app)
 // e só é reaproveitado quando a página foi RECARREGADA (F5). Abrir o sistema de novo, voltar de
 // outro site ou duplicar a aba pede código e senha outra vez; sair da conta também limpa.
@@ -51,6 +68,7 @@ interface SessaoOperador {
   operador: Operador;
   aba: AbaSistema;
   secao: SecaoCadastro;
+  secaoConfiguracao?: SecaoConfiguracao;
 }
 
 const foiRecarregamento = () => {
@@ -84,6 +102,10 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<AbaSistema>(sessaoOperadorRestaurada?.aba ?? 'dashboard');
   const [secaoCadastro, setSecaoCadastro] = useState<SecaoCadastro>(sessaoOperadorRestaurada?.secao ?? 'clientes');
+  // Seção aberta em Configurações (subitens do menu lateral). Todas usam a mesma permissão de tela.
+  const [secaoConfiguracao, setSecaoConfiguracao] = useState<SecaoConfiguracao>(
+    sessaoOperadorRestaurada?.secaoConfiguracao ?? 'loja'
+  );
 
   // Funcionário que está operando o sistema (restaurado só após F5 na mesma aba e na mesma conta)
   const [operador, setOperador] = useState<Operador | null>(sessaoOperadorRestaurada?.operador ?? null);
@@ -110,7 +132,7 @@ export default function App() {
     if (loading) return;
     try {
       if (operador && userId) {
-        const sessao: SessaoOperador = { userId, operador, aba: activeTab, secao: secaoCadastro };
+        const sessao: SessaoOperador = { userId, operador, aba: activeTab, secao: secaoCadastro, secaoConfiguracao };
         sessionStorage.setItem(CHAVE_OPERADOR_SESSAO, JSON.stringify(sessao));
       } else {
         sessionStorage.removeItem(CHAVE_OPERADOR_SESSAO);
@@ -118,7 +140,7 @@ export default function App() {
     } catch {
       /* armazenamento indisponível: o F5 volta a pedir a identificação */
     }
-  }, [loading, operador, userId, activeTab, secaoCadastro]);
+  }, [loading, operador, userId, activeTab, secaoCadastro, secaoConfiguracao]);
 
   // Fluxo público (sem login): página inicial -> entrar / criar conta
   const [telaPublica, setTelaPublica] = useState<TelaPublica>(() =>
@@ -134,7 +156,15 @@ export default function App() {
     window.scrollTo(0, 0);
   };
 
+  // Tela liberada por um administrador para o funcionário atual. Vale só para a tela em que foi
+  // autorizada: ao ir para outra tela, trocar de funcionário ou recarregar, volta a pedir autorização.
+  const [liberacao, setLiberacao] = useState<{ chave: string; admin: string } | null>(null);
+  // Última tela que o funcionário pode usar (destino do botão "Voltar" da autorização)
+  const ultimaTelaPermitida = useRef<{ aba: AbaSistema; secao: SecaoCadastro } | null>(null);
+
   const entrarComoOperador = (op: Operador) => {
+    setLiberacao(null);
+    ultimaTelaPermitida.current = null;
     setOperador(op);
     const inicial = primeiraAbaPermitida(op);
     if (inicial) {
@@ -143,9 +173,28 @@ export default function App() {
     }
   };
 
-  // Navegação protegida: ignora pedidos para telas não liberadas (menu, atalhos do Painel, Nova OS...)
+  // Ao sair de uma tela que o perfil permite, guarda ela como destino do "Voltar" da autorização
+  const lembrarTelaAtual = () => {
+    if (podeAcessarAba(operador, activeTab, activeTab === 'cadastros' ? secaoCadastro : undefined)) {
+      ultimaTelaPermitida.current = { aba: activeTab, secao: secaoCadastro };
+    }
+  };
+
+  // Todas as telas são navegáveis; as que o perfil não permite pedem autorização na área principal.
+  // Sair da tela desfaz a liberação dada pelo administrador.
   const navegar = (aba: AbaSistema) => {
-    if (podeAcessarAba(operador, aba)) setActiveTab(aba);
+    if (aba !== activeTab) {
+      lembrarTelaAtual();
+      setLiberacao(null);
+    }
+    setActiveTab(aba);
+  };
+  const mudarSecaoCadastro = (secao: SecaoCadastro) => {
+    if (secao !== secaoCadastro) {
+      lembrarTelaAtual();
+      setLiberacao(null);
+    }
+    setSecaoCadastro(secao);
   };
 
   useEffect(() => {
@@ -197,14 +246,32 @@ export default function App() {
     return <AcessoFuncionario key={userId} session={session} onEntrar={entrarComoOperador} />;
   }
 
-  const telaLiberada = podeAcessarAba(operador, activeTab, activeTab === 'cadastros' ? secaoCadastro : undefined);
+  const chaveTela = activeTab === 'cadastros' ? `cadastros:${secaoCadastro}` : activeTab;
+  const permitidaPeloPerfil = podeAcessarAba(operador, activeTab, activeTab === 'cadastros' ? secaoCadastro : undefined);
+  const liberadaPorAdmin = !permitidaPeloPerfil && liberacao?.chave === chaveTela;
+  const telaLiberada = permitidaPeloPerfil || liberadaPorAdmin;
+
+  const voltarDaAutorizacao = () => {
+    const destino =
+      ultimaTelaPermitida.current ||
+      (() => {
+        const inicial = primeiraAbaPermitida(operador);
+        return inicial ? { aba: inicial.aba, secao: inicial.secao ?? secaoCadastro } : null;
+      })();
+    if (!destino) return;
+    setSecaoCadastro(destino.secao);
+    setActiveTab(destino.aba);
+  };
 
   return (
     <OperadorContext.Provider
       value={{
         operador,
         pode: (chave) => podeAcessar(operador, chave),
-        trocarFuncionario: () => setOperador(null),
+        trocarFuncionario: () => {
+          setLiberacao(null);
+          setOperador(null);
+        },
       }}
     >
       <Layout
@@ -212,21 +279,46 @@ export default function App() {
         setActiveTab={navegar}
         session={session}
         secaoCadastro={secaoCadastro}
-        setSecaoCadastro={setSecaoCadastro}
+        setSecaoCadastro={mudarSecaoCadastro}
+        secaoConfiguracao={secaoConfiguracao}
+        setSecaoConfiguracao={setSecaoConfiguracao}
       >
         {!telaLiberada ? (
-          <div className="max-w-lg mx-auto mt-16 bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-6 text-center">
-            <p className="text-sm font-bold text-white">Tela não liberada</p>
-            <p className="text-xs text-zinc-400 mt-1">
-              Seu perfil não tem acesso a esta tela. Peça a um administrador para liberá-la em Cadastros › Funcionários.
-            </p>
-          </div>
+          <AutorizacaoAdministrativa
+            key={chaveTela}
+            recurso={`a tela ${NOMES_TELAS[chaveTela] || 'selecionada'}`}
+            onAutorizado={(admin) => setLiberacao({ chave: chaveTela, admin: admin.nome })}
+            onVoltar={voltarDaAutorizacao}
+          />
         ) : (
           <>
+            {liberadaPorAdmin && (
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 bg-amber-500/10 border border-amber-500/25 rounded-xl text-xs print:hidden">
+                <span className="text-amber-300 font-semibold">
+                  🔓 Acesso liberado por {liberacao?.admin} somente para esta tela.
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setLiberacao(null)}
+                  className="px-3 py-1.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-200 rounded-lg font-semibold transition"
+                >
+                  Bloquear novamente
+                </button>
+              </div>
+            )}
             {activeTab === 'dashboard' && <Dashboard onNavigate={navegar} session={session} />}
             {activeTab === 'relatorios' && <Relatorios />}
             {activeTab === 'historico' && <HistoricoServicos />}
-            {activeTab === 'configuracoes' && <Configuracoes />}
+            {activeTab === 'configuracoes' && (
+              <Configuracoes
+                secao={secaoConfiguracao}
+                onMudarSecao={setSecaoConfiguracao}
+                onAbrirCadastro={(secao) => {
+                  mudarSecaoCadastro(secao);
+                  navegar('cadastros');
+                }}
+              />
+            )}
             {activeTab === 'nova-os' && <NovaOS onNavigate={navegar} />}
             {activeTab === 'garantia-retorno' && <GarantiaRetorno />}
             {activeTab === 'cadastros' && (

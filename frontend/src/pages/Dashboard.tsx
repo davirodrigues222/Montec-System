@@ -119,6 +119,17 @@ export const Dashboard: React.FC<Props> = ({ onNavigate, session }) => {
     [listaOrdens]
   );
 
+  // Fornecedores distintos informados nas ordens que aguardam peça
+  const fornecedoresAguardados = useMemo(
+    () =>
+      new Set(
+        ordensAguardandoPeca
+          .map((os) => (os.orcamentoCalculado?.fornecedorPeca || '').trim().toLowerCase())
+          .filter(Boolean)
+      ).size,
+    [ordensAguardandoPeca]
+  );
+
   // 4. Faturamento do Mês Atual e Lucro Líquido Real do Mês (coerente com Relatórios e com a Meta Mensal)
   const ordensDoMesAtual = useMemo(
     () => filtrarOrdensPorCompetenciaMensal(listaOrdens),
@@ -359,7 +370,11 @@ export const Dashboard: React.FC<Props> = ({ onNavigate, session }) => {
             {String(ordensAguardandoPeca.length).padStart(2, '0')}
           </h3>
           <p className="text-[10px] sm:text-[11px] text-zinc-400 mt-1 sm:mt-2 font-medium truncate">
-            {ordensAguardandoPeca.length > 0 ? `${ordensAguardandoPeca.length} fornecedor` : 'Nenhum atraso'}
+            {ordensAguardandoPeca.length === 0
+              ? 'Nenhum atraso'
+              : fornecedoresAguardados > 0
+              ? `${fornecedoresAguardados} ${fornecedoresAguardados === 1 ? 'fornecedor' : 'fornecedores'}`
+              : 'Fornecedor não informado'}
           </p>
         </div>
 

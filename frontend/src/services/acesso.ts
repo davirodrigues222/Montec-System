@@ -105,6 +105,20 @@ export async function verificarAcessoFuncionario(codigo: string, senha: string):
   };
 }
 
+export const MENSAGEM_AUTORIZACAO_NEGADA = 'Credenciais inválidas ou usuário sem permissão administrativa.';
+
+/**
+ * Autorização pontual de um administrador (ID e senha reais de um funcionário com cargo Administrador)
+ * para liberar uma tela ou ação ao funcionário atual. Usa a mesma verificação do login de funcionário:
+ * a senha é conferida no banco e erros contam para o bloqueio de 5 tentativas. Não troca o operador
+ * nem mexe na sessão da conta.
+ */
+export async function autorizarComoAdministrador(codigo: string, senha: string): Promise<Operador> {
+  const admin = await verificarAcessoFuncionario(codigo, senha);
+  if (!admin || admin.cargo !== 'ADMIN') throw new Error(MENSAGEM_AUTORIZACAO_NEGADA);
+  return admin;
+}
+
 /**
  * Acesso de recuperação: o proprietário confirma a SENHA DA CONTA (Supabase Auth) e entra com acesso total.
  * Evita que a conta fique trancada se nenhum funcionário lembrar a senha.

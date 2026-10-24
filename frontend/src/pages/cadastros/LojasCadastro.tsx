@@ -277,16 +277,16 @@ export const LojasCadastro: React.FC = () => {
         <Secao titulo="Identificação">
           <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
             <Campo label="Nome da loja" obrigatorio erro={erros.nome} className="md:col-span-5">
-              <input value={form.nome} onChange={(e) => atualizar('nome', e.target.value)} placeholder="Ex: Montec Centro" className={inputCls(erros.nome)} />
+              <input value={form.nome} onChange={(e) => atualizar('nome', e.target.value)} name="nome-loja" autoComplete="organization" placeholder="Ex: Montec Centro" className={inputCls(erros.nome)} />
             </Campo>
             <Campo label="CNPJ" erro={erros.cnpj} className="md:col-span-3">
-              <input value={form.cnpj} onChange={(e) => atualizar('cnpj', mascaraCnpj(e.target.value))} inputMode="numeric" placeholder="00.000.000/0000-00" className={inputCls(erros.cnpj)} />
+              <input value={form.cnpj} onChange={(e) => atualizar('cnpj', mascaraCnpj(e.target.value))} name="cnpj" autoComplete="off" inputMode="numeric" placeholder="00.000.000/0000-00" className={inputCls(erros.cnpj)} />
             </Campo>
             <Campo label="Telefone" erro={erros.telefone} className="md:col-span-2">
-              <input value={form.telefone} onChange={(e) => atualizar('telefone', mascaraTelefone(e.target.value))} inputMode="tel" placeholder="(85) 3333-3333" className={inputCls(erros.telefone)} />
+              <input value={form.telefone} onChange={(e) => atualizar('telefone', mascaraTelefone(e.target.value))} name="telefone-loja" autoComplete="work tel" inputMode="tel" placeholder="(85) 3333-3333" className={inputCls(erros.telefone)} />
             </Campo>
             <Campo label="E-mail" erro={erros.email} className="md:col-span-2">
-              <input type="email" value={form.email} onChange={(e) => atualizar('email', e.target.value)} placeholder="loja@email.com" className={inputCls(erros.email)} />
+              <input type="email" value={form.email} onChange={(e) => atualizar('email', e.target.value)} name="email-loja" autoComplete="work email" placeholder="loja@email.com" className={inputCls(erros.email)} />
             </Campo>
           </div>
         </Secao>
@@ -298,25 +298,26 @@ export const LojasCadastro: React.FC = () => {
                 value={form.cep}
                 onChange={(e) => atualizar('cep', mascaraCep(e.target.value))}
                 onBlur={preencherPorCep}
+                autoComplete="postal-code"
                 inputMode="numeric"
                 placeholder="00000-000"
                 className={inputCls(erros.cep)}
               />
             </Campo>
             <Campo label="Logradouro" className="md:col-span-5">
-              <input value={form.logradouro} onChange={(e) => atualizar('logradouro', e.target.value)} placeholder="Rua, avenida..." className={inputCls()} />
+              <input value={form.logradouro} onChange={(e) => atualizar('logradouro', e.target.value)} autoComplete="address-line1" placeholder="Rua, avenida..." className={inputCls()} />
             </Campo>
             <Campo label="Número" className="md:col-span-1">
-              <input value={form.numero} onChange={(e) => atualizar('numero', e.target.value)} placeholder="Nº" className={inputCls()} />
+              <input value={form.numero} onChange={(e) => atualizar('numero', e.target.value)} autoComplete="address-line2" placeholder="Nº" className={inputCls()} />
             </Campo>
             <Campo label="Bairro" className="md:col-span-4">
-              <input value={form.bairro} onChange={(e) => atualizar('bairro', e.target.value)} className={inputCls()} />
+              <input value={form.bairro} onChange={(e) => atualizar('bairro', e.target.value)} autoComplete="address-level3" className={inputCls()} />
             </Campo>
             <Campo label="Cidade" className="md:col-span-5">
-              <input value={form.cidade} onChange={(e) => atualizar('cidade', e.target.value)} className={inputCls()} />
+              <input value={form.cidade} onChange={(e) => atualizar('cidade', e.target.value)} autoComplete="address-level2" className={inputCls()} />
             </Campo>
             <Campo label="UF" className="md:col-span-2">
-              <select value={form.uf} onChange={(e) => atualizar('uf', e.target.value)} className={inputCls()}>
+              <select value={form.uf} onChange={(e) => atualizar('uf', e.target.value)} autoComplete="address-level1" className={inputCls()}>
                 <option value="">—</option>
                 {UFS.map((uf) => (
                   <option key={uf} value={uf}>{uf}</option>

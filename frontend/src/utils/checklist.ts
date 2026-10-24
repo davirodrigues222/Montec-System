@@ -1,4 +1,5 @@
 // Itens do checklist de entrada do aparelho. As chaves são as gravadas em checklist_entrada pela Nova OS.
+// Quais itens aparecem na Nova OS é definido em Configurações › Operacional (checklistItensAtivos).
 export const ITENS_CHECKLIST: { chave: string; rotulo: string }[] = [
   { chave: 'ligando', rotulo: 'Ligando' },
   { chave: 'touchScreen', rotulo: 'Touch screen' },
@@ -12,11 +13,19 @@ export const ITENS_CHECKLIST: { chave: string; rotulo: string }[] = [
   { chave: 'wifi', rotulo: 'Wi-Fi' },
   { chave: 'bluetooth', rotulo: 'Bluetooth' },
   { chave: 'botoesLaterais', rotulo: 'Botões laterais' },
+  { chave: 'faceId', rotulo: 'Face ID / Biometria' },
+  { chave: 'carcaca', rotulo: 'Carcaça / Aros' },
 ];
 
-/** Checklist novo com todos os itens marcados como OK. */
-export const criarChecklistPadrao = (): Record<string, string> =>
-  Object.fromEntries(ITENS_CHECKLIST.map((i) => [i.chave, 'OK']));
+/** Itens do catálogo ativos na conta (sem nenhum ativo, usa todos para não ficar sem checklist). */
+export const itensChecklistAtivos = (ativos?: string[]) => {
+  const lista = ITENS_CHECKLIST.filter((i) => !ativos || ativos.includes(i.chave));
+  return lista.length > 0 ? lista : ITENS_CHECKLIST;
+};
+
+/** Checklist novo com os itens ativos marcados como OK. */
+export const criarChecklistPadrao = (ativos?: string[]): Record<string, string> =>
+  Object.fromEntries(itensChecklistAtivos(ativos).map((i) => [i.chave, 'OK']));
 
 /** Rótulo legível do item (chaves antigas sem rótulo viram "camel Case" separado). */
 export const rotuloItemChecklist = (chave: string): string =>
