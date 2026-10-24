@@ -19,6 +19,13 @@ html[data-theme="light"] {
   color-scheme: light;
 }
 
+/* Rolagem suave nos links de seção (página inicial), exceto para quem pede menos movimento */
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
 body {
   margin: 0;
   min-width: 320px;

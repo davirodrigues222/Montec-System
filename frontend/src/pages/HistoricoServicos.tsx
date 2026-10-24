@@ -6,6 +6,7 @@ import {
   buscarFornecedores,
 } from "../services/api";
 import { StatusBadge } from "../components/StatusBadge";
+import { useOperador } from "../contexts/OperadorContext";
 import type { OrdemServico, StatusOS } from "../types";
 
 interface DadosLojaConfig {
@@ -61,6 +62,7 @@ export const HistoricoServicos: React.FC = () => {
   const [osSelecionada, setOsSelecionada] = useState<OrdemServico | null>(null);
   const [osParaEditar, setOsParaEditar] = useState<OrdemServico | null>(null);
   const [osParaExcluir, setOsParaExcluir] = useState<OrdemServico | null>(null);
+  const { pode } = useOperador();
   const [osParaImprimir, setOsParaImprimir] = useState<OrdemServico | null>(
     null,
   );
@@ -482,13 +484,15 @@ export const HistoricoServicos: React.FC = () => {
                           👁️ Detalhes
                         </button>
 
-                        <button
-                          onClick={() => setOsParaExcluir(os)}
-                          className="px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 rounded-lg text-xs font-semibold transition"
-                          title="Excluir Ordem de Serviço"
-                        >
-                          🗑️ Excluir
-                        </button>
+                        {pode("excluir_os") && (
+                          <button
+                            onClick={() => setOsParaExcluir(os)}
+                            className="px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 rounded-lg text-xs font-semibold transition"
+                            title="Excluir Ordem de Serviço"
+                          >
+                            🗑️ Excluir
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>

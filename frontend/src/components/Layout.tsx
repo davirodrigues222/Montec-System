@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   fazerLogout,
   obterConfiguracoesLojaSincrono,
@@ -6,6 +6,9 @@ import {
   aplicarTemaVisualNoDOM,
 } from '../services/api';
 import type { SecaoCadastro } from '../types';
+import { useOperador } from '../contexts/OperadorContext';
+import { type AbaSistema, PERMISSAO_POR_SECAO, podeAcessar, podeAcessarAba } from '../services/acesso';
+import { CARGOS, EVENTO_LOJAS_ATUALIZADAS, type Loja, listarLojas } from '../services/cadastros';
 
 interface Props {
   children: React.ReactNode;
@@ -105,13 +108,58 @@ export const Layout: React.FC<Props> = ({
     setMenuAberto(false);
   };
 
-  const userName = session?.user?.user_metadata?.nome_responsavel || 'Davi Sampaio';
+  // Menu mostra só as telas liberadas para o funcionário identificado
+  const { operador, trocarFuncionario } = useOperador();
+  const podeAba = (aba: AbaSistema) => podeAcessarAba(operador, aba);
+  const gruposCadastroPermitidos = GRUPOS_CADASTRO.map((g) => ({
+    ...g,
+    itens: g.itens.filter((i) => podeAcessar(operador, PERMISSAO_POR_SECAO[i.id])),
+  })).filter((g) => g.itens.length > 0);
+  const temOperacao = (['dashboard', 'relatorios', 'historico', 'nova-os', 'garantia-retorno'] as AbaSistema[]).some(podeAba);
+  const temAdministracao = gruposCadastroPermitidos.length > 0 || podeAba('configuracoes');
+
+  // Loja exibida no cabeçalho: a primeira loja ativa do funcionário; sem vínculo, a loja principal
+  const [lojas, setLojas] = useState<Loja[]>([]);
+  const [menuPerfilAberto, setMenuPerfilAberto] = useState(false);
+  const menuPerfilRef = useRef<HTMLDivElement>(null);
+  // Fecha o menu do perfil ao clicar fora dele (em qualquer lugar da página) ou com Esc
+  useEffect(() => {
+    if (!menuPerfilAberto) return;
+    const aoClicar = (e: MouseEvent) => {
+      if (!menuPerfilRef.current?.contains(e.target as Node)) setMenuPerfilAberto(false);
+    };
+    const aoTeclar = (e: KeyboardEvent) => e.key === 'Escape' && setMenuPerfilAberto(false);
+    document.addEventListener('mousedown', aoClicar);
+    document.addEventListener('keydown', aoTeclar);
+    return () => {
+      document.removeEventListener('mousedown', aoClicar);
+      document.removeEventListener('keydown', aoTeclar);
+    };
+  }, [menuPerfilAberto]);
+  useEffect(() => {
+    const carregarLojas = () => listarLojas().then(setLojas).catch(() => setLojas([]));
+    carregarLojas();
+    window.addEventListener(EVENTO_LOJAS_ATUALIZADAS, carregarLojas);
+    return () => window.removeEventListener(EVENTO_LOJAS_ATUALIZADAS, carregarLojas);
+  }, [session?.user?.id]);
+
+  const lojasAtivas = lojas.filter((l) => l.ativo);
+  const lojasDoOperador = lojasAtivas.filter((l) => operador?.lojas.includes(l.id_loja));
+  const lojaAtual = lojasDoOperador[0] || lojasAtivas.find((l) => l.principal) || lojasAtivas[0] || null;
+  const nomeLojaCabecalho = lojaAtual?.nome || nomeLoja;
+  const detalheLojaCabecalho = lojaAtual
+    ? [lojaAtual.cidade, lojaAtual.uf].filter(Boolean).join(' - ') || (lojaAtual.principal ? 'Loja principal' : 'Loja')
+    : subtitulo;
+  const outrasLojas = Math.max(0, lojasDoOperador.length - 1);
+
+  const userName = operador?.nome || session?.user?.user_metadata?.nome_responsavel || 'Usuário';
+  const userCargo = operador?.proprietario ? 'Proprietário da conta' : operador ? CARGOS[operador.cargo]?.label : '';
   const userInitials = userName
     .split(' ')
     .filter(Boolean)
     .slice(0, 2)
     .map((n: string) => n[0].toUpperCase())
-    .join('') || 'DS';
+    .join('') || '?';
 
   const titulosAbas: Record<string, string> = {
     dashboard: 'Painel',
@@ -181,11 +229,12 @@ export const Layout: React.FC<Props> = ({
 
           {/* Navegação */}
           <nav className="p-4 space-y-6">
-            <div>
+            <div className={temOperacao ? '' : 'hidden'}>
               <span className="block px-3 text-xs font-bold text-zinc-400 tracking-wider uppercase mb-2.5">
                 OPERAÇÃO
               </span>
               <div className="space-y-1.5">
+                {podeAba('dashboard') && (
                 <button
                   onClick={() => mudarAba('dashboard')}
                   className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-bold transition-all ${
@@ -204,7 +253,9 @@ export const Layout: React.FC<Props> = ({
                     <span className="w-2 h-2 rounded-full bg-white" />
                   )}
                 </button>
+                )}
 
+                {podeAba('relatorios') && (
                 <button
                   onClick={() => mudarAba('relatorios')}
                   className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-bold transition-all ${
@@ -223,7 +274,9 @@ export const Layout: React.FC<Props> = ({
                     <span className="w-2 h-2 rounded-full bg-white" />
                   )}
                 </button>
+                )}
 
+                {podeAba('historico') && (
                 <button
                   onClick={() => mudarAba('historico')}
                   className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-bold transition-all ${
@@ -242,7 +295,9 @@ export const Layout: React.FC<Props> = ({
                     <span className="w-2 h-2 rounded-full bg-white" />
                   )}
                 </button>
+                )}
 
+                {podeAba('nova-os') && (
                 <button
                   onClick={() => mudarAba('nova-os')}
                   className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-bold transition-all ${
@@ -261,7 +316,9 @@ export const Layout: React.FC<Props> = ({
                     <span className="w-2 h-2 rounded-full bg-white" />
                   )}
                 </button>
+                )}
 
+                {podeAba('garantia-retorno') && (
                 <button
                   onClick={() => mudarAba('garantia-retorno')}
                   className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-bold transition-all ${
@@ -280,15 +337,17 @@ export const Layout: React.FC<Props> = ({
                     <span className="w-2 h-2 rounded-full bg-white" />
                   )}
                 </button>
+                )}
               </div>
             </div>
 
-            <div>
+            <div className={temAdministracao ? '' : 'hidden'}>
               <span className="block px-3 text-xs font-bold text-zinc-400 tracking-wider uppercase mb-2.5">
                 ADMINISTRAÇÃO
               </span>
               <div className="space-y-1.5">
                 {/* Cadastros: item pai expansível (não navega, só abre/fecha a árvore) */}
+                {gruposCadastroPermitidos.length > 0 && (
                 <button
                   onClick={() => setCadastrosExpandido((v) => !v)}
                   aria-expanded={cadastrosExpandido}
@@ -315,10 +374,11 @@ export const Layout: React.FC<Props> = ({
                     <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
                   </svg>
                 </button>
+                )}
 
-                {cadastrosExpandido && (
+                {cadastrosExpandido && gruposCadastroPermitidos.length > 0 && (
                   <div id="submenu-cadastros" className="ml-6 pl-3 border-l border-zinc-800/80 space-y-3 py-1">
-                    {GRUPOS_CADASTRO.map((grupo) => (
+                    {gruposCadastroPermitidos.map((grupo) => (
                       <div key={grupo.titulo} className="space-y-0.5">
                         <span className="block px-3 pt-1 pb-1 text-[10px] font-bold text-zinc-500 tracking-wider uppercase">
                           {grupo.titulo}
@@ -350,6 +410,7 @@ export const Layout: React.FC<Props> = ({
                   </div>
                 )}
 
+                {podeAba('configuracoes') && (
                 <button
                   onClick={() => mudarAba('configuracoes')}
                   className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-bold transition-all ${
@@ -369,6 +430,7 @@ export const Layout: React.FC<Props> = ({
                     <span className="w-2 h-2 rounded-full bg-white" />
                   )}
                 </button>
+                )}
               </div>
             </div>
           </nav>
@@ -383,9 +445,19 @@ export const Layout: React.FC<Props> = ({
               </div>
               <div className="truncate min-w-0">
                 <p className="text-xs font-bold text-white truncate">{userName}</p>
-                <p className="text-[11px] text-zinc-400 truncate">Administrador</p>
+                <p className="text-[11px] text-zinc-400 truncate">{userCargo}</p>
               </div>
             </div>
+            <button
+              onClick={trocarFuncionario}
+              title="Trocar funcionário (bloquear tela)"
+              aria-label="Trocar funcionário"
+              className="p-2 text-zinc-400 hover:text-blue-400 hover:bg-blue-500/10 rounded-xl transition shrink-0 ml-auto"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+              </svg>
+            </button>
             <button
               onClick={handleLogout}
               title="Desconectar do sistema"
@@ -433,29 +505,90 @@ export const Layout: React.FC<Props> = ({
             </div>
           </div>
 
-          {/* Topo Direito: Identidade da Assistência Técnica do Cliente */}
-          <div className="flex items-center space-x-2 sm:space-x-3 bg-[#0d121c] border border-zinc-800/80 rounded-xl px-2.5 sm:px-3.5 py-1.5 shadow-sm max-w-[170px] sm:max-w-xs shrink-0">
-            {logoUrl ? (
-              <img
-                src={logoUrl}
-                alt={nomeLoja}
-                className="w-7 h-7 sm:w-8 sm:h-8 object-contain rounded-lg bg-zinc-950 p-0.5 sm:p-1 border border-zinc-800 shrink-0"
-              />
-            ) : (
-              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-blue-600/15 border border-blue-500/30 flex items-center justify-center text-blue-400 font-extrabold text-xs shrink-0">
-                {nomeLoja.charAt(0).toUpperCase()}
+          {/* Topo Direito: loja cadastrada + perfil do funcionário identificado */}
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+            {/* Loja */}
+            <div
+              className="flex items-center space-x-2 sm:space-x-3 bg-[#0d121c] border border-zinc-800/80 rounded-xl px-2 sm:px-3.5 py-1.5 shadow-sm max-w-[150px] sm:max-w-[220px]"
+              title={lojaAtual ? `Loja: ${lojaAtual.nome}` : nomeLojaCabecalho}
+            >
+              {logoUrl ? (
+                <img
+                  src={logoUrl}
+                  alt={nomeLojaCabecalho}
+                  className="w-7 h-7 sm:w-8 sm:h-8 object-contain rounded-lg bg-zinc-950 p-0.5 sm:p-1 border border-zinc-800 shrink-0"
+                />
+              ) : (
+                <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-blue-600/15 border border-blue-500/30 flex items-center justify-center text-blue-400 font-extrabold text-xs shrink-0">
+                  {nomeLojaCabecalho.charAt(0).toUpperCase()}
+                </div>
+              )}
+              <div className="text-left pr-1 min-w-0 hidden sm:block">
+                <div className="flex items-center space-x-1.5">
+                  <h4 className="text-xs font-bold text-white truncate leading-tight">{nomeLojaCabecalho}</h4>
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0 animate-pulse" title="Loja conectada" />
+                </div>
+                <p className="text-[10px] text-zinc-400 truncate mt-0.5 font-medium">
+                  {detalheLojaCabecalho}
+                  {outrasLojas > 0 && <span className="text-blue-400"> +{outrasLojas}</span>}
+                </p>
               </div>
-            )}
-            <div className="text-left pr-1 min-w-0">
-              <div className="flex items-center space-x-1.5">
-                <h4 className="text-[11px] sm:text-xs font-bold text-white truncate leading-tight">
-                  {nomeLoja}
-                </h4>
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0 animate-pulse" title="Assistência Conectada" />
-              </div>
-              <p className="text-[9px] sm:text-[10px] text-zinc-400 truncate mt-0.5 font-medium hidden sm:block">
-                {subtitulo}
-              </p>
+            </div>
+
+            {/* Perfil do funcionário */}
+            <div className="relative" ref={menuPerfilRef}>
+              <button
+                type="button"
+                onClick={() => setMenuPerfilAberto((v) => !v)}
+                aria-haspopup="menu"
+                aria-expanded={menuPerfilAberto}
+                className="flex items-center space-x-2 sm:space-x-3 bg-[#0d121c] border border-zinc-800/80 hover:border-zinc-700 rounded-xl px-2 sm:px-3 py-1.5 shadow-sm max-w-[150px] sm:max-w-[220px] transition"
+              >
+                <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-slate-800 border border-slate-700/60 flex items-center justify-center text-[11px] font-extrabold text-white shrink-0">
+                  {userInitials}
+                </div>
+                <div className="text-left min-w-0 hidden sm:block">
+                  <h4 className="text-xs font-bold text-white truncate leading-tight">{userName}</h4>
+                  <p className="text-[10px] text-zinc-400 truncate mt-0.5 font-medium">{userCargo}</p>
+                </div>
+                <svg className="w-3.5 h-3.5 text-zinc-500 shrink-0 hidden sm:block" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+
+              {menuPerfilAberto && (
+                <>
+                  <div role="menu" className="absolute right-0 mt-2 w-60 z-50 bg-[#0c101a] border border-zinc-800 rounded-xl shadow-2xl overflow-hidden">
+                    <div className="px-4 py-3 border-b border-zinc-800/60">
+                      <p className="text-xs font-bold text-white truncate">{userName}</p>
+                      <p className="text-[11px] text-zinc-400 truncate">{userCargo}</p>
+                      {lojaAtual && <p className="text-[11px] text-zinc-500 truncate mt-1">Loja: {lojaAtual.nome}</p>}
+                    </div>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setMenuPerfilAberto(false);
+                        trocarFuncionario();
+                      }}
+                      className="w-full text-left px-4 py-2.5 text-xs font-semibold text-zinc-300 hover:text-white hover:bg-zinc-800/50 transition"
+                    >
+                      Trocar funcionário
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setMenuPerfilAberto(false);
+                        handleLogout();
+                      }}
+                      className="w-full text-left px-4 py-2.5 text-xs font-semibold text-rose-400 hover:bg-rose-500/10 transition"
+                    >
+                      Sair da conta
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </header>

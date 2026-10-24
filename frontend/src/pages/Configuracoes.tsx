@@ -17,7 +17,7 @@ export const Configuracoes: React.FC = () => {
     aplicarTemaVisualNoDOM(inicial.temaVisual);
     return inicial;
   });
-  const [activeTab, setActiveTab] = useState<'dados' | 'aparencia' | 'termos'>('aparencia');
+  const [activeTab, setActiveTab] = useState<'aparencia' | 'termos'>('aparencia');
   const [salvandoFeedback, setSalvandoFeedback] = useState(false);
   const [mensagemFeedback, setMensagemFeedback] = useState(
     'Configurações salvas e vinculadas exclusivamente à sua conta!'
@@ -138,28 +138,13 @@ export const Configuracoes: React.FC = () => {
           Configurações
         </h2>
         <p className="text-xs text-zinc-400 mt-1">
-          Identidade da loja, preferências visuais e regras operacionais exclusivas da sua conta.
+          Logotipo, preferências visuais e regras de garantia da sua conta. Os dados de cada loja ficam em Cadastros › Lojas.
         </p>
       </div>
 
       {/* ================= BARRA DE ABAS (FIGMA) ================= */}
       <div className="flex items-center space-x-2 border-b border-zinc-800/80 pb-4">
-        {/* Aba Dados da Loja */}
-        <button
-          type="button"
-          onClick={() => setActiveTab('dados')}
-          className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-semibold transition ${
-            activeTab === 'dados'
-              ? 'bg-blue-600 text-white font-bold shadow-md shadow-blue-600/20'
-              : 'text-zinc-400 hover:text-white hover:bg-zinc-800/40'
-          }`}
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-          </svg>
-          <span>Dados da loja</span>
-        </button>
-
+        {/* Dados da loja (nome, CNPJ, telefone, endereço) agora ficam em Cadastros › Lojas */}
         {/* Aba Aparência */}
         <button
           type="button"
@@ -193,82 +178,7 @@ export const Configuracoes: React.FC = () => {
         </button>
       </div>
 
-      {/* ================= ABA 1: DADOS DA LOJA ================= */}
-      {activeTab === 'dados' && (
-        <div className="bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-6 space-y-6 shadow-sm">
-          <div className="border-b border-zinc-800/60 pb-3">
-            <h3 className="text-sm font-bold text-white">Informações do Estabelecimento</h3>
-            <p className="text-xs text-zinc-400 mt-0.5">
-              Estes dados serão exibidos nos cabeçalhos de ordens de serviço, relatórios e recibos de garantia.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-            <div>
-              <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
-                NOME DA LOJA
-              </label>
-              <input
-                type="text"
-                value={config.nomeLoja}
-                onChange={(e) => setConfig({ ...config, nomeLoja: e.target.value })}
-                className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-white outline-none focus:border-blue-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
-                SUBTÍTULO / ESPECIALIDADE
-              </label>
-              <input
-                type="text"
-                value={config.subtitulo}
-                onChange={(e) => setConfig({ ...config, subtitulo: e.target.value })}
-                className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-white outline-none focus:border-blue-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
-                TELEFONE / WHATSAPP COMERCIAL
-              </label>
-              <input
-                type="text"
-                value={config.telefone}
-                onChange={(e) => setConfig({ ...config, telefone: e.target.value })}
-                className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-white outline-none focus:border-blue-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
-                CNPJ OU CPF
-              </label>
-              <input
-                type="text"
-                value={config.cnpj}
-                onChange={(e) => setConfig({ ...config, cnpj: e.target.value })}
-                className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-white outline-none focus:border-blue-500"
-              />
-            </div>
-
-            <div className="md:col-span-2">
-              <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
-                ENDEREÇO COMPLETO
-              </label>
-              <input
-                type="text"
-                value={config.endereco}
-                onChange={(e) => setConfig({ ...config, endereco: e.target.value })}
-                placeholder="Rua, Número, Bairro, Cidade - UF"
-                className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-white outline-none focus:border-blue-500"
-              />
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ================= ABA 2: APARÊNCIA ================= */}
+      {/* ================= ABA 1: APARÊNCIA ================= */}
       {activeTab === 'aparencia' && (
         <div className="bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-6 space-y-6 shadow-sm">
           {/* Card 1: Identidade Visual */}
