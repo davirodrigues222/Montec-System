@@ -9,7 +9,7 @@ import {
   type TemaVisual,
 } from '../services/api';
 
-export type ConfiguracoesLoja = ConfiguracoesLojaIsolada;
+type ConfiguracoesLoja = ConfiguracoesLojaIsolada;
 
 export const Configuracoes: React.FC = () => {
   const [config, setConfig] = useState<ConfiguracoesLoja>(() => {

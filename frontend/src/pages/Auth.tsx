@@ -39,17 +39,9 @@ export const Auth: React.FC<Props> = ({ onLoginSuccess, modoInicial = 'login', o
 
     setLoading(true);
     try {
+      // fazerLogin já sincroniza as configurações da conta e avisa as telas (storage_configs_updated)
       const data = await fazerLogin(loginEmail, loginSenha);
-      if (data.user) {
-        const savedConfigs = localStorage.getItem('sig_apple_configs');
-        const configs = savedConfigs ? JSON.parse(savedConfigs) : {};
-        if (data.user.user_metadata?.nome_assistencia) {
-          configs.nomeLoja = data.user.user_metadata.nome_assistencia;
-          localStorage.setItem('sig_apple_configs', JSON.stringify(configs));
-          window.dispatchEvent(new Event('storage_configs_updated'));
-        }
-        if (onLoginSuccess) onLoginSuccess();
-      }
+      if (data.user) onLoginSuccess?.();
     } catch (err: any) {
       console.error('Erro de autenticação:', err);
       let erroTexto = 'E-mail ou senha inválidos.';

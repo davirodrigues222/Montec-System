@@ -79,7 +79,11 @@ export function validarTelefone(v: string): boolean {
 export const formatarMoeda = (v: number) =>
   (Number.isFinite(v) ? v : 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
-export const formatarPercentual = (v: number) =>
+/** Número com 2 casas no padrão brasileiro, sem o símbolo (ex.: 1.234,50). */
+export const formatarValor = (v: number) =>
+  (Number.isFinite(v) ? v : 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+export const formatarPercentual =(v: number) =>
   `${(Number.isFinite(v) ? v : 0).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 3 })}%`;
 
 export function formatarDataHora(iso?: string | null): string {

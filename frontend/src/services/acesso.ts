@@ -5,7 +5,8 @@ import type { SecaoCadastro } from '../types';
 // ==========================================
 // Acesso por funcionário (operador) dentro da conta já autenticada.
 // Depois do login da conta, o sistema SEMPRE pede código + senha do funcionário.
-// O operador fica só em memória: recarregar a página (F5) pede a identificação de novo.
+// O operador vale para a aba atual: o F5 mantém a identificação; fechar a aba, voltar de outro
+// site ou sair da conta pede código e senha de novo (ver CHAVE_OPERADOR_SESSAO em App.tsx).
 //
 // Importante: isto controla o que cada funcionário vê no sistema, mas a sessão do Supabase
 // continua sendo a da conta. Não é uma barreira de segurança contra alguém com conhecimento técnico.

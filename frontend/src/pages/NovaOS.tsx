@@ -1,11 +1,53 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { criarOrdemServico, extrairDiasGarantia, obterPrazoGarantiaConfiguradoLoja } from '../services/api';
-import { supabase } from '../services/supabaseClient';
+import {
+  buscarClientes,
+  buscarFornecedores,
+  buscarServicosCadastrados,
+  criarOrdemServico,
+  extrairDiasGarantia,
+  obterPrazoGarantiaConfiguradoLoja,
+} from '../services/api';
 import { CertidaoGarantia } from '../components/CertidaoGarantia';
+import type { AbaSistema } from '../services/acesso';
+import type { OrdemServico } from '../types';
+import { ITENS_CHECKLIST, OPCOES_CHECKLIST, criarChecklistPadrao } from '../utils/checklist';
+import { formatarValor } from '../utils/formatadores';
 
 interface Props {
-  onNavigate?: (tab: 'dashboard' | 'relatorios' | 'historico' | 'configuracoes' | 'nova-os' | 'garantia-retorno' | 'cadastros') => void;
+  onNavigate?: (tab: AbaSistema) => void;
 }
+
+// ================= REGRAS DE TAXAS DE MAQUINETA =================
+const FORMAS_SEM_TAXA = ['Dinheiro', 'PIX'];
+
+const obterTaxaPadrao = (forma: string, p: number = 1): number => {
+  if (FORMAS_SEM_TAXA.includes(forma)) return 0;
+  if (forma === 'Cartão de débito') return 1.49;
+  if (forma === 'Cartão de crédito') {
+    if (p === 1) return 3.19;
+    if (p <= 3) return 4.89;
+    if (p <= 6) return 6.49;
+    return 8.99;
+  }
+  return 0;
+};
+
+/** Ao trocar a forma ou as parcelas: aplica a taxa padrão e força 1x fora do crédito. */
+const aplicarRegraTaxa = (
+  forma: string,
+  parcelas: number,
+  setTaxa: (v: number) => void,
+  setParcelas: (v: number) => void,
+) => {
+  if (FORMAS_SEM_TAXA.includes(forma) || forma === 'Cartão de débito') {
+    setTaxa(obterTaxaPadrao(forma));
+    setParcelas(1);
+  } else if (forma === 'Cartão de crédito') {
+    setTaxa(obterTaxaPadrao(forma, parcelas));
+  }
+};
+
+const dataHojeISO = () => new Date().toISOString().substring(0, 10);
 
 export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
   const [listaClientes, setListaClientes] = useState<any[]>([]);
@@ -26,7 +68,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
   const [modeloAparelho, setModeloAparelho] = useState('');
   const [imeiAparelho, setImeiAparelho] = useState('');
   const [senhaAparelho, setSenhaAparelho] = useState('');
-  const [dataAbertura, setDataAbertura] = useState(new Date().toISOString().substring(0, 10));
+  const [dataAbertura, setDataAbertura] = useState(dataHojeISO);
   const [dataPrevista, setDataPrevista] = useState('');
 
   // Card 03: Serviço, diagnóstico e custos
@@ -59,41 +101,21 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
 
   // Checklist de Entrada
   const [mostrarChecklist, setMostrarChecklist] = useState(false);
-  const [checklist, setChecklist] = useState<Record<string, string>>({
-    ligando: 'OK',
-    touchScreen: 'OK',
-    display: 'OK',
-    cameraTraseira: 'OK',
-    cameraFrontal: 'OK',
-    microfone: 'OK',
-    altoFalante: 'OK',
-    conectorCarga: 'OK',
-    bateria: 'OK',
-    wifi: 'OK',
-    bluetooth: 'OK',
-    botoesLaterais: 'OK',
-  });
+  const [checklist, setChecklist] = useState<Record<string, string>>(criarChecklistPadrao);
 
   const [carregando, setCarregando] = useState(false);
-  const [osCriadaSucesso, setOsCriadaSucesso] = useState<{ idOs: string; numeroOs: string; dadosCompletos?: any } | null>(null);
-  const [osParaImprimir, setOsParaImprimir] = useState<any>(null);
+  const [osCriadaSucesso, setOsCriadaSucesso] = useState<{ idOs: string; numeroOs: string; dadosCompletos: OrdemServico } | null>(null);
+  const [osParaImprimir, setOsParaImprimir] = useState<OrdemServico | null>(null);
 
   useEffect(() => {
-    const carregarDadosIniciais = async () => {
-      try {
-        const { data: dataCli } = await supabase.from('clientes').select('*').order('nome', { ascending: true });
-        if (dataCli) setListaClientes(dataCli);
-
-        const { data: dataForn } = await supabase.from('cad_fornecedores').select('*').order('nome', { ascending: true });
-        if (dataForn) setListaFornecedores(dataForn);
-
-        const { data: dataServ } = await supabase.from('cad_servicos').select('*').order('nome', { ascending: true });
-        if (dataServ) setListaServicos(dataServ);
-      } catch (err) {
-        console.error('Erro ao carregar dados auxiliares:', err);
-      }
-    };
-    carregarDadosIniciais();
+    // As funções de busca já tratam erros e devolvem lista vazia
+    Promise.all([buscarClientes(), buscarFornecedores(), buscarServicosCadastrados()]).then(
+      ([clientes, fornecedores, servicos]) => {
+        setListaClientes(clientes);
+        setListaFornecedores(fornecedores);
+        setListaServicos(servicos);
+      },
+    );
   }, []);
 
   // Selecionar Cliente
@@ -135,43 +157,13 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
     }
   };
 
-  // ================= REGRAS DE TAXAS DE MAQUINETA =================
-  const obterTaxaPadrao = (forma: string, p: number = 1): number => {
-    if (forma === 'Dinheiro' || forma === 'PIX') return 0;
-    if (forma === 'Cartão de débito') return 1.49;
-    if (forma === 'Cartão de crédito') {
-      if (p === 1) return 3.19;
-      if (p <= 3) return 4.89;
-      if (p <= 6) return 6.49;
-      return 8.99;
-    }
-    return 0;
-  };
-
-  // Ajuste automático de taxa e parcelas conforme forma 1
+  // Ajuste automático de taxa e parcelas conforme a forma de pagamento
   useEffect(() => {
-    if (formaPagamento1 === 'Dinheiro' || formaPagamento1 === 'PIX') {
-      setTaxaMaquinetaPercentual1(0);
-      setParcelas1(1);
-    } else if (formaPagamento1 === 'Cartão de débito') {
-      setTaxaMaquinetaPercentual1(1.49);
-      setParcelas1(1);
-    } else if (formaPagamento1 === 'Cartão de crédito') {
-      setTaxaMaquinetaPercentual1(obterTaxaPadrao('Cartão de crédito', parcelas1));
-    }
+    aplicarRegraTaxa(formaPagamento1, parcelas1, setTaxaMaquinetaPercentual1, setParcelas1);
   }, [formaPagamento1, parcelas1]);
 
-  // Ajuste automático de taxa e parcelas conforme forma 2
   useEffect(() => {
-    if (formaPagamento2 === 'Dinheiro' || formaPagamento2 === 'PIX') {
-      setTaxaMaquinetaPercentual2(0);
-      setParcelas2(1);
-    } else if (formaPagamento2 === 'Cartão de débito') {
-      setTaxaMaquinetaPercentual2(1.49);
-      setParcelas2(1);
-    } else if (formaPagamento2 === 'Cartão de crédito') {
-      setTaxaMaquinetaPercentual2(obterTaxaPadrao('Cartão de crédito', parcelas2));
-    }
+    aplicarRegraTaxa(formaPagamento2, parcelas2, setTaxaMaquinetaPercentual2, setParcelas2);
   }, [formaPagamento2, parcelas2]);
 
   // ================= CÁLCULOS FINANCEIROS DO CARD 03 =================
@@ -194,16 +186,12 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
   const saldoRestante = Math.round((valorCobrado - somaPagamentos) * 100) / 100;
 
   // Taxa individual Forma 1 (nunca cobra sobre Dinheiro ou PIX)
-  const numTaxa1 = (formaPagamento1 === 'Dinheiro' || formaPagamento1 === 'PIX')
-    ? 0
-    : (Number(taxaMaquinetaPercentual1) || 0);
+  const numTaxa1 = FORMAS_SEM_TAXA.includes(formaPagamento1) ? 0 : (Number(taxaMaquinetaPercentual1) || 0);
   const valorTaxa1 = (numValorPg1 * numTaxa1) / 100;
   const liquidoPg1 = Math.max(0, numValorPg1 - valorTaxa1);
 
   // Taxa individual Forma 2 (nunca cobra sobre Dinheiro ou PIX)
-  const numTaxa2 = (formaPagamento2 === 'Dinheiro' || formaPagamento2 === 'PIX')
-    ? 0
-    : (Number(taxaMaquinetaPercentual2) || 0);
+  const numTaxa2 = FORMAS_SEM_TAXA.includes(formaPagamento2) ? 0 : (Number(taxaMaquinetaPercentual2) || 0);
   const valorTaxa2 = dividirPagamento ? ((numValorPg2 * numTaxa2) / 100) : 0;
   const liquidoPg2 = dividirPagamento ? Math.max(0, numValorPg2 - valorTaxa2) : 0;
 
@@ -242,12 +230,12 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
     }
 
     const desc1 = formaPagamento1 === 'Cartão de crédito' && parcelas1 > 1
-      ? `${formaPagamento1} (${parcelas1}x - R$ ${numValorPg1.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`
-      : `${formaPagamento1} (R$ ${numValorPg1.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`;
+      ? `${formaPagamento1} (${parcelas1}x - R$ ${formatarValor(numValorPg1)})`
+      : `${formaPagamento1} (R$ ${formatarValor(numValorPg1)})`;
 
     const desc2 = formaPagamento2 === 'Cartão de crédito' && parcelas2 > 1
-      ? `${formaPagamento2} (${parcelas2}x - R$ ${numValorPg2.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`
-      : `${formaPagamento2} (R$ ${numValorPg2.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`;
+      ? `${formaPagamento2} (${parcelas2}x - R$ ${formatarValor(numValorPg2)})`
+      : `${formaPagamento2} (R$ ${formatarValor(numValorPg2)})`;
 
     const parcelasFinal = formaPagamento1 === 'Cartão de crédito'
       ? parcelas1
@@ -289,6 +277,60 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
     ? { __servicoId: servicoPadraoId, __servicoNome: servicoSelecionado.nome }
     : {};
 
+  // Payload único para "Criar ordem" e "Salvar rascunho".
+  // Os textos padrão só entram no rascunho: na criação os campos obrigatórios já foram validados.
+  const montarPayload = () => {
+    const { formaPagamentoTexto, parcelasFinal, pagamentosArray } = gerarDadosPagamento();
+    const prazoFinal = possuiGarantia ? (Number(prazoGarantiaDias) || obterPrazoGarantiaConfiguradoLoja()) : 0;
+    const defeito = defeitoRelatado.trim();
+
+    return {
+      cliente: {
+        idCliente: idClienteSelecionado || undefined,
+        nome: nomeCliente.trim() || 'Cliente a Definir',
+        whatsapp: whatsappCliente.trim(),
+        cpfCnpj: cpfCnpjCliente.trim(),
+      },
+      aparelho: {
+        modelo: modeloAparelho.trim() || 'Aparelho em Avaliação',
+        imei1: imeiAparelho.trim(),
+        senhaDesbloqueio: senhaAparelho.trim(),
+      },
+      defeitoRelatado: defeito || 'Defeito a diagnosticar',
+      diagnostico: diagnostico.trim(),
+      servicoRealizado: servicoSelecionado?.nome || defeito || 'Aguardando diagnóstico',
+      observacoes: (diagnostico || observacoes).trim(),
+      dataAbertura,
+      dataPrevistaEntrega: dataPrevista || undefined,
+      formaPagamento: formaPagamentoTexto,
+      parcelas: parcelasFinal,
+      valorLiquido: liquidoRecebido,
+      possuiGarantia,
+      prazoGarantiaDias: prazoFinal,
+      checklistEntrada: {
+        ...checklist,
+        ...dadosServicoCatalogo,
+        __pagamentos: pagamentosArray,
+        __possuiGarantia: possuiGarantia,
+        __prazoGarantiaDias: prazoFinal,
+      },
+      pagamentos: pagamentosArray,
+      orcamentoCalculado: {
+        subtotalServicos: numPrecoServico,
+        descontoGeralAplicado: descontoCalculado,
+        tipoDesconto,
+        descontoInput: numDescontoInput,
+        valorTotalOrcamento: valorCobrado,
+        custoPeca: numCustoPeca,
+        freteReal: numFreteReal,
+        fornecedorPeca,
+        lucroTotalEstimadoInterno: lucroEstimado,
+        totalTaxaMaquineta,
+        pagamentos: pagamentosArray,
+      },
+    };
+  };
+
   // Submissão do Formulário
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -310,70 +352,25 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
         return;
       }
       if (Math.abs(saldoRestante) >= 0.01) {
-        alert(`A soma das formas de pagamento (R$ ${somaPagamentos.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}) deve ser exatamente igual ao total cobrado (R$ ${valorCobrado.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}).\n\nAjuste a diferença de R$ ${Math.abs(saldoRestante).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} antes de prosseguir.`);
+        alert(`A soma das formas de pagamento (R$ ${formatarValor(somaPagamentos)}) deve ser exatamente igual ao total cobrado (R$ ${formatarValor(valorCobrado)}).\n\nAjuste a diferença de R$ ${formatarValor(Math.abs(saldoRestante))} antes de prosseguir.`);
         return;
       }
     }
 
     setCarregando(true);
     try {
-      const { formaPagamentoTexto, parcelasFinal, pagamentosArray } = gerarDadosPagamento();
-
-      const payload = {
-        cliente: {
-          idCliente: idClienteSelecionado || undefined,
-          nome: nomeCliente.trim(),
-          whatsapp: whatsappCliente.trim(),
-          cpfCnpj: cpfCnpjCliente.trim(),
-        },
-        aparelho: {
-          modelo: modeloAparelho.trim(),
-          imei1: imeiAparelho.trim(),
-          senhaDesbloqueio: senhaAparelho.trim(),
-        },
-        defeitoRelatado: defeitoRelatado.trim(),
-        diagnostico: diagnostico.trim(),
-        servicoRealizado: servicoSelecionado?.nome || defeitoRelatado.trim(),
-        observacoes: (diagnostico || observacoes).trim(),
-        dataAbertura: dataAbertura,
-        dataPrevistaEntrega: dataPrevista || undefined,
-        formaPagamento: formaPagamentoTexto,
-        parcelas: parcelasFinal,
-        valorLiquido: liquidoRecebido,
-        possuiGarantia: possuiGarantia,
-        prazoGarantiaDias: possuiGarantia ? (Number(prazoGarantiaDias) || obterPrazoGarantiaConfiguradoLoja()) : 0,
-        checklistEntrada: {
-          ...checklist,
-          ...dadosServicoCatalogo,
-          __pagamentos: pagamentosArray,
-          __possuiGarantia: possuiGarantia,
-          __prazoGarantiaDias: possuiGarantia ? (Number(prazoGarantiaDias) || obterPrazoGarantiaConfiguradoLoja()) : 0,
-        },
-        pagamentos: pagamentosArray,
-        orcamentoCalculado: {
-          subtotalServicos: numPrecoServico,
-          descontoGeralAplicado: descontoCalculado,
-          tipoDesconto: tipoDesconto,
-          descontoInput: numDescontoInput,
-          valorTotalOrcamento: valorCobrado,
-          custoPeca: numCustoPeca,
-          freteReal: numFreteReal,
-          fornecedorPeca: fornecedorPeca,
-          lucroTotalEstimadoInterno: lucroEstimado,
-          totalTaxaMaquineta: totalTaxaMaquineta,
-          pagamentos: pagamentosArray,
-        },
-      };
-
+      const payload = montarPayload();
       const resultado = await criarOrdemServico(payload);
 
+      // Dados para o comprovante impresso (mesmo formato de OrdemServico usado no Histórico)
       setOsCriadaSucesso({
         idOs: resultado.idOs,
         numeroOs: resultado.numeroOs,
         dadosCompletos: {
+          ...payload,
           id_os: resultado.idOs,
           numero_os: resultado.numeroOs,
-          ...payload,
+          status_os: 'AGUARDANDO_AVALIACAO',
           data_abertura: dataAbertura,
         },
       });
@@ -387,72 +384,18 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
 
   // Salvar OS em modo Rascunho
   const handleSalvarRascunho = async () => {
-    const nomeValido = nomeCliente.trim();
-    const modeloValido = modeloAparelho.trim();
-
-    if (!nomeValido && !modeloValido) {
+    if (!nomeCliente.trim() && !modeloAparelho.trim()) {
       alert('Para salvar como rascunho, preencha ao menos o Nome do Cliente ou o Modelo do Aparelho.');
       return;
     }
 
     setCarregando(true);
     try {
-      const { formaPagamentoTexto, parcelasFinal, pagamentosArray } = gerarDadosPagamento();
-
-      const payload = {
-        cliente: {
-          idCliente: idClienteSelecionado || undefined,
-          nome: nomeValido || 'Cliente a Definir',
-          whatsapp: whatsappCliente.trim(),
-          cpfCnpj: cpfCnpjCliente.trim(),
-        },
-        aparelho: {
-          modelo: modeloValido || 'Aparelho em Avaliação',
-          imei1: imeiAparelho.trim(),
-          senhaDesbloqueio: senhaAparelho.trim(),
-        },
-        defeitoRelatado: defeitoRelatado.trim() || 'Defeito a diagnosticar',
-        diagnostico: diagnostico.trim(),
-        servicoRealizado: servicoSelecionado?.nome || defeitoRelatado.trim() || 'Aguardando diagnóstico',
-        observacoes: (diagnostico || observacoes).trim(),
-        dataAbertura: dataAbertura,
-        dataPrevistaEntrega: dataPrevista || undefined,
-        formaPagamento: formaPagamentoTexto,
-        parcelas: parcelasFinal,
-        valorLiquido: liquidoRecebido,
-        possuiGarantia: possuiGarantia,
-        prazoGarantiaDias: possuiGarantia ? (Number(prazoGarantiaDias) || obterPrazoGarantiaConfiguradoLoja()) : 0,
-        checklistEntrada: {
-          ...checklist,
-          ...dadosServicoCatalogo,
-          __pagamentos: pagamentosArray,
-          __possuiGarantia: possuiGarantia,
-          __prazoGarantiaDias: possuiGarantia ? (Number(prazoGarantiaDias) || obterPrazoGarantiaConfiguradoLoja()) : 0,
-        },
-        pagamentos: pagamentosArray,
-        orcamentoCalculado: {
-          subtotalServicos: numPrecoServico,
-          descontoGeralAplicado: descontoCalculado,
-          tipoDesconto: tipoDesconto,
-          descontoInput: numDescontoInput,
-          valorTotalOrcamento: valorCobrado,
-          custoPeca: numCustoPeca,
-          freteReal: numFreteReal,
-          fornecedorPeca: fornecedorPeca,
-          lucroTotalEstimadoInterno: lucroEstimado,
-          totalTaxaMaquineta: totalTaxaMaquineta,
-          pagamentos: pagamentosArray,
-        },
-        status_os: 'RASCUNHO',
-      };
-
-      const resultado = await criarOrdemServico(payload as any);
+      const resultado = await criarOrdemServico({ ...montarPayload(), status_os: 'RASCUNHO' });
 
       alert(`✅ Rascunho da OS ${resultado.numeroOs} salvo com sucesso!\n\nEle está disponível na aba "Rascunhos / Em Definição" no histórico de ordens.`);
       handleLimparFormulario();
-      if (onNavigate) {
-        onNavigate('historico');
-      }
+      onNavigate?.('historico');
     } catch (err: any) {
       console.error('Erro ao salvar rascunho:', err);
       alert(`Falha ao salvar rascunho: ${err.message || 'Verifique sua conexão.'}`);
@@ -473,7 +416,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
     setDefeitoRelatado('');
     setDiagnostico('');
     setObservacoes('');
-    setDataAbertura(new Date().toISOString().substring(0, 10));
+    setDataAbertura(dataHojeISO());
     setDataPrevista('');
     setPossuiGarantia(true);
     setCustoPeca('');
@@ -495,36 +438,8 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
     setTaxaMaquinetaPercentual2(0);
     setValorPg2('');
 
-    setChecklist({
-      ligando: 'OK',
-      touchScreen: 'OK',
-      display: 'OK',
-      cameraTraseira: 'OK',
-      cameraFrontal: 'OK',
-      microfone: 'OK',
-      altoFalante: 'OK',
-      conectorCarga: 'OK',
-      bateria: 'OK',
-      wifi: 'OK',
-      bluetooth: 'OK',
-      botoesLaterais: 'OK',
-    });
+    setChecklist(criarChecklistPadrao());
     setOsCriadaSucesso(null);
-  };
-
-  const labelsChecklist: Record<string, string> = {
-    ligando: 'Ligando',
-    touchScreen: 'Touch screen',
-    display: 'Display',
-    cameraTraseira: 'Câmera traseira',
-    cameraFrontal: 'Câmera frontal',
-    microfone: 'Microfone',
-    altoFalante: 'Alto-falante',
-    conectorCarga: 'Conector de carga',
-    bateria: 'Bateria',
-    wifi: 'Wi-Fi',
-    bluetooth: 'Bluetooth',
-    botoesLaterais: 'Botões laterais',
   };
 
   return (
@@ -1020,7 +935,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
                     LÍQUIDO RECEBIDO (APÓS TAXA)
                   </label>
                   <div className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs font-bold text-emerald-400">
-                    R$ {liquidoRecebido.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    R$ {formatarValor(liquidoRecebido)}
                   </div>
                 </div>
               </div>
@@ -1044,17 +959,17 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
                       {Math.abs(saldoRestante) < 0.01 && numValorPg1 > 0 && numValorPg2 > 0 ? '✓' : '⚠️'}
                     </span>
                     <span>
-                      Total devido: <strong className="font-bold text-white">R$ {valorCobrado.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong> |
-                      Distribuído: <strong className="font-bold text-white">R$ {somaPagamentos.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+                      Total devido: <strong className="font-bold text-white">R$ {formatarValor(valorCobrado)}</strong> |
+                      Distribuído: <strong className="font-bold text-white">R$ {formatarValor(somaPagamentos)}</strong>
                     </span>
                   </div>
                   <div>
                     {Math.abs(saldoRestante) < 0.01 && numValorPg1 > 0 && numValorPg2 > 0 ? (
                       <span className="font-bold text-emerald-400">✓ 100% distribuído corretamente</span>
                     ) : saldoRestante > 0 ? (
-                      <span className="font-bold text-amber-400">Falta distribuir: R$ {saldoRestante.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                      <span className="font-bold text-amber-400">Falta distribuir: R$ {formatarValor(saldoRestante)}</span>
                     ) : (
-                      <span className="font-bold text-rose-400">Excedeu o total em: R$ {Math.abs(saldoRestante).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                      <span className="font-bold text-rose-400">Excedeu o total em: R$ {formatarValor(Math.abs(saldoRestante))}</span>
                     )}
                   </div>
                 </div>
@@ -1067,7 +982,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
                         1ª Forma de Pagamento
                       </span>
                       <span className="text-[11px] text-zinc-400">
-                        Líquido: <strong className="text-emerald-400">R$ {liquidoPg1.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+                        Líquido: <strong className="text-emerald-400">R$ {formatarValor(liquidoPg1)}</strong>
                       </span>
                     </div>
 
@@ -1171,7 +1086,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
                         </button>
                       )}
                       <span className="text-[11px] text-zinc-400">
-                        Líquido: <strong className="text-emerald-400">R$ {liquidoPg2.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+                        Líquido: <strong className="text-emerald-400">R$ {formatarValor(liquidoPg2)}</strong>
                       </span>
                     </div>
 
@@ -1268,7 +1183,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
                   PREÇO DO SERVIÇO
                 </span>
                 <p className="text-base font-bold text-white">
-                  R$ {numPrecoServico.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  R$ {formatarValor(numPrecoServico)}
                 </p>
               </div>
 
@@ -1277,7 +1192,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
                   DESCONTO CONCEDIDO
                 </span>
                 <p className="text-base font-bold text-rose-400">
-                  - R$ {descontoCalculado.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  - R$ {formatarValor(descontoCalculado)}
                 </p>
               </div>
 
@@ -1286,7 +1201,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
                   VALOR COBRADO
                 </span>
                 <p className="text-base font-bold text-white">
-                  R$ {valorCobrado.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  R$ {formatarValor(valorCobrado)}
                 </p>
               </div>
 
@@ -1295,7 +1210,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
                   TAXA DA MAQUINETA
                 </span>
                 <p className="text-base font-bold text-rose-400">
-                  - R$ {totalTaxaMaquineta.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  - R$ {formatarValor(totalTaxaMaquineta)}
                 </p>
               </div>
 
@@ -1304,7 +1219,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
                   LUCRO ESTIMADO
                 </span>
                 <p className={`text-base font-black ${lucroEstimado >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                  R$ {lucroEstimado.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  R$ {formatarValor(lucroEstimado)}
                 </p>
               </div>
             </div>
@@ -1324,14 +1239,14 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
           >
             <div className="flex items-center space-x-2">
               <span className="w-5 h-5 rounded-md bg-blue-600/20 text-blue-400 flex items-center justify-center text-[11px]">✓</span>
-              <span>Checklist de entrada do dispositivo ({Object.values(checklist).filter(v => v === 'OK').length}/12 OK)</span>
+              <span>Checklist de entrada do dispositivo ({Object.values(checklist).filter((v) => v === 'OK').length}/{ITENS_CHECKLIST.length} OK)</span>
             </div>
             <span className="text-zinc-400 font-mono text-sm">{mostrarChecklist ? '▲' : '▼'}</span>
           </button>
 
           {mostrarChecklist && (
             <div className="p-5 border-t border-zinc-800/60 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 text-xs">
-              {Object.entries(labelsChecklist).map(([chave, rotulo]) => (
+              {ITENS_CHECKLIST.map(({ chave, rotulo }) => (
                 <div key={chave}>
                   <label className="block text-[11px] font-medium text-zinc-400 mb-1">{rotulo}</label>
                   <select
@@ -1339,10 +1254,9 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
                     onChange={(e) => setChecklist({ ...checklist, [chave]: e.target.value })}
                     className="w-full px-3 py-1.5 bg-[#080c14] border border-zinc-800 rounded-xl text-white outline-none focus:border-blue-500"
                   >
-                    <option value="OK">OK</option>
-                    <option value="DEFEITO">DEFEITO</option>
-                    <option value="Com observação">Com observação</option>
-                    <option value="NÃO TESTADO">NÃO TESTADO</option>
+                    {OPCOES_CHECKLIST.map((opcao) => (
+                      <option key={opcao} value={opcao}>{opcao}</option>
+                    ))}
                   </select>
                 </div>
               ))}

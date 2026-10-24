@@ -7,23 +7,28 @@ import {
   calcularResumoMetaFinanceira,
 } from '../services/api';
 import type { OrdemServico, StatusOS } from '../types';
+import type { AbaSistema } from '../services/acesso';
+import { formatarValor } from '../utils/formatadores';
 
 interface Props {
-  onNavigate?: (tab: 'dashboard' | 'relatorios' | 'historico' | 'configuracoes' | 'nova-os' | 'garantia-retorno' | 'cadastros') => void;
+  onNavigate?: (tab: AbaSistema) => void;
   session?: any;
 }
 
 export const Dashboard: React.FC<Props> = ({ onNavigate, session }) => {
   const [ordens, setOrdens] = useState<OrdemServico[]>([]);
   const [loading, setLoading] = useState(true);
-  const [horaAtual, setHoraAtual] = useState('');
+  // Horário em que o painel foi aberto (exibido em "Hoje na loja")
+  const [horaAtual] = useState(() =>
+    new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+  );
   const [versaoConfig, setVersaoConfig] = useState(0);
 
   const carregarOrdens = async () => {
     setLoading(true);
     try {
       const data = await buscarOrdensServico();
-      setOrdens(Array.isArray(data) ? data : []);
+      setOrdens(data);
     } catch (err) {
       console.error('Erro ao carregar Dashboard:', err);
       setOrdens([]);
@@ -38,11 +43,6 @@ export const Dashboard: React.FC<Props> = ({ onNavigate, session }) => {
       .then(() => setVersaoConfig((v) => v + 1))
       .catch(() => {});
 
-    const agora = new Date();
-    setHoraAtual(
-      agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
-    );
-
     const handleStorageUpdate = () => {
       setVersaoConfig((v) => v + 1);
     };
@@ -50,7 +50,7 @@ export const Dashboard: React.FC<Props> = ({ onNavigate, session }) => {
     return () => window.removeEventListener('storage_configs_updated', handleStorageUpdate);
   }, []);
 
-  const listaOrdens = Array.isArray(ordens) ? ordens : [];
+  const listaOrdens = ordens;
 
   // Nome do Responsável para a Saudação
   const primeiroNome = useMemo(() => {
@@ -106,7 +106,7 @@ export const Dashboard: React.FC<Props> = ({ onNavigate, session }) => {
   const valorTotalProntos = useMemo(
     () =>
       ordensProntas.reduce(
-        (acc, os: any) =>
+        (acc, os) =>
           acc + Number(os.orcamentoCalculado?.valorTotalOrcamento || os.valor_total || 0),
         0
       ),
@@ -134,7 +134,7 @@ export const Dashboard: React.FC<Props> = ({ onNavigate, session }) => {
 
   const custosTotais = useMemo(
     () =>
-      ordensDoMesAtual.reduce((acc, os: any) => {
+      ordensDoMesAtual.reduce((acc, os) => {
         const peca = Number(os?.orcamentoCalculado?.custoPeca || os?.custo_peca || 0);
         const frete = Number(os?.orcamentoCalculado?.freteReal || os?.frete_real || 0);
         const garantia = Number(
@@ -375,10 +375,10 @@ export const Dashboard: React.FC<Props> = ({ onNavigate, session }) => {
             </div>
           </div>
           <h3 className="text-base sm:text-3xl font-extrabold text-white mt-1.5 sm:mt-3 tracking-tight truncate">
-            R$ {faturamentoMes.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            R$ {formatarValor(faturamentoMes)}
           </h3>
           <p className="text-[10px] sm:text-[11px] text-zinc-400 mt-1 sm:mt-2 font-medium truncate">
-            Lucro R$ {lucroLiquidoReal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            Lucro R$ {formatarValor(lucroLiquidoReal)}
           </p>
         </div>
       </div>
@@ -531,7 +531,7 @@ export const Dashboard: React.FC<Props> = ({ onNavigate, session }) => {
                   ALCANÇADO NO MÊS
                 </span>
                 <h4 className="text-2xl font-extrabold text-white mt-0.5">
-                  R$ {resumoMeta.valorAlcancado.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  R$ {formatarValor(resumoMeta.valorAlcancado)}
                 </h4>
               </div>
               <div className="text-right">
@@ -540,7 +540,7 @@ export const Dashboard: React.FC<Props> = ({ onNavigate, session }) => {
                 </span>
                 <span className="text-xs font-bold text-zinc-300 mt-0.5 block">
                   {resumoMeta.metaConfigurada
-                    ? `R$ ${resumoMeta.metaDefinida.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                    ? `R$ ${formatarValor(resumoMeta.metaDefinida)}`
                     : 'Não definida'}
                 </span>
               </div>
@@ -563,9 +563,9 @@ export const Dashboard: React.FC<Props> = ({ onNavigate, session }) => {
                 </span>
                 <span className="text-zinc-400 font-medium">
                   {resumoMeta.valorExcedente > 0
-                    ? `+ R$ ${resumoMeta.valorExcedente.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} acima`
+                    ? `+ R$ ${formatarValor(resumoMeta.valorExcedente)} acima`
                     : resumoMeta.valorRestante > 0
-                    ? `Faltam R$ ${resumoMeta.valorRestante.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                    ? `Faltam R$ ${formatarValor(resumoMeta.valorRestante)}`
                     : 'Meta concluída!'}
                 </span>
               </div>

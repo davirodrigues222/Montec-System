@@ -24,7 +24,7 @@ interface Props {
 }
 
 /**
- * Tela exibida SEMPRE depois do login da conta (inclusive quando a sessão já estava salva):
+ * Tela exibida depois do login da conta e sempre que o sistema é aberto de novo (o F5 não pede outra vez):
  * identifica qual funcionário vai usar o sistema e, com isso, quais telas ele pode ver.
  */
 export const AcessoFuncionario: React.FC<Props> = ({ session, onEntrar }) => {
