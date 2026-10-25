@@ -510,7 +510,27 @@ export const Dashboard: React.FC<Props> = ({ onNavigate, session }) => {
               )}
             </div>
           ) : (
-            <div className="overflow-x-auto flex-1">
+            <>
+            {/* Celular: cards compactos, sem rolagem lateral */}
+            <ul className="md:hidden divide-y divide-zinc-800/40 overflow-x-hidden flex-1">
+              {ordensEmAndamento.map((os) => (
+                <li key={os.id_os} className="px-4 py-3 min-w-0">
+                  <div className="flex items-center justify-between gap-2 min-w-0">
+                    <span className="font-mono font-bold text-blue-400 text-xs whitespace-nowrap">#{os.numero_os}</span>
+                    <div className="min-w-0 overflow-hidden">{renderStatusBadge(os.status_os)}</div>
+                  </div>
+                  <p className="mt-1 text-sm truncate">
+                    <span className="font-bold text-white">{os.cliente?.nome || 'Cliente Balcão'}</span>
+                    <span className="text-zinc-400"> • {os.aparelho?.modelo || 'Smartphone'}</span>
+                  </p>
+                  <div className="mt-0.5 flex items-center justify-between gap-2 text-[11px] text-zinc-500">
+                    <span className="truncate">{os.servicoRealizado || os.defeitoRelatado || 'Manutenção geral'}</span>
+                    <span className="whitespace-nowrap shrink-0">{formatarDataEntrada(os.data_abertura)}</span>
+                  </div>
+                </li>
+              ))}
+            </ul>
+            <div className="hidden md:block overflow-x-auto flex-1">
               <table className="w-full text-left text-xs min-w-[560px]">
                 <thead className="bg-[#090d15] text-[10px] text-zinc-400 uppercase tracking-wider border-b border-zinc-800/60">
                   <tr>
@@ -550,6 +570,7 @@ export const Dashboard: React.FC<Props> = ({ onNavigate, session }) => {
                 </tbody>
               </table>
             </div>
+            </>
           )}
         </div>
 
