@@ -214,9 +214,11 @@ export const Dashboard: React.FC<Props> = ({ onNavigate, session }) => {
     [listaOrdens, hojeStr]
   );
 
-  const entreguesTotal = useMemo(
-    () => listaOrdens.filter((os) => os.status_os === 'ENTREGUE').length,
-    [listaOrdens]
+  // Entregues hoje (antes contava todas as entregues desde sempre, dentro do card "Hoje na loja")
+  const entreguesHoje = useMemo(
+    () =>
+      listaOrdens.filter((os) => os.status_os === 'ENTREGUE' && diaLocalDaData(os.data_conclusao) === hojeStr).length,
+    [listaOrdens, hojeStr]
   );
 
   const orcamentosPendentes = useMemo(
@@ -454,19 +456,31 @@ export const Dashboard: React.FC<Props> = ({ onNavigate, session }) => {
         )}
       </div>
 
-      {/* ================= BLOCO PRINCIPAL (TABELA + COLUNA LATERAL) ================= */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start min-w-0 w-full">
-        {/* Coluna Esquerda: Tabela de Ordens em Andamento */}
-        <div className="lg:col-span-2 bg-[#0c101a] border border-zinc-800/80 rounded-2xl overflow-hidden shadow-sm min-w-0 w-full">
-          <div className="p-5 border-b border-zinc-800/80 flex items-center justify-between">
-            <div>
-              <h3 className="text-sm font-bold text-white">Ordens em andamento</h3>
-              <p className="text-xs text-zinc-400 mt-0.5">Serviços que exigem acompanhamento</p>
+      {/* ================= BLOCO PRINCIPAL (3 CARDS ALINHADOS E COM ALTURA UNIFORME) ================= */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 items-stretch min-w-0 w-full">
+        {/* Card 1 (Esquerda - 7 colunas): Tabela de Ordens em Andamento */}
+        <div className="lg:col-span-7 flex flex-col bg-[#0c101a] border border-zinc-800/80 rounded-2xl overflow-hidden shadow-sm min-w-0 w-full h-full">
+          <div className="p-5 border-b border-zinc-800/80 flex items-center justify-between gap-3">
+            <div className="flex items-center space-x-3 min-w-0">
+              <div className="w-9 h-9 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-400 flex items-center justify-center shrink-0">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                </svg>
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center space-x-2">
+                  <h3 className="text-sm font-bold text-white truncate">Ordens em andamento</h3>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-zinc-800 text-zinc-300 border border-zinc-700/60">
+                    {ordensEmAndamento.length}
+                  </span>
+                </div>
+                <p className="text-xs text-zinc-400 mt-0.5 truncate">Serviços que exigem acompanhamento</p>
+              </div>
             </div>
             {onNavigate && (
               <button
                 onClick={() => onNavigate('historico')}
-                className="text-xs font-semibold text-blue-400 hover:text-blue-300 transition flex items-center space-x-1"
+                className="px-3 py-1.5 rounded-xl bg-[#080c14] hover:bg-zinc-800/80 border border-zinc-800 text-xs font-semibold text-blue-400 hover:text-blue-300 transition flex items-center space-x-1 shrink-0"
               >
                 <span>Ver histórico</span>
                 <span>&rsaquo;</span>
@@ -475,15 +489,29 @@ export const Dashboard: React.FC<Props> = ({ onNavigate, session }) => {
           </div>
 
           {ordensEmAndamento.length === 0 ? (
-            <div className="p-16 text-center space-y-2">
-              <p className="text-sm font-bold text-zinc-300">Nenhuma ordem em andamento no momento</p>
-              <p className="text-xs text-zinc-400">
+            <div className="flex-1 flex flex-col items-center justify-center p-10 sm:p-14 text-center">
+              <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center mb-3 shadow-inner">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+              <p className="text-sm font-bold text-zinc-200">Nenhuma ordem em andamento no momento</p>
+              <p className="text-xs text-zinc-400 mt-1 max-w-sm">
                 Todas as ordens de serviço foram finalizadas ou entregues.
               </p>
+              {onNavigate && (
+                <button
+                  type="button"
+                  onClick={() => onNavigate('nova-os')}
+                  className="mt-4 px-4 py-2 rounded-xl bg-blue-600/15 hover:bg-blue-600/25 border border-blue-500/30 text-blue-400 text-xs font-bold transition"
+                >
+                  + Abrir nova ordem
+                </button>
+              )}
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs min-w-[580px]">
+            <div className="overflow-x-auto flex-1">
+              <table className="w-full text-left text-xs min-w-[560px]">
                 <thead className="bg-[#090d15] text-[10px] text-zinc-400 uppercase tracking-wider border-b border-zinc-800/60">
                   <tr>
                     <th className="py-3 px-5 font-bold">ORDEM</th>
@@ -496,33 +524,24 @@ export const Dashboard: React.FC<Props> = ({ onNavigate, session }) => {
                 <tbody className="divide-y divide-zinc-800/40">
                   {ordensEmAndamento.map((os) => (
                     <tr key={os.id_os} className="hover:bg-zinc-800/20 transition">
-                      {/* Nº da OS */}
                       <td className="py-3.5 px-5 font-bold text-blue-400 font-mono">
                         {os.numero_os}
                       </td>
-
-                      {/* Cliente */}
                       <td className="py-3.5 px-5">
                         <p className="font-bold text-white text-xs">{os.cliente?.nome || 'Cliente Balcão'}</p>
                         <p className="text-[11px] text-zinc-400 mt-0.5">{os.cliente?.whatsapp || 'Sem telefone'}</p>
                       </td>
-
-                      {/* Aparelho / Serviço */}
                       <td className="py-3.5 px-5">
                         <p className="font-semibold text-zinc-200 text-xs">
                           {os.aparelho?.modelo || 'Smartphone'}
                         </p>
-                        <p className="text-[11px] text-zinc-400 mt-0.5 truncate max-w-[220px]">
+                        <p className="text-[11px] text-zinc-400 mt-0.5 truncate max-w-[200px]">
                           {os.servicoRealizado || os.defeitoRelatado || 'Manutenção geral'}
                         </p>
                       </td>
-
-                      {/* Entrada */}
                       <td className="py-3.5 px-5 text-zinc-400 font-medium">
                         {formatarDataEntrada(os.data_abertura)}
                       </td>
-
-                      {/* Status */}
                       <td className="py-3.5 px-5 text-center">
                         {renderStatusBadge(os.status_os)}
                       </td>
@@ -534,171 +553,206 @@ export const Dashboard: React.FC<Props> = ({ onNavigate, session }) => {
           )}
         </div>
 
-        {/* Coluna Direita: Cards "Hoje na Loja" e "Meta de Faturamento" */}
-        <div className="space-y-6">
-          {/* Card: Hoje na loja */}
-          <div className="bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-5 shadow-sm">
-            <div className="flex items-center justify-between pb-4 border-b border-zinc-800/60 mb-4">
-              <h3 className="text-sm font-bold text-white">Hoje na loja</h3>
-              {horaAtual && <span className="text-xs text-zinc-400">até {horaAtual}</span>}
+        {/* Coluna Direita (5 colunas): Cards "Hoje na Loja" e "Meta de Faturamento" distribuídos com mesma proporção */}
+        <div className="lg:col-span-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-4 sm:gap-6 min-w-0 h-full">
+          {/* Card 2: Hoje na loja */}
+          <div className="bg-[#0c101a] border border-zinc-800/80 rounded-2xl overflow-hidden shadow-sm flex flex-col justify-between">
+            <div className="px-5 py-4 border-b border-zinc-800/80 flex items-center justify-between">
+              <div className="flex items-center space-x-2.5">
+                <div className="w-8 h-8 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white leading-tight">Hoje na loja</h3>
+                  <p className="text-[11px] text-zinc-400">Resumo diário em tempo real</p>
+                </div>
+              </div>
+              {horaAtual && (
+                <span className="px-2.5 py-1 rounded-lg bg-[#080c14] border border-zinc-800 text-[11px] text-zinc-400 font-medium">
+                  até {horaAtual}
+                </span>
+              )}
             </div>
 
-            <div className="space-y-3.5 text-xs">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-2.5">
-                  <span className="w-2 h-2 rounded-full bg-blue-500" />
-                  <span className="text-zinc-300 font-medium">Entradas</span>
+            <div className="p-4 sm:p-5 grid grid-cols-2 gap-3 flex-1 items-stretch">
+              {(
+                [
+                  ['Entradas', entradasHoje, 'bg-blue-500', 'border-blue-500/20 text-blue-400'],
+                  ['Finalizados', finalizadosHoje, 'bg-emerald-500', 'border-emerald-500/20 text-emerald-400'],
+                  ['Entregues', entreguesHoje, 'bg-purple-500', 'border-purple-500/20 text-purple-400'],
+                  ['Orçamentos pend.', orcamentosPendentes, 'bg-amber-500', 'border-amber-500/20 text-amber-400'],
+                ] as const
+              ).map(([rotulo, valor, corPonto, corDestaque]) => (
+                <div
+                  key={rotulo}
+                  className="rounded-xl bg-[#080c14] border border-zinc-800/80 px-3.5 py-3 flex flex-col justify-between min-w-0 hover:border-zinc-700/80 transition"
+                >
+                  <div className="flex items-center justify-between gap-1.5">
+                    <span className="text-[11px] text-zinc-400 font-medium truncate">{rotulo}</span>
+                    <span className={`w-2 h-2 rounded-full shrink-0 ${corPonto}`} />
+                  </div>
+                  <div className="flex items-baseline justify-between mt-2">
+                    <p className="text-2xl font-extrabold text-white tracking-tight">
+                      {String(valor).padStart(2, '0')}
+                    </p>
+                    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border bg-zinc-900/60 ${corDestaque}`}>
+                      hoje
+                    </span>
+                  </div>
                 </div>
-                <span className="font-bold text-white text-sm">{entradasHoje}</span>
-              </div>
-
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-2.5">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                  <span className="text-zinc-300 font-medium">Finalizados</span>
-                </div>
-                <span className="font-bold text-white text-sm">{finalizadosHoje}</span>
-              </div>
-
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-2.5">
-                  <span className="w-2 h-2 rounded-full bg-purple-500" />
-                  <span className="text-zinc-300 font-medium">Entregues</span>
-                </div>
-                <span className="font-bold text-white text-sm">{entreguesTotal}</span>
-              </div>
-
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-2.5">
-                  <span className="w-2 h-2 rounded-full bg-amber-500" />
-                  <span className="text-zinc-300 font-medium">Orçamentos pendentes</span>
-                </div>
-                <span className="font-bold text-white text-sm">{orcamentosPendentes}</span>
-              </div>
+              ))}
             </div>
           </div>
 
-          {/* Card lateral: meta de faturamento (acesso financeiro) ou conclusão das ordens do mês */}
+          {/* Card 3: Meta de faturamento (acesso financeiro) ou Conclusão das ordens do mês */}
           {veFinanceiro ? (
-            <div className="bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-5 shadow-sm space-y-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-bold text-white">Meta de faturamento</p>
-                  <p className="text-[11px] text-zinc-400">{resumoMeta.rotuloCompetencia}</p>
+            <div className="bg-[#0c101a] border border-zinc-800/80 rounded-2xl overflow-hidden shadow-sm flex flex-col justify-between">
+              <div className="px-5 py-4 border-b border-zinc-800/80 flex items-center justify-between gap-2">
+                <div className="flex items-center space-x-2.5 min-w-0">
+                  <div className="w-8 h-8 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-400 flex items-center justify-center shrink-0">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                    </svg>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold text-white leading-tight truncate">Meta de faturamento</p>
+                    <p className="text-[11px] text-zinc-400 truncate first-letter:uppercase">{resumoMeta.rotuloCompetencia}</p>
+                  </div>
                 </div>
                 {onNavigate && (
                   <button
                     type="button"
                     onClick={() => onNavigate('relatorios')}
-                    className="text-[11px] font-semibold text-blue-400 hover:text-blue-300 transition"
+                    className="px-3 py-1.5 rounded-xl bg-[#080c14] hover:bg-zinc-800/80 border border-zinc-800 text-[11px] font-semibold text-blue-400 hover:text-blue-300 transition shrink-0"
                   >
                     {resumoMeta.metaConfigurada ? 'Editar meta' : 'Definir meta'} &rsaquo;
                   </button>
                 )}
               </div>
-  
-              <div className="flex items-baseline justify-between pt-1">
-                <div>
-                  <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider block">
-                    ALCANÇADO NO MÊS
-                  </span>
-                  <h4 className="text-2xl font-extrabold text-white mt-0.5">
-                    R$ {formatarValor(resumoMeta.valorAlcancado)}
-                  </h4>
+
+              <div className="p-5 space-y-4 flex-1 flex flex-col justify-between">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="p-3 rounded-xl bg-[#080c14] border border-zinc-800/80">
+                    <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider block">
+                      ALCANÇADO NO MÊS
+                    </span>
+                    <h4 className="text-lg sm:text-xl font-extrabold text-white mt-1 truncate">
+                      R$ {formatarValor(resumoMeta.valorAlcancado)}
+                    </h4>
+                  </div>
+                  <div className="p-3 rounded-xl bg-[#080c14] border border-zinc-800/80 text-right">
+                    <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider block">
+                      META DEFINIDA
+                    </span>
+                    <p className="text-lg sm:text-xl font-extrabold text-zinc-200 mt-1 truncate">
+                      {resumoMeta.metaConfigurada
+                        ? `R$ ${formatarValor(resumoMeta.metaDefinida)}`
+                        : 'Não definida'}
+                    </p>
+                  </div>
                 </div>
-                <div className="text-right">
-                  <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider block">
-                    META DEFINIDA
-                  </span>
-                  <span className="text-xs font-bold text-zinc-300 mt-0.5 block">
-                    {resumoMeta.metaConfigurada
-                      ? `R$ ${formatarValor(resumoMeta.metaDefinida)}`
-                      : 'Não definida'}
-                  </span>
-                </div>
-              </div>
-  
-              {/* Barra de Progresso */}
-              <div className="w-full bg-zinc-800/80 rounded-full h-2.5 overflow-hidden">
-                <div
-                  className={`h-full rounded-full transition-all duration-500 ${
-                    resumoMeta.metaBatida ? 'bg-emerald-500' : 'bg-blue-600'
-                  }`}
-                  style={{ width: `${resumoMeta.percentualBarraVisual}%` }}
-                />
-              </div>
-  
-              {resumoMeta.metaConfigurada ? (
-                <div className="flex items-center justify-between text-xs pt-1 border-t border-zinc-800/60">
-                  <span className={`font-bold ${resumoMeta.metaBatida ? 'text-emerald-400' : 'text-zinc-200'}`}>
-                    {resumoMeta.percentualAtingido}% da meta mensal
-                  </span>
-                  <span className="text-zinc-400 font-medium">
-                    {resumoMeta.valorExcedente > 0
-                      ? `+ R$ ${formatarValor(resumoMeta.valorExcedente)} acima`
-                      : resumoMeta.valorRestante > 0
-                      ? `Faltam R$ ${formatarValor(resumoMeta.valorRestante)}`
-                      : 'Meta concluída!'}
-                  </span>
-                </div>
-              ) : (
-                <div className="pt-1 border-t border-zinc-800/60 flex items-center justify-between text-xs">
-                  <span className="text-zinc-400">Nenhuma meta configurada para este mês.</span>
-                  {onNavigate && (
-                    <button
-                      type="button"
-                      onClick={() => onNavigate('relatorios')}
-                      className="font-bold text-blue-400 hover:underline"
-                    >
-                      Configurar agora
-                    </button>
+
+                <div className="space-y-2">
+                  {/* Barra de Progresso */}
+                  <div className="w-full bg-zinc-800/80 rounded-full h-2.5 overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all duration-500 ${
+                        resumoMeta.metaBatida ? 'bg-emerald-500' : 'bg-blue-600'
+                      }`}
+                      style={{ width: `${resumoMeta.percentualBarraVisual}%` }}
+                    />
+                  </div>
+
+                  {resumoMeta.metaConfigurada ? (
+                    <div className="flex items-center justify-between text-xs pt-1">
+                      <span className={`font-bold ${resumoMeta.metaBatida ? 'text-emerald-400' : 'text-zinc-200'}`}>
+                        {resumoMeta.percentualAtingido}% da meta mensal
+                      </span>
+                      <span className="text-zinc-400 font-medium">
+                        {resumoMeta.valorExcedente > 0
+                          ? `+ R$ ${formatarValor(resumoMeta.valorExcedente)} acima`
+                          : resumoMeta.valorRestante > 0
+                          ? `Faltam R$ ${formatarValor(resumoMeta.valorRestante)}`
+                          : 'Meta concluída!'}
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between text-xs pt-1">
+                      <span className="text-zinc-400">Nenhuma meta configurada para este mês.</span>
+                      {onNavigate && (
+                        <button
+                          type="button"
+                          onClick={() => onNavigate('relatorios')}
+                          className="font-bold text-blue-400 hover:underline"
+                        >
+                          Configurar agora
+                        </button>
+                      )}
+                    </div>
                   )}
                 </div>
-              )}
+              </div>
             </div>
           ) : (
             /* Card operacional: andamento das ordens do mês, sem nenhum valor financeiro */
-            <div className="bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-5 shadow-sm space-y-3">
-              <div>
-                <p className="text-xs font-bold text-white">Conclusão das ordens do mês</p>
-                <p className="text-[11px] text-zinc-400 first-letter:uppercase">{rotuloMes}</p>
-              </div>
-
-              <div className="flex items-baseline justify-between pt-1">
+            <div className="bg-[#0c101a] border border-zinc-800/80 rounded-2xl overflow-hidden shadow-sm flex flex-col justify-between">
+              <div className="px-5 py-4 border-b border-zinc-800/80 flex items-center space-x-2.5">
+                <div className="w-8 h-8 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-400 flex items-center justify-center shrink-0">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
                 <div>
-                  <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider block">
-                    PRONTAS OU ENTREGUES
-                  </span>
-                  <h4 className="text-2xl font-extrabold text-white mt-0.5">{concluidasNoMes}</h4>
-                </div>
-                <div className="text-right">
-                  <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider block">
-                    ABERTAS NO MÊS
-                  </span>
-                  <span className="text-xs font-bold text-zinc-300 mt-0.5 block">{ordensValidasDoMes.length}</span>
+                  <p className="text-sm font-bold text-white leading-tight">Conclusão das ordens do mês</p>
+                  <p className="text-[11px] text-zinc-400 first-letter:uppercase">{rotuloMes}</p>
                 </div>
               </div>
 
-              <div className="w-full bg-zinc-800/80 rounded-full h-2.5 overflow-hidden">
-                <div
-                  className={`h-full rounded-full transition-all duration-500 ${
-                    ordensValidasDoMes.length > 0 && percentualConclusao === 100 ? 'bg-emerald-500' : 'bg-blue-600'
-                  }`}
-                  style={{ width: `${percentualConclusao}%` }}
-                />
-              </div>
-
-              <div className="flex items-center justify-between text-xs pt-1 border-t border-zinc-800/60">
-                {ordensValidasDoMes.length > 0 ? (
-                  <>
-                    <span className="font-bold text-zinc-200">{percentualConclusao}% concluídas</span>
-                    <span className="text-zinc-400 font-medium">
-                      {ordensValidasDoMes.length - concluidasNoMes} em andamento
+              <div className="p-5 space-y-4 flex-1 flex flex-col justify-between">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="p-3 rounded-xl bg-[#080c14] border border-zinc-800/80">
+                    <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider block">
+                      PRONTAS OU ENTREGUES
                     </span>
-                  </>
-                ) : (
-                  <span className="text-zinc-400">Nenhuma ordem aberta neste mês.</span>
-                )}
+                    <h4 className="text-xl font-extrabold text-white mt-1">
+                      {String(concluidasNoMes).padStart(2, '0')}
+                    </h4>
+                  </div>
+                  <div className="p-3 rounded-xl bg-[#080c14] border border-zinc-800/80 text-right">
+                    <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider block">
+                      ABERTAS NO MÊS
+                    </span>
+                    <p className="text-xl font-extrabold text-zinc-200 mt-1">
+                      {String(ordensValidasDoMes.length).padStart(2, '0')}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="w-full bg-zinc-800/80 rounded-full h-2.5 overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all duration-500 ${
+                        ordensValidasDoMes.length > 0 && percentualConclusao === 100 ? 'bg-emerald-500' : 'bg-blue-600'
+                      }`}
+                      style={{ width: `${percentualConclusao}%` }}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between text-xs pt-1">
+                    {ordensValidasDoMes.length > 0 ? (
+                      <>
+                        <span className="font-bold text-zinc-200">{percentualConclusao}% concluídas</span>
+                        <span className="text-zinc-400 font-medium">
+                          {ordensValidasDoMes.length - concluidasNoMes} em andamento
+                        </span>
+                      </>
+                    ) : (
+                      <span className="text-zinc-400">Nenhuma ordem aberta neste mês.</span>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
           )}
