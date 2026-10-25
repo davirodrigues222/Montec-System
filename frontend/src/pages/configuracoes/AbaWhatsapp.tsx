@@ -10,11 +10,23 @@ import {
 import type { OrdemServico } from '../../types';
 import { type PropsAba, cardCls } from './tipos';
 
-const MODELOS: { chave: keyof MensagensWhatsapp; titulo: string; quando: string }[] = [
-  { chave: 'entrada', titulo: 'OS aberta / entrada do aparelho', quando: 'Ao receber o aparelho.' },
-  { chave: 'orcamento', titulo: 'Orçamento pronto para aprovação', quando: 'Depois do diagnóstico.' },
-  { chave: 'pronto', titulo: 'Aparelho pronto para retirada', quando: 'Quando a OS fica pronta.' },
-  { chave: 'entrega', titulo: 'Comprovante de entrega e garantia', quando: 'Na entrega ao cliente.' },
+const MODELOS: { chave: keyof MensagensWhatsapp; titulo: string; onde: string }[] = [
+  {
+    chave: 'entrada',
+    titulo: 'OS aberta / entrada do aparelho',
+    onde: 'Botão "Avisar cliente no WhatsApp" logo após criar a OS, e nos detalhes da OS.',
+  },
+  { chave: 'orcamento', titulo: 'Orçamento pronto para aprovação', onde: 'Botão "Orçamento pronto" nos detalhes da OS.' },
+  { chave: 'pronto', titulo: 'Aparelho pronto para retirada', onde: 'Botão "Pronto para retirada" nos detalhes da OS.' },
+  { chave: 'entrega', titulo: 'Comprovante de entrega e garantia', onde: 'Botão "Entrega e garantia" nos detalhes da OS.' },
+];
+
+const PASSOS = [
+  'Aqui você só edita os textos. Nada é enviado a partir desta tela.',
+  'Para enviar, abra a OS do cliente: logo depois de criar a ordem (botão "Avisar cliente no WhatsApp") ou em Ordens de serviço › Detalhes.',
+  'O WhatsApp abre na conversa do cliente com o texto já preenchido com os dados daquela OS.',
+  'Você revisa e toca em Enviar no WhatsApp. O cliente precisa ter o WhatsApp cadastrado na OS.',
+  'Depois que a OS é marcada como Entregue / Concluído, os botões ficam bloqueados. Envie a mensagem de entrega antes de mudar o status.',
 ];
 
 const VARIAVEIS = ['{cliente}', '{aparelho}', '{numero_os}', '{valor}', '{loja}', '{prazo_garantia}'];
@@ -22,7 +34,6 @@ const VARIAVEIS = ['{cliente}', '{aparelho}', '{numero_os}', '{valor}', '{loja}'
 export const AbaWhatsapp: React.FC<PropsAba> = ({ config, alterar }) => {
   // A pré-visualização usa a OS mais recente da loja (dados reais); sem ordens, mostra as variáveis
   const [osExemplo, setOsExemplo] = useState<OrdemServico | null>(null);
-  const [copiado, setCopiado] = useState<string | null>(null);
 
   useEffect(() => {
     let ativo = true;
@@ -37,20 +48,10 @@ export const AbaWhatsapp: React.FC<PropsAba> = ({ config, alterar }) => {
   const preVisualizar = (modelo: string) =>
     osExemplo ? preencherModeloMensagem(modelo, variaveisMensagemOS(osExemplo, config)) : modelo;
 
-  const copiar = async (chave: string, texto: string) => {
-    try {
-      await navigator.clipboard.writeText(texto);
-      setCopiado(chave);
-      setTimeout(() => setCopiado(null), 2000);
-    } catch {
-      alert('Não foi possível copiar. Selecione o texto e copie manualmente.');
-    }
-  };
-
   const testar = (texto: string) => {
     const link = linkWhatsapp(config.telefone, texto);
     if (!link) {
-      alert('Cadastre o WhatsApp comercial da loja em Configurações › Dados da loja & impressão para testar o envio no seu próprio número.');
+      alert('Cadastre o WhatsApp comercial da loja em Configurações › Impressão para testar o envio no seu próprio número.');
       return;
     }
     window.open(link, '_blank', 'noopener');
@@ -61,10 +62,12 @@ export const AbaWhatsapp: React.FC<PropsAba> = ({ config, alterar }) => {
       <div className={cardCls}>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h3 className="text-sm font-bold text-white">Mensagens automáticas de WhatsApp</h3>
-            <p className="text-xs text-zinc-400 mt-0.5">
-              Em Ordens de serviço › Detalhes, cada modelo vira um botão que abre o WhatsApp do cliente com o texto pronto.
-            </p>
+            <h3 className="text-sm font-bold text-white">Como funciona</h3>
+            <ol className="mt-2 space-y-1.5 text-xs text-zinc-400 list-decimal list-inside">
+              {PASSOS.map((p) => (
+                <li key={p}>{p}</li>
+              ))}
+            </ol>
           </div>
           <button
             type="button"
@@ -89,8 +92,8 @@ export const AbaWhatsapp: React.FC<PropsAba> = ({ config, alterar }) => {
         </div>
         <p className="text-[11px] text-zinc-500">
           {osExemplo
-            ? `Pré-visualização com a OS #${osExemplo.numero_os}, a mais recente da loja.`
-            : 'Ainda não há ordens de serviço: a pré-visualização mostra as variáveis sem substituir.'}
+            ? `Os exemplos abaixo usam a OS ${osExemplo.numero_os}, a mais recente da loja. Cada cliente recebe com os dados da própria OS.`
+            : 'Ainda não há ordens de serviço: os exemplos mostram as variáveis sem substituir.'}
         </p>
       </div>
 
@@ -102,7 +105,7 @@ export const AbaWhatsapp: React.FC<PropsAba> = ({ config, alterar }) => {
             <div key={m.chave} className={cardCls}>
               <div>
                 <h4 className="text-xs font-bold text-white">{m.titulo}</h4>
-                <p className="text-[11px] text-zinc-500">{m.quando}</p>
+                <p className="text-[11px] text-zinc-500">Onde enviar: {m.onde}</p>
               </div>
               <textarea
                 rows={4}
@@ -111,22 +114,17 @@ export const AbaWhatsapp: React.FC<PropsAba> = ({ config, alterar }) => {
                 className="w-full p-3 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs text-zinc-200 leading-relaxed outline-none focus:border-blue-500"
               />
               <div className="p-3 rounded-xl bg-emerald-500/5 border border-emerald-500/20 text-xs text-zinc-300 whitespace-pre-wrap">
+                <span className="block text-[10px] font-bold text-emerald-400 uppercase mb-1">Exemplo de como o cliente recebe</span>
                 {previa}
               </div>
-              <div className="flex flex-wrap justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => copiar(m.chave, previa)}
-                  className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-lg text-[11px] font-semibold transition"
-                >
-                  {copiado === m.chave ? '✓ Copiado' : 'Copiar mensagem'}
-                </button>
+              <div className="flex justify-end">
                 <button
                   type="button"
                   onClick={() => testar(previa)}
-                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-[11px] font-bold transition"
+                  title="Abre o WhatsApp no número da própria loja para você ver como a mensagem chega"
+                  className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-lg text-[11px] font-semibold transition"
                 >
-                  Testar no WhatsApp da loja
+                  Enviar teste para o WhatsApp da loja
                 </button>
               </div>
             </div>
