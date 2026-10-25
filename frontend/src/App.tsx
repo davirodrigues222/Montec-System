@@ -17,6 +17,7 @@ import { FormasPagamentoCadastro } from './pages/cadastros/FormasPagamentoCadast
 import { AcessoFuncionario } from './pages/AcessoFuncionario';
 import { LandingPage } from './pages/landing/LandingPage';
 import { AutorizacaoAdministrativa } from './components/AutorizacaoAdministrativa';
+import { SECOES_CONFIGURACAO } from './pages/configuracoes/secoes';
 import { OperadorContext } from './contexts/OperadorContext';
 import { type AbaSistema, type Operador, podeAcessar, podeAcessarAba, primeiraAbaPermitida } from './services/acesso';
 import type { SecaoCadastro, SecaoConfiguracao } from './types';
@@ -56,6 +57,7 @@ const NOMES_TELAS: Record<string, string> = {
   'cadastros:lojas': 'Cadastros › Lojas',
   'cadastros:funcionarios': 'Cadastros › Funcionários',
   'cadastros:formas-pagamento': 'Cadastros › Formas de pagamento',
+  ...Object.fromEntries(SECOES_CONFIGURACAO.map((s) => [`configuracoes:${s.id}`, `Configurações › ${s.rotulo}`])),
 };
 
 // Funcionário identificado na aba atual. Fica no sessionStorage (apagado ao fechar a aba ou o app)
@@ -189,6 +191,14 @@ export default function App() {
     }
     setActiveTab(aba);
   };
+  // Cada seção de Configurações é uma tela própria: liberar uma não libera as outras
+  const mudarSecaoConfiguracao = (secao: SecaoConfiguracao) => {
+    if (secao !== secaoConfiguracao) {
+      lembrarTelaAtual();
+      setLiberacao(null);
+    }
+    setSecaoConfiguracao(secao);
+  };
   const mudarSecaoCadastro = (secao: SecaoCadastro) => {
     if (secao !== secaoCadastro) {
       lembrarTelaAtual();
@@ -246,7 +256,12 @@ export default function App() {
     return <AcessoFuncionario key={userId} session={session} onEntrar={entrarComoOperador} />;
   }
 
-  const chaveTela = activeTab === 'cadastros' ? `cadastros:${secaoCadastro}` : activeTab;
+  const chaveTela =
+    activeTab === 'cadastros'
+      ? `cadastros:${secaoCadastro}`
+      : activeTab === 'configuracoes'
+      ? `configuracoes:${secaoConfiguracao}`
+      : activeTab;
   const permitidaPeloPerfil = podeAcessarAba(operador, activeTab, activeTab === 'cadastros' ? secaoCadastro : undefined);
   const liberadaPorAdmin = !permitidaPeloPerfil && liberacao?.chave === chaveTela;
   const telaLiberada = permitidaPeloPerfil || liberadaPorAdmin;
@@ -281,7 +296,7 @@ export default function App() {
         secaoCadastro={secaoCadastro}
         setSecaoCadastro={mudarSecaoCadastro}
         secaoConfiguracao={secaoConfiguracao}
-        setSecaoConfiguracao={setSecaoConfiguracao}
+        setSecaoConfiguracao={mudarSecaoConfiguracao}
       >
         {!telaLiberada ? (
           <AutorizacaoAdministrativa
@@ -312,7 +327,6 @@ export default function App() {
             {activeTab === 'configuracoes' && (
               <Configuracoes
                 secao={secaoConfiguracao}
-                onMudarSecao={setSecaoConfiguracao}
                 onAbrirCadastro={(secao) => {
                   mudarSecaoCadastro(secao);
                   navegar('cadastros');

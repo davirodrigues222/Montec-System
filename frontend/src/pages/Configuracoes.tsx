@@ -25,20 +25,17 @@ import { AbaAparenciaConta } from './configuracoes/AbaAparenciaConta';
 interface Props {
   /** Seção escolhida nos subitens de Configurações do menu lateral. */
   secao: SecaoConfiguracao;
-  /** Leva para outra seção (ex.: ao salvar com erro em um campo de outra seção). */
-  onMudarSecao?: (secao: SecaoConfiguracao) => void;
   /** Abre um submódulo de Cadastros (usado pela seção Equipe). */
   onAbrirCadastro?: (secao: SecaoCadastro) => void;
 }
 
-export const Configuracoes: React.FC<Props> = ({ secao, onMudarSecao, onAbrirCadastro }) => {
+export const Configuracoes: React.FC<Props> = ({ secao, onAbrirCadastro }) => {
   const [config, setConfig] = useState<ConfiguracoesLojaIsolada>(() => {
     const inicial = obterConfiguracoesLojaSincrono();
     aplicarTemaVisualNoDOM(inicial.temaVisual);
     return inicial;
   });
   const aba = secao;
-  const setAba = (s: SecaoConfiguracao) => onMudarSecao?.(s);
   const [salvando, setSalvando] = useState(false);
   const feedback = useFeedback();
 
@@ -81,16 +78,17 @@ export const Configuracoes: React.FC<Props> = ({ secao, onMudarSecao, onAbrirCad
   }, []);
 
   const handleSalvar = async () => {
+    // Os erros indicam a seção em vez de trocar de seção: cada seção pode exigir autorização própria
     if (!config.nomeLoja.trim()) {
-      setAba('loja');
-      feedback.erro('Informe o nome fantasia da assistência.');
+      feedback.erro('Informe o nome fantasia em Configurações › Impressão.');
       return;
     }
     const metaAlterada = metaInput.trim() !== metaSalva.current;
     const validacaoMeta = metaAlterada ? parsearValorMonetarioBR(metaInput) : null;
     if (validacaoMeta && !validacaoMeta.valido) {
-      setAba('financeiro');
-      setErroMeta(validacaoMeta.erro || 'Valor de meta inválido.');
+      const erro = validacaoMeta.erro || 'Valor de meta inválido.';
+      setErroMeta(erro);
+      if (aba !== 'financeiro') feedback.erro(`Meta mensal em Configurações › Taxas: ${erro}`);
       return;
     }
 

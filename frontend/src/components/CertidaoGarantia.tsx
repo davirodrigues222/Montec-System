@@ -118,7 +118,7 @@ export const CertidaoGarantia: React.FC<Props> = ({ os, onClose }) => {
           <div className="flex flex-wrap justify-between items-center gap-3 pb-4 mb-5 border-b border-zinc-200">
             <div>
               <h2 className="text-lg font-bold text-zinc-800">Comprovante de entrada / Certidão de garantia</h2>
-              <p className="text-xs text-zinc-500">Formato: {NOMES_FORMATO[formato]} (altere em Configurações › Dados da loja)</p>
+              <p className="text-xs text-zinc-500">Formato: {NOMES_FORMATO[formato]} (altere em Configurações › Impressão)</p>
             </div>
             <div className="flex gap-2">
               <button
