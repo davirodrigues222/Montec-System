@@ -76,6 +76,16 @@ export function validarTelefone(v: string): boolean {
   return n === 10 || n === 11;
 }
 
+/** Regra de senha nova (conta e funcionários). Senhas antigas continuam entrando normalmente. */
+export const DICA_SENHA = 'Mínimo de 8 caracteres, com letras e números.';
+
+/** Mensagem de erro da senha nova, ou null se ela segue a regra. */
+export function validarSenhaForte(senha: string): string | null {
+  if (senha.length < 8) return 'A senha deve ter pelo menos 8 caracteres.';
+  if (!/[A-Za-z]/.test(senha) || !/[0-9]/.test(senha)) return 'A senha deve ter letras e números.';
+  return null;
+}
+
 export const formatarMoeda = (v: number) =>
   (Number.isFinite(v) ? v : 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 

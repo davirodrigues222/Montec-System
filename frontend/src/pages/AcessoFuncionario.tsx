@@ -10,17 +10,18 @@ import {
   somenteDigitosCodigo,
   sugerirProximoCodigoAcesso,
 } from '../services/cadastros';
-import { type Operador, entrarComoProprietario, primeiraAbaPermitida, verificarAcessoFuncionario } from '../services/acesso';
+import { type Operador, entrarComoProprietario, entrarFuncionario, primeiraAbaPermitida } from '../services/acesso';
 import { fazerLogout, obterConfiguracoesLojaSincrono } from '../services/api';
 import { Campo, inputCls } from '../components/cadastros/ui';
+import { validarSenhaForte } from '../utils/formatadores';
 
 type Modo = 'carregando' | 'entrar' | 'primeiro-admin' | 'solicitar' | 'proprietario' | 'erro';
 
-const SENHA_MINIMA = 6;
 
 interface Props {
   session: any;
-  onEntrar: (operador: Operador) => void;
+  /** token: sessão do funcionário no banco (permite o F5 sem pedir a senha de novo). */
+  onEntrar: (operador: Operador, token?: string | null) => void;
 }
 
 /**
@@ -80,14 +81,14 @@ export const AcessoFuncionario: React.FC<Props> = ({ session, onEntrar }) => {
   };
 
   /** Valida e entra; quem ainda não tem nenhuma tela liberada fica na tela de acesso com um aviso. */
-  const concluirEntrada = (op: Operador) => {
+  const concluirEntrada = (op: Operador, token: string | null) => {
     if (!primeiraAbaPermitida(op)) {
       setAviso(null);
       setErro(`Olá, ${op.nome.split(' ')[0]}! Seu cadastro ainda aguarda liberação. Peça a um administrador para liberar suas telas em Cadastros › Funcionários.`);
       setSenha('');
       return;
     }
-    onEntrar(op);
+    onEntrar(op, token);
   };
 
   const entrar = async () => {
@@ -98,13 +99,13 @@ export const AcessoFuncionario: React.FC<Props> = ({ session, onEntrar }) => {
     setEnviando(true);
     setErro(null);
     try {
-      const op = await verificarAcessoFuncionario(codigo, senha);
-      if (!op) {
+      const resultado = await entrarFuncionario(codigo, senha);
+      if (!resultado) {
         setErro('Código de acesso ou senha inválidos. Após 5 tentativas o acesso é bloqueado por 15 minutos.');
         setSenha('');
         return;
       }
-      concluirEntrada(op);
+      concluirEntrada(resultado.operador, resultado.token);
     } catch (e: any) {
       setErro(e.message);
     } finally {
@@ -115,7 +116,8 @@ export const AcessoFuncionario: React.FC<Props> = ({ session, onEntrar }) => {
   const validarCadastro = (): string | null => {
     if (nome.trim().length < 2) return 'Informe seu nome completo.';
     if (!REGEX_CODIGO_ACESSO.test(codigo.trim())) return MENSAGEM_CODIGO_INVALIDO;
-    if (senha.length < SENHA_MINIMA) return `A senha deve ter pelo menos ${SENHA_MINIMA} caracteres.`;
+    const erroSenha = validarSenhaForte(senha);
+    if (erroSenha) return erroSenha;
     if (senha !== confirmar) return 'As senhas não conferem.';
     return null;
   };
@@ -147,9 +149,9 @@ export const AcessoFuncionario: React.FC<Props> = ({ session, onEntrar }) => {
       );
 
       if (primeiro) {
-        const op = await verificarAcessoFuncionario(codigo, senha);
-        if (op) {
-          onEntrar(op);
+        const resultado = await entrarFuncionario(codigo, senha);
+        if (resultado) {
+          onEntrar(resultado.operador, resultado.token);
           return;
         }
         setAviso('Administrador cadastrado. Entre com o código e a senha que você acabou de criar.');
@@ -173,7 +175,8 @@ export const AcessoFuncionario: React.FC<Props> = ({ session, onEntrar }) => {
     setEnviando(true);
     setErro(null);
     try {
-      onEntrar(await entrarComoProprietario(emailConta, senhaConta, nomeResponsavel));
+      const resultado = await entrarComoProprietario(emailConta, senhaConta, nomeResponsavel);
+      onEntrar(resultado.operador, resultado.token);
     } catch (e: any) {
       setErro(e.message);
       setSenhaConta('');

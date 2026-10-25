@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
-import { type Operador, autorizarComoAdministrador } from '../services/acesso';
+import { autorizarComoAdministrador } from '../services/acesso';
 
 interface Props {
   /** O que está bloqueado, ex.: "a tela Análises e relatórios". */
   recurso: string;
   /** Chamado com o administrador que autorizou. */
-  onAutorizado: (admin: Operador) => void | Promise<void>;
+  onAutorizado: (admin: { nome: string; idFuncionario: string; token: string | null }) => void | Promise<void>;
   onVoltar: () => void;
   textoBotao?: string;
   /** 'tela': card na área principal; 'compacta': dentro de um modal. */
@@ -38,8 +38,8 @@ export const AutorizacaoAdministrativa: React.FC<Props> = ({
   const [erro, setErro] = useState<string | null>(null);
   const [verificando, setVerificando] = useState(false);
 
-  const confirmar = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const confirmar = async () => {
+    if (verificando) return;
     if (!codigo.trim() || !senha) {
       setErro('Informe o ID e a senha do administrador.');
       return;
@@ -58,8 +58,16 @@ export const AutorizacaoAdministrativa: React.FC<Props> = ({
     }
   };
 
+  // Enter confirma sem enviar nenhum formulário externo (o componente pode estar dentro de outro <form>)
+  const aoTeclar = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      confirmar();
+    }
+  };
+
   const campos = (
-    <form onSubmit={confirmar} className="space-y-3 text-left" autoComplete="off">
+    <div className="space-y-3 text-left" onKeyDown={aoTeclar}>
       <div>
         <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">ID administrativo</label>
         <input
@@ -107,7 +115,8 @@ export const AutorizacaoAdministrativa: React.FC<Props> = ({
           Voltar
         </button>
         <button
-          type="submit"
+          type="button"
+          onClick={confirmar}
           disabled={verificando}
           className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-bold rounded-xl text-xs transition flex items-center justify-center gap-2"
         >
@@ -115,7 +124,7 @@ export const AutorizacaoAdministrativa: React.FC<Props> = ({
           {verificando ? 'Verificando...' : textoBotao}
         </button>
       </div>
-    </form>
+    </div>
   );
 
   if (variante === 'compacta') {

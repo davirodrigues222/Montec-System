@@ -37,9 +37,13 @@ export const AbaWhatsapp: React.FC<PropsAba> = ({ config, alterar }) => {
 
   useEffect(() => {
     let ativo = true;
-    buscarOrdensServico().then((ordens) => {
-      if (ativo) setOsExemplo(ordens.find((o) => o.status_os !== 'RASCUNHO') || null);
-    });
+    buscarOrdensServico()
+      .then((ordens) => {
+        if (ativo) setOsExemplo(ordens.find((o) => o.status_os !== 'RASCUNHO') || null);
+      })
+      .catch(() => {
+        if (ativo) setOsExemplo(null); // sem conexão: os exemplos mostram as variáveis
+      });
     return () => {
       ativo = false;
     };

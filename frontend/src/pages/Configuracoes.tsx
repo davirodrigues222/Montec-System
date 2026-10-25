@@ -150,9 +150,26 @@ export const Configuracoes: React.FC<Props> = ({ secao, onAbrirCadastro }) => {
       feedback.erro('O arquivo selecionado ultrapassa o limite de 2 MB.');
       return;
     }
-    const reader = new FileReader();
-    reader.onloadend = () => salvarLogo(reader.result as string, 'Logotipo atualizado na sua conta.');
-    reader.readAsDataURL(file);
+    // Reduz o logo para no máximo 400 px antes de salvar: fica com poucos KB e não estoura
+    // o armazenamento do navegador (um logo de 2 MB ocupava quase todo o espaço disponível)
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const escala = Math.min(1, 400 / Math.max(img.width, img.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(img.width * escala));
+      canvas.height = Math.max(1, Math.round(img.height * escala));
+      canvas.getContext('2d')?.drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
+      // PNG preserva transparência; JPG vira JPEG comprimido
+      const dados = file.type === 'image/png' ? canvas.toDataURL('image/png') : canvas.toDataURL('image/jpeg', 0.85);
+      salvarLogo(dados, 'Logotipo atualizado na sua conta.');
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      feedback.erro('Não foi possível ler a imagem. Use um arquivo PNG ou JPG.');
+    };
+    img.src = url;
   };
 
   const secaoAtual = SECOES_CONFIGURACAO.find((s) => s.id === aba) || SECOES_CONFIGURACAO[0];

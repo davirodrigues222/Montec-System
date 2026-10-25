@@ -19,7 +19,17 @@ import { LandingPage } from './pages/landing/LandingPage';
 import { AutorizacaoAdministrativa } from './components/AutorizacaoAdministrativa';
 import { SECOES_CONFIGURACAO } from './pages/configuracoes/secoes';
 import { OperadorContext } from './contexts/OperadorContext';
-import { type AbaSistema, type Operador, podeAcessar, podeAcessarAba, primeiraAbaPermitida } from './services/acesso';
+import {
+  type AbaSistema,
+  type Operador,
+  aplicarTokenAutorizacao,
+  aplicarTokenOperador,
+  encerrarSessaoFuncionario,
+  podeAcessar,
+  podeAcessarAba,
+  primeiraAbaPermitida,
+  restaurarSessaoFuncionario,
+} from './services/acesso';
 import type { SecaoCadastro, SecaoConfiguracao } from './types';
 
 // Marca que este navegador já entrou no sistema: na próxima visita vai direto ao login
@@ -60,14 +70,16 @@ const NOMES_TELAS: Record<string, string> = {
   ...Object.fromEntries(SECOES_CONFIGURACAO.map((s) => [`configuracoes:${s.id}`, `Configurações › ${s.rotulo}`])),
 };
 
-// Funcionário identificado na aba atual. Fica no sessionStorage (apagado ao fechar a aba ou o app)
-// e só é reaproveitado quando a página foi RECARREGADA (F5). Abrir o sistema de novo, voltar de
-// outro site ou duplicar a aba pede código e senha outra vez; sair da conta também limpa.
+// Sessão de quem está operando (funcionário ou proprietário) na aba atual. O sessionStorage (apagado
+// ao fechar a aba ou o app) guarda o token da sessão aberta no banco; no F5 a pessoa e as permissões
+// são lidas de novo do banco (editar o navegador não dá acesso). Só é reaproveitada quando a página foi
+// RECARREGADA: abrir o sistema de novo, voltar de outro site ou duplicar a aba pede código e senha.
+// Só o token é guardado: o operador nunca fica no navegador (editá-lo não daria acesso a nada).
 const CHAVE_OPERADOR_SESSAO = 'montec_operador_sessao';
 
 interface SessaoOperador {
   userId: string;
-  operador: Operador;
+  token: string;
   aba: AbaSistema;
   secao: SecaoCadastro;
   secaoConfiguracao?: SecaoConfiguracao;
@@ -90,7 +102,7 @@ const lerSessaoOperador = (): SessaoOperador | null => {
     }
     const salvo = sessionStorage.getItem(CHAVE_OPERADOR_SESSAO);
     const sessao = salvo ? (JSON.parse(salvo) as SessaoOperador) : null;
-    return sessao?.userId && sessao.operador ? sessao : null;
+    return sessao?.userId && typeof sessao.token === 'string' && sessao.token ? sessao : null;
   } catch {
     return null;
   }
@@ -109,9 +121,12 @@ export default function App() {
     sessaoOperadorRestaurada?.secaoConfiguracao ?? 'loja'
   );
 
-  // Funcionário que está operando o sistema (restaurado só após F5 na mesma aba e na mesma conta)
-  const [operador, setOperador] = useState<Operador | null>(sessaoOperadorRestaurada?.operador ?? null);
-  const contaDoOperador = useRef<string | null>(sessaoOperadorRestaurada?.userId ?? null);
+  // Funcionário que está operando o sistema e o token da sessão dele no banco
+  const [operador, setOperador] = useState<Operador | null>(null);
+  const [tokenOperador, setTokenOperador] = useState<string | null>(null);
+  // Após F5: restaura o funcionário pelo banco antes de mostrar a tela de identificação
+  const [restaurandoOperador, setRestaurandoOperador] = useState(!!sessaoOperadorRestaurada);
+  const contaDoOperador = useRef<string | null>(null);
   const userId: string | undefined = session?.user?.id;
 
   useEffect(() => {
@@ -123,18 +138,45 @@ export default function App() {
         /* armazenamento indisponível: só não lembra na próxima visita */
       }
     }
-    // Mesma conta (ex.: depois do F5): mantém o funcionário. Troca de conta ou logout: exige nova identificação.
     if (userId && contaDoOperador.current === userId) return;
     contaDoOperador.current = userId ?? null;
     setOperador(null);
+    setTokenOperador(null);
+
+    // F5 na mesma conta: pede ao banco o funcionário da sessão (permissões atuais)
+    const restaurar = sessaoOperadorRestaurada;
+    if (!userId || !restaurar || restaurar.userId !== userId) {
+      setRestaurandoOperador(false);
+      return;
+    }
+    let ativo = true;
+    const token = restaurar.token;
+    restaurarSessaoFuncionario(token)
+      .then((op) => {
+        if (!ativo || !op) return;
+        setOperador(op);
+        setTokenOperador(token);
+      })
+      .finally(() => {
+        if (ativo) setRestaurandoOperador(false);
+      });
+    return () => {
+      ativo = false;
+    };
   }, [loading, userId]);
 
-  // Guarda o funcionário e a tela atual para sobreviver ao F5; remove ao sair ou trocar de funcionário
+  // Guarda o token e a tela atual para sobreviver ao F5; remove ao sair ou trocar de funcionário
   useEffect(() => {
-    if (loading) return;
+    if (loading || restaurandoOperador) return;
     try {
-      if (operador && userId) {
-        const sessao: SessaoOperador = { userId, operador, aba: activeTab, secao: secaoCadastro, secaoConfiguracao };
+      if (operador && userId && tokenOperador) {
+        const sessao: SessaoOperador = {
+          userId,
+          token: tokenOperador,
+          aba: activeTab,
+          secao: secaoCadastro,
+          secaoConfiguracao,
+        };
         sessionStorage.setItem(CHAVE_OPERADOR_SESSAO, JSON.stringify(sessao));
       } else {
         sessionStorage.removeItem(CHAVE_OPERADOR_SESSAO);
@@ -142,7 +184,14 @@ export default function App() {
     } catch {
       /* armazenamento indisponível: o F5 volta a pedir a identificação */
     }
-  }, [loading, operador, userId, activeTab, secaoCadastro, secaoConfiguracao]);
+  }, [loading, restaurandoOperador, operador, tokenOperador, userId, activeTab, secaoCadastro, secaoConfiguracao]);
+
+  /** Sai do funcionário atual: encerra a sessão dele no banco e volta para a identificação. */
+  const sairDoFuncionario = () => {
+    if (tokenOperador) encerrarSessaoFuncionario(tokenOperador).catch(() => {});
+    setTokenOperador(null);
+    setOperador(null);
+  };
 
   // Fluxo público (sem login): página inicial -> entrar / criar conta
   const [telaPublica, setTelaPublica] = useState<TelaPublica>(() =>
@@ -160,14 +209,20 @@ export default function App() {
 
   // Tela liberada por um administrador para o funcionário atual. Vale só para a tela em que foi
   // autorizada: ao ir para outra tela, trocar de funcionário ou recarregar, volta a pedir autorização.
-  const [liberacao, setLiberacao] = useState<{ chave: string; admin: string } | null>(null);
+  const [liberacao, setLiberacao] = useState<{ chave: string; admin: string; token: string | null } | null>(null);
+
+  // Os tokens do operador e da liberação vão em toda consulta ao banco: as regras do cadastro de
+  // funcionários só aceitam alterações de um administrador identificado (migração 20261025150000)
+  useEffect(() => aplicarTokenOperador(tokenOperador), [tokenOperador]);
+  useEffect(() => aplicarTokenAutorizacao(liberacao?.token ?? null), [liberacao]);
   // Última tela que o funcionário pode usar (destino do botão "Voltar" da autorização)
   const ultimaTelaPermitida = useRef<{ aba: AbaSistema; secao: SecaoCadastro } | null>(null);
 
-  const entrarComoOperador = (op: Operador) => {
+  const entrarComoOperador = (op: Operador, token: string | null = null) => {
     setLiberacao(null);
     ultimaTelaPermitida.current = null;
     setOperador(op);
+    setTokenOperador(token);
     const inicial = primeiraAbaPermitida(op);
     if (inicial) {
       if (inicial.secao) setSecaoCadastro(inicial.secao);
@@ -223,7 +278,7 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  if (loading) {
+  if (loading || (session && restaurandoOperador)) {
     return (
       <div className="min-h-screen bg-[#080c14] flex flex-col items-center justify-center text-white space-y-4">
         <div className="w-10 h-10 border-4 border-blue-500/20 border-t-blue-500 rounded-full animate-spin" />
@@ -285,7 +340,7 @@ export default function App() {
         pode: (chave) => podeAcessar(operador, chave),
         trocarFuncionario: () => {
           setLiberacao(null);
-          setOperador(null);
+          sairDoFuncionario();
         },
       }}
     >
@@ -302,7 +357,7 @@ export default function App() {
           <AutorizacaoAdministrativa
             key={chaveTela}
             recurso={`a tela ${NOMES_TELAS[chaveTela] || 'selecionada'}`}
-            onAutorizado={(admin) => setLiberacao({ chave: chaveTela, admin: admin.nome })}
+            onAutorizado={(admin) => setLiberacao({ chave: chaveTela, admin: admin.nome, token: admin.token })}
             onVoltar={voltarDaAutorizacao}
           />
         ) : (

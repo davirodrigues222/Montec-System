@@ -5,7 +5,25 @@ import {
   editarOrdemServico,
   buscarFornecedores,
   obterConfiguracoesLojaSincrono,
+  diaLocalDaData,
+  modalidadeDaForma,
 } from "../services/api";
+import { AvisoErroCarregamento } from "../components/AvisoErroCarregamento";
+
+const FORMAS_PADRAO = ["PIX", "Dinheiro", "Cartão de débito", "Cartão de crédito"];
+
+/** Forma da OS na lista padrão; pagamento dividido ou texto fora do padrão é mantido como está. */
+const formaBaseDaOS = (os: OrdemServico): string => {
+  const modalidade = os.modalidadePagamento || modalidadeDaForma(os.formaPagamento || "", Number(os.parcelas || 1));
+  if (modalidade === "PIX") return "PIX";
+  if (modalidade === "DINHEIRO") return "Dinheiro";
+  if (modalidade === "DEBITO") return "Cartão de débito";
+  if (modalidade === "CREDITO_VISTA" || modalidade === "CREDITO_PARCELADO") return "Cartão de crédito";
+  return os.formaPagamento || "PIX";
+};
+
+/** Linhas exibidas por vez na listagem (botão "Mostrar mais" carrega o restante). */
+const LINHAS_POR_PAGINA = 50;
 import { MODELOS_WHATSAPP, enviarMensagemWhatsapp, podeEnviarMensagem } from "../utils/whatsapp";
 import { StatusBadge } from "../components/StatusBadge";
 import { AutorizacaoAdministrativa } from "../components/AutorizacaoAdministrativa";
@@ -43,16 +61,8 @@ const hojeISO = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
 
-/** Data de abertura da OS como AAAA-MM-DD (mesma regra de Relatórios). */
-const diaDaOS = (os: OrdemServico): string => {
-  if (!os.data_abertura) return "";
-  const iso = String(os.data_abertura).match(/^(\d{4}-\d{2}-\d{2})/);
-  if (iso) return iso[1];
-  const d = new Date(os.data_abertura);
-  return isNaN(d.getTime())
-    ? ""
-    : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-};
+/** Data de abertura da OS como AAAA-MM-DD no horário local (mesma regra de Relatórios). */
+const diaDaOS = (os: OrdemServico): string => diaLocalDaData(os.data_abertura);
 
 const dataCurta = (os: OrdemServico) => {
   const dia = diaDaOS(os);
@@ -135,22 +145,22 @@ export const HistoricoServicos: React.FC = () => {
     {},
   );
 
-  const carregarHistorico = async (): Promise<OrdemServico[]> => {
-    setLoading(true);
-    try {
-      const data = await buscarOrdensServico();
-      const lista = Array.isArray(data) ? data : [];
-      setOrdens(lista);
+  const [erroCarregamento, setErroCarregamento] = useState<string | null>(null);
+  const [linhasVisiveis, setLinhasVisiveis] = useState(LINHAS_POR_PAGINA);
 
-      const resFornecedores = await buscarFornecedores();
-      if (Array.isArray(resFornecedores)) {
-        setFornecedoresCadastrados(resFornecedores);
-      }
+  // forcar = botão "Atualizar" e recarga após salvar (ignora o cache curto das ordens)
+  const carregarHistorico = async (forcar = false): Promise<OrdemServico[]> => {
+    setLoading(true);
+    setErroCarregamento(null);
+    try {
+      const [lista, resFornecedores] = await Promise.all([buscarOrdensServico(forcar), buscarFornecedores()]);
+      setOrdens(lista);
+      setFornecedoresCadastrados(resFornecedores);
       return lista;
-    } catch (err) {
+    } catch (err: any) {
       console.error("Erro ao buscar histórico ou fornecedores:", err);
-      setOrdens([]);
-      return [];
+      setErroCarregamento(err?.message || "Verifique a conexão e tente novamente.");
+      return ordens;
     } finally {
       setLoading(false);
     }
@@ -244,7 +254,8 @@ export const HistoricoServicos: React.FC = () => {
     const total = os.orcamentoCalculado?.subtotalServicos ?? os.orcamentoCalculado?.valorTotalOrcamento;
     setEditValorTotal(total !== undefined && total !== null ? Number(total) : "");
 
-    setEditFormaPagamento(os.formaPagamento || "PIX");
+    // Forma na lista padrão (a mesma da Nova OS); pagamento dividido fica como "Manter"
+    setEditFormaPagamento(formaBaseDaOS(os));
     setEditParcelas(os.parcelas || 1);
     
     const valorFinalAtual = os.orcamentoCalculado?.valorTotalOrcamento;
@@ -254,16 +265,9 @@ export const HistoricoServicos: React.FC = () => {
         : (valorFinalAtual !== undefined && valorFinalAtual !== null ? valorFinalAtual : "")
     );
 
-    setEditDataAbertura(
-      os.data_abertura
-        ? new Date(os.data_abertura).toISOString().substring(0, 10)
-        : "",
-    );
-    setEditDataConclusao(
-      os.data_conclusao
-        ? new Date(os.data_conclusao).toISOString().substring(0, 10)
-        : "",
-    );
+    // Datas no horário local (toISOString usava o horário universal e mudava o dia à noite)
+    setEditDataAbertura(diaLocalDaData(os.data_abertura));
+    setEditDataConclusao(diaLocalDaData(os.data_conclusao));
 
     setEditChecklist(os.checklistEntrada || {});
     setAbaEdicao("geral");
@@ -307,6 +311,39 @@ export const HistoricoServicos: React.FC = () => {
       const lucroCalculado =
         numValorLiquidoFinal - (numCustoPeca + numFrete + custoGarantiaExistente);
 
+      // Forma e pagamentos: refeitos só quando forma, parcelas ou valores mudaram (antes ficavam os antigos)
+      const formaPadrao = FORMAS_PADRAO.includes(editFormaPagamento);
+      const credito = editFormaPagamento === "Cartão de crédito";
+      const parcelasFinais = credito ? editParcelas : 1;
+      const formaTexto = credito && parcelasFinais > 1 ? `Cartão de crédito (${parcelasFinais}x)` : editFormaPagamento;
+      const brutoAnterior = Number(osParaEditar.orcamentoCalculado?.valorTotalOrcamento || 0);
+      const liquidoAnterior = Number(osParaEditar.valorLiquido ?? brutoAnterior);
+      const pagamentoMudou =
+        editFormaPagamento !== formaBaseDaOS(osParaEditar) ||
+        parcelasFinais !== Number(osParaEditar.parcelas || 1) ||
+        Math.abs(valorComDesconto - brutoAnterior) >= 0.01 ||
+        Math.abs(numValorLiquidoFinal - liquidoAnterior) >= 0.01;
+      const pagamentoAnterior = (osParaEditar.pagamentos || []).length === 1 ? osParaEditar.pagamentos![0] : undefined;
+      const pagamentosAtualizados =
+        formaPadrao && pagamentoMudou
+          ? [
+              {
+                id: "pg_1",
+                forma: editFormaPagamento,
+                valor: valorComDesconto,
+                parcelas: parcelasFinais,
+                taxaPercentual:
+                  valorComDesconto > 0 ? Math.round(((valorComDesconto - numValorLiquidoFinal) / valorComDesconto) * 10000) / 100 : 0,
+                valorTaxa: Math.max(0, Math.round((valorComDesconto - numValorLiquidoFinal) * 100) / 100),
+                valorLiquido: numValorLiquidoFinal,
+                // Mantém a maquininha registrada se a forma continua a mesma
+                ...(pagamentoAnterior?.forma === editFormaPagamento && pagamentoAnterior.maquininha
+                  ? { maquininha: pagamentoAnterior.maquininha, maquininhaId: pagamentoAnterior.maquininhaId }
+                  : {}),
+              },
+            ]
+          : undefined;
+
       await editarOrdemServico(osParaEditar.id_os, {
         cliente: {
           nome: editNome,
@@ -324,8 +361,9 @@ export const HistoricoServicos: React.FC = () => {
         servicoRealizado: editServico,
         pecasUtilizadas: editPecas,
         observacoes: editObservacoes,
-        formaPagamento: editFormaPagamento,
-        parcelas: editParcelas,
+        formaPagamento: formaPadrao ? formaTexto : editFormaPagamento,
+        parcelas: parcelasFinais,
+        ...(pagamentosAtualizados ? { pagamentos: pagamentosAtualizados } : {}),
         valor_liquido: numValorLiquidoFinal,
         dataAbertura: editDataAbertura || undefined,
         data_conclusao: editDataConclusao || undefined,
@@ -429,7 +467,7 @@ export const HistoricoServicos: React.FC = () => {
           <p className="text-xs text-zinc-400 mt-1">Histórico completo de atendimentos da loja.</p>
         </div>
         <button
-          onClick={carregarHistorico}
+          onClick={() => carregarHistorico(true)}
           title="Atualizar lista"
           className="self-start sm:self-auto px-3.5 py-2 bg-[#0c101a] hover:bg-zinc-800 border border-zinc-800 rounded-xl text-xs font-semibold text-zinc-200 transition flex items-center gap-1.5"
         >
@@ -439,6 +477,10 @@ export const HistoricoServicos: React.FC = () => {
           Atualizar
         </button>
       </div>
+
+      {erroCarregamento && (
+        <AvisoErroCarregamento mensagem={erroCarregamento} onTentarNovamente={() => carregarHistorico(true)} />
+      )}
 
       {/* ================= FILTROS ================= */}
       <div className="bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-4 space-y-3 print:hidden">
@@ -556,7 +598,7 @@ export const HistoricoServicos: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-800/50">
-                {ordensFiltradas.map((os) => {
+                {ordensFiltradas.slice(0, linhasVisiveis).map((os) => {
                   const valorCobrado = Number(os.orcamentoCalculado?.valorTotalOrcamento || 0);
                   const valorLiquido = Number(os.valorLiquido ?? valorCobrado);
                   const abrirDetalhes = () => {
@@ -629,6 +671,20 @@ export const HistoricoServicos: React.FC = () => {
               </tbody>
             </table>
           </div>
+          {ordensFiltradas.length > linhasVisiveis && (
+            <div className="flex items-center justify-between gap-2 px-5 py-3 border-t border-zinc-800/60 text-xs">
+              <span className="text-zinc-500">
+                Mostrando {linhasVisiveis} de {ordensFiltradas.length} ordens
+              </span>
+              <button
+                type="button"
+                onClick={() => setLinhasVisiveis((n) => n + LINHAS_POR_PAGINA)}
+                className="font-semibold text-blue-400 hover:text-blue-300"
+              >
+                Mostrar mais
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -796,10 +852,17 @@ export const HistoricoServicos: React.FC = () => {
                       <p className="font-semibold text-amber-400">
                         {osSelecionada.formaPagamento || "PIX"}{" "}
                         {osSelecionada.formaPagamento ===
-                        "Cartão de Crédito"
+                        "Cartão de crédito"
                           ? `(${osSelecionada.parcelas || 1}x)`
                           : ""}
                       </p>
+                      {/* Maquininha(s) usada(s) no cartão, registradas nos pagamentos da OS */}
+                      {(osSelecionada.pagamentos || []).some((p) => p.maquininha) && (
+                        <p className="text-[11px] text-zinc-400 mt-0.5">
+                          Maquininha:{" "}
+                          {[...new Set((osSelecionada.pagamentos || []).map((p) => p.maquininha).filter(Boolean))].join(", ")}
+                        </p>
+                      )}
                     </div>
                     <div>
                       <span className="text-zinc-500 block uppercase text-[10px] font-bold">
@@ -1139,7 +1202,12 @@ export const HistoricoServicos: React.FC = () => {
                       <select
                         value={editStatus}
                         onChange={(e) =>
-                          setEditStatus(e.target.value as StatusOS)
+                        {
+                          const novo = e.target.value as StatusOS;
+                          setEditStatus(novo);
+                          // Entregue: a data de conclusão (início da garantia) é hoje, se ainda não informada
+                          if (novo === "ENTREGUE" && !editDataConclusao) setEditDataConclusao(diaLocalDaData(new Date().toISOString()));
+                        }
                         }
                         className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-white outline-none focus:border-blue-500 font-bold"
                       >
@@ -1230,18 +1298,21 @@ export const HistoricoServicos: React.FC = () => {
                         value={editFormaPagamento}
                         onChange={(e) => {
                           setEditFormaPagamento(e.target.value);
-                          if (e.target.value !== "Cartão de Crédito") {
+                          if (e.target.value !== "Cartão de crédito") {
                             setEditParcelas(1);
                           }
                         }}
                         className="w-full bg-zinc-950 border border-amber-500/50 rounded-lg p-2.5 text-amber-400 font-bold outline-none"
                       >
+                        {!FORMAS_PADRAO.includes(editFormaPagamento) && (
+                          <option value={editFormaPagamento}>Manter: {editFormaPagamento}</option>
+                        )}
                         <option value="PIX">PIX</option>
                         <option value="Dinheiro">Dinheiro</option>
                         <option value="Cartão de Débito">
                           Cartão de Débito
                         </option>
-                        <option value="Cartão de Crédito">
+                        <option value="Cartão de crédito">
                           Cartão de Crédito
                         </option>
                       </select>
@@ -1249,31 +1320,37 @@ export const HistoricoServicos: React.FC = () => {
 
                     {/* Parcelas: 100% visível em Cartão de Crédito; translúcido, inselecionável e desabilitado nas demais */}
                     <div className={`transition-all duration-200 ${
-                      editFormaPagamento === "Cartão de Crédito"
+                      editFormaPagamento === "Cartão de crédito"
                         ? "opacity-100"
                         : "opacity-30 pointer-events-none select-none"
                     }`}>
                       <label className="text-zinc-400 block mb-1 font-bold text-blue-400">
-                        Parcelas {editFormaPagamento !== "Cartão de Crédito" && <span className="text-[10px] text-zinc-500 font-normal lowercase">(à vista)</span>}
+                        Parcelas {editFormaPagamento !== "Cartão de crédito" && <span className="text-[10px] text-zinc-500 font-normal lowercase">(à vista)</span>}
                       </label>
                       <select
-                        disabled={editFormaPagamento !== "Cartão de Crédito"}
-                        value={editFormaPagamento === "Cartão de Crédito" ? editParcelas : 1}
+                        disabled={editFormaPagamento !== "Cartão de crédito"}
+                        value={editFormaPagamento === "Cartão de crédito" ? editParcelas : 1}
                         onChange={(e) => {
                           setEditParcelas(Number(e.target.value));
                         }}
                         className={`w-full bg-zinc-950 border border-blue-500/50 rounded-lg p-2.5 text-blue-400 font-bold outline-none ${
-                          editFormaPagamento === "Cartão de Crédito" ? "cursor-pointer" : "cursor-not-allowed text-zinc-500"
+                          editFormaPagamento === "Cartão de crédito" ? "cursor-pointer" : "cursor-not-allowed text-zinc-500"
                         }`}
                       >
-                        {Array.from({ length: 12 }, (_, i) => i + 1).map(
-                          (num) => (
-                            <option key={num} value={num}>
-                              {num}x{" "}
-                              {num <= 3 ? "(Sem Juros)" : "(Juros Clientes)"}
-                            </option>
-                          ),
-                        )}
+                        {/* Até o maior parcelamento entre as maquininhas (Configurações › Taxas) */}
+                        {Array.from(
+                          {
+                            length: Math.max(
+                              editParcelas,
+                              ...obterConfiguracoesLojaSincrono().maquininhas.map((m) => m.taxas.credito.length),
+                            ),
+                          },
+                          (_, i) => i + 1,
+                        ).map((num) => (
+                          <option key={num} value={num}>
+                            {num}x{num === 1 ? " (à vista)" : ""}
+                          </option>
+                        ))}
                       </select>
                     </div>
 

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import {
   buscarClientes,
   buscarFornecedores,
+  buscarModelosAparelhos,
   buscarServicosCadastrados,
   criarOrdemServico,
   calcularDataPrevistaEntrega,
@@ -9,8 +10,11 @@ import {
   obterConfiguracoesLojaSincrono,
   obterPrazoGarantiaConfiguradoLoja,
   obterTaxaMaquininha,
+  parcelasMaximasMaquininha,
+  type Maquininha,
 } from '../services/api';
 import { CertidaoGarantia } from '../components/CertidaoGarantia';
+import { CampoModeloAparelho } from '../components/CampoModeloAparelho';
 import type { AbaSistema } from '../services/acesso';
 import type { OrdemServico } from '../types';
 import { OPCOES_CHECKLIST, criarChecklistPadrao, itensChecklistAtivos } from '../utils/checklist';
@@ -24,26 +28,73 @@ interface Props {
 // ================= REGRAS DE TAXAS DE MAQUINETA =================
 const FORMAS_SEM_TAXA = ['Dinheiro', 'PIX'];
 
-// Taxas da maquininha da própria loja (Configurações › Taxas)
-const obterTaxaPadrao = (forma: string, p: number = 1): number =>
-  FORMAS_SEM_TAXA.includes(forma) ? 0 : obterTaxaMaquininha(forma, p);
+const ehCartao = (forma: string) => forma === 'Cartão de crédito' || forma === 'Cartão de débito';
 
-/** Ao trocar a forma ou as parcelas: aplica a taxa padrão e força 1x fora do crédito. */
+// Taxas da maquininha escolhida (Configurações › Taxas); sem maquininha, usa a padrão
+const obterTaxaPadrao = (forma: string, p: number = 1, maquininhaId?: string): number =>
+  FORMAS_SEM_TAXA.includes(forma) ? 0 : obterTaxaMaquininha(forma, p, maquininhaId);
+
+/** Ao trocar a forma, as parcelas ou a maquininha: aplica a taxa dela e força 1x fora do crédito. */
 const aplicarRegraTaxa = (
   forma: string,
   parcelas: number,
+  maquininhaId: string,
   setTaxa: (v: number) => void,
   setParcelas: (v: number) => void,
 ) => {
   if (FORMAS_SEM_TAXA.includes(forma) || forma === 'Cartão de débito') {
-    setTaxa(obterTaxaPadrao(forma));
+    setTaxa(obterTaxaPadrao(forma, 1, maquininhaId));
     setParcelas(1);
   } else if (forma === 'Cartão de crédito') {
-    setTaxa(obterTaxaPadrao(forma, parcelas));
+    const maximo = parcelasMaximasMaquininha(maquininhaId);
+    if (parcelas > maximo) {
+      setParcelas(maximo); // o efeito roda de novo com a parcela ajustada e aplica a taxa dela
+      return;
+    }
+    setTaxa(obterTaxaPadrao(forma, parcelas, maquininhaId));
   }
 };
 
-const dataHojeISO = () => new Date().toISOString().substring(0, 10);
+/** Opções de parcelas da maquininha (1x até o parcelamento máximo dela), com a taxa de cada uma. */
+const opcoesParcelas = (maquininhas: Maquininha[], maquininhaId: string) => {
+  const m = maquininhas.find((x) => x.id === maquininhaId) || maquininhas[0];
+  return (m?.taxas.credito || [0]).map((taxa, i) => ({
+    parcelas: i + 1,
+    rotulo: `${i + 1}x${i === 0 ? ' (à vista)' : ''} · taxa ${taxa.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%`,
+  }));
+};
+
+/** Escolha da maquininha que passou o cartão. Com uma só, mostra qual é usada. */
+const SeletorMaquininha: React.FC<{ valor: string; onChange: (id: string) => void; maquininhas: Maquininha[] }> = ({
+  valor,
+  onChange,
+  maquininhas,
+}) => (
+  <div>
+    <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">MAQUININHA</label>
+    <select
+      value={valor}
+      onChange={(e) => onChange(e.target.value)}
+      disabled={maquininhas.length <= 1}
+      className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs text-white outline-none focus:border-blue-500 transition cursor-pointer disabled:cursor-default disabled:text-zinc-300"
+    >
+      {maquininhas.map((m) => (
+        <option key={m.id} value={m.id}>
+          {m.nome}
+          {m.operadora ? ` (${m.operadora})` : ''}
+        </option>
+      ))}
+    </select>
+  </div>
+);
+
+const nomeMaquininha = (maquininhas: Maquininha[], id: string) => maquininhas.find((m) => m.id === id)?.nome || '';
+
+// Data local (toISOString usava o horário universal: depois das 21h já marcava o dia seguinte)
+const dataHojeISO = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
 
 // Data prevista sugerida pelo prazo de entrega em dias úteis (Configurações › Operacional); 0 = não sugere
 const dataPrevistaSugerida = () => {
@@ -57,6 +108,8 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
   const [listaClientes, setListaClientes] = useState<any[]>([]);
   const [listaFornecedores, setListaFornecedores] = useState<any[]>([]);
   const [listaServicos, setListaServicos] = useState<any[]>([]);
+  // Modelos já atendidos pela loja: aparecem primeiro nas sugestões do campo de aparelho
+  const [modelosDaLoja, setModelosDaLoja] = useState<string[]>([]);
 
   // Topo: Cobertura
   const [possuiGarantia, setPossuiGarantia] = useState<boolean>(true);
@@ -97,6 +150,14 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
   const [parcelas1, setParcelas1] = useState(1);
   const [taxaMaquinetaPercentual1, setTaxaMaquinetaPercentual1] = useState<number | ''>(() => obterTaxaPadrao('Cartão de crédito', 1));
 
+  // Maquininhas da loja e a escolhida em cada forma de pagamento (começa pela padrão)
+  const [{ maquininhas, maquininhaPadraoId }] = useState(() => {
+    const cfg = obterConfiguracoesLojaSincrono();
+    return { maquininhas: cfg.maquininhas, maquininhaPadraoId: cfg.maquininhaPadraoId };
+  });
+  const [maquininha1, setMaquininha1] = useState(maquininhaPadraoId);
+  const [maquininha2, setMaquininha2] = useState(maquininhaPadraoId);
+
   // Forma 2 (quando dividirPagamento === true)
   const [formaPagamento2, setFormaPagamento2] = useState('Dinheiro');
   const [valorPg2, setValorPg2] = useState<number | ''>('');
@@ -120,11 +181,12 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
 
   useEffect(() => {
     // As funções de busca já tratam erros e devolvem lista vazia
-    Promise.all([buscarClientes(), buscarFornecedores(), buscarServicosCadastrados()]).then(
-      ([clientes, fornecedores, servicos]) => {
+    Promise.all([buscarClientes(), buscarFornecedores(), buscarServicosCadastrados(), buscarModelosAparelhos()]).then(
+      ([clientes, fornecedores, servicos, modelos]) => {
         setListaClientes(clientes);
         setListaFornecedores(fornecedores);
         setListaServicos(servicos);
+        setModelosDaLoja(modelos);
       },
     );
   }, []);
@@ -170,12 +232,16 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
 
   // Ajuste automático de taxa e parcelas conforme a forma de pagamento
   useEffect(() => {
-    aplicarRegraTaxa(formaPagamento1, parcelas1, setTaxaMaquinetaPercentual1, setParcelas1);
-  }, [formaPagamento1, parcelas1]);
+    aplicarRegraTaxa(formaPagamento1, parcelas1, maquininha1, setTaxaMaquinetaPercentual1, setParcelas1);
+  }, [formaPagamento1, parcelas1, maquininha1]);
 
   useEffect(() => {
-    aplicarRegraTaxa(formaPagamento2, parcelas2, setTaxaMaquinetaPercentual2, setParcelas2);
-  }, [formaPagamento2, parcelas2]);
+    aplicarRegraTaxa(formaPagamento2, parcelas2, maquininha2, setTaxaMaquinetaPercentual2, setParcelas2);
+  }, [formaPagamento2, parcelas2, maquininha2]);
+
+  // Maquininha registrada em cada pagamento com cartão (fica no JSON de pagamentos da OS)
+  const dadosMaquininha = (forma: string, id: string) =>
+    ehCartao(forma) ? { maquininhaId: id, maquininha: nomeMaquininha(maquininhas, id) } : {};
 
   // ================= CÁLCULOS FINANCEIROS DO CARD 03 =================
   const numPrecoServico = Number(valorServico) || 0;
@@ -230,6 +296,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
           taxaPercentual: numTaxa1,
           valorTaxa: valorTaxa1,
           valorLiquido: liquidoPg1,
+          ...dadosMaquininha(formaPagamento1, maquininha1),
         },
       ];
 
@@ -240,13 +307,10 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
       };
     }
 
-    const desc1 = formaPagamento1 === 'Cartão de crédito' && parcelas1 > 1
-      ? `${formaPagamento1} (${parcelas1}x - R$ ${formatarValor(numValorPg1)})`
-      : `${formaPagamento1} (R$ ${formatarValor(numValorPg1)})`;
+    // Texto curto (coluna forma_pagamento tem limite de 50 caracteres); valores de cada forma ficam em pagamentosArray
+    const desc1 = formaPagamento1 === 'Cartão de crédito' && parcelas1 > 1 ? `${formaPagamento1} (${parcelas1}x)` : formaPagamento1;
 
-    const desc2 = formaPagamento2 === 'Cartão de crédito' && parcelas2 > 1
-      ? `${formaPagamento2} (${parcelas2}x - R$ ${formatarValor(numValorPg2)})`
-      : `${formaPagamento2} (R$ ${formatarValor(numValorPg2)})`;
+    const desc2 = formaPagamento2 === 'Cartão de crédito' && parcelas2 > 1 ? `${formaPagamento2} (${parcelas2}x)` : formaPagamento2;
 
     const parcelasFinal = formaPagamento1 === 'Cartão de crédito'
       ? parcelas1
@@ -261,6 +325,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
         taxaPercentual: numTaxa1,
         valorTaxa: valorTaxa1,
         valorLiquido: liquidoPg1,
+        ...dadosMaquininha(formaPagamento1, maquininha1),
       },
       {
         id: 'pg_2',
@@ -270,6 +335,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
         taxaPercentual: numTaxa2,
         valorTaxa: valorTaxa2,
         valorLiquido: liquidoPg2,
+        ...dadosMaquininha(formaPagamento2, maquininha2),
       },
     ];
 
@@ -441,7 +507,9 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
     setDividirPagamento(false);
     setFormaPagamento1('Cartão de crédito');
     setParcelas1(1);
-    setTaxaMaquinetaPercentual1(obterTaxaPadrao('Cartão de crédito', 1));
+    setMaquininha1(maquininhaPadraoId);
+    setMaquininha2(maquininhaPadraoId);
+    setTaxaMaquinetaPercentual1(obterTaxaPadrao('Cartão de crédito', 1, maquininhaPadraoId));
     setValorPg1('');
 
     setFormaPagamento2('Dinheiro');
@@ -619,11 +687,10 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
               <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
                 MODELO DO APARELHO *
               </label>
-              <input
-                type="text"
-                required
-                value={modeloAparelho}
-                onChange={(e) => setModeloAparelho(e.target.value)}
+              <CampoModeloAparelho
+                valor={modeloAparelho}
+                onChange={setModeloAparelho}
+                modelosDaLoja={modelosDaLoja}
                 placeholder="Ex: iPhone 13 128GB"
                 className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs text-white outline-none focus:border-blue-500 transition"
               />
@@ -876,6 +943,14 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
             </div>
 
             {/* --- MODO 1: FORMA DE PAGAMENTO ÚNICA --- */}
+            {!dividirPagamento && ehCartao(formaPagamento1) && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+                <div className="sm:col-span-2">
+                  <SeletorMaquininha valor={maquininha1} onChange={setMaquininha1} maquininhas={maquininhas} />
+                </div>
+              </div>
+            )}
+
             {!dividirPagamento && (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
                 <div>
@@ -911,9 +986,9 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
                       formaPagamento1 === 'Cartão de crédito' ? 'cursor-pointer' : 'cursor-not-allowed text-zinc-500'
                     }`}
                   >
-                    {[1, 2, 3, 4, 5, 6, 10, 12].map((p) => (
-                      <option key={p} value={p}>
-                        {p}x {p === 1 ? '(à vista)' : '(sem juros)'}
+                    {opcoesParcelas(maquininhas, maquininha1).map((o) => (
+                      <option key={o.parcelas} value={o.parcelas}>
+                        {o.rotulo}
                       </option>
                     ))}
                   </select>
@@ -1046,9 +1121,9 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
                             formaPagamento1 === 'Cartão de crédito' ? 'cursor-pointer' : 'cursor-not-allowed text-zinc-500'
                           }`}
                         >
-                          {[1, 2, 3, 4, 5, 6, 10, 12].map((p) => (
-                            <option key={p} value={p}>
-                              {p}x {p === 1 ? '(à vista)' : '(sem juros)'}
+                          {opcoesParcelas(maquininhas, maquininha1).map((o) => (
+                            <option key={o.parcelas} value={o.parcelas}>
+                              {o.rotulo}
                             </option>
                           ))}
                         </select>
@@ -1075,6 +1150,13 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
                           }`}
                         />
                       </div>
+
+                      {/* Maquininha usada no cartão (taxas de Configurações › Taxas) */}
+                      {ehCartao(formaPagamento1) && (
+                        <div className="sm:col-span-2">
+                          <SeletorMaquininha valor={maquininha1} onChange={setMaquininha1} maquininhas={maquininhas} />
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -1150,9 +1232,9 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
                             formaPagamento2 === 'Cartão de crédito' ? 'cursor-pointer' : 'cursor-not-allowed text-zinc-500'
                           }`}
                         >
-                          {[1, 2, 3, 4, 5, 6, 10, 12].map((p) => (
-                            <option key={p} value={p}>
-                              {p}x {p === 1 ? '(à vista)' : '(sem juros)'}
+                          {opcoesParcelas(maquininhas, maquininha2).map((o) => (
+                            <option key={o.parcelas} value={o.parcelas}>
+                              {o.rotulo}
                             </option>
                           ))}
                         </select>
@@ -1179,6 +1261,13 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
                           }`}
                         />
                       </div>
+
+                      {/* Maquininha usada no cartão (taxas de Configurações › Taxas) */}
+                      {ehCartao(formaPagamento2) && (
+                        <div className="sm:col-span-2">
+                          <SeletorMaquininha valor={maquininha2} onChange={setMaquininha2} maquininhas={maquininhas} />
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>

@@ -7,6 +7,7 @@ import {
   type ResultadoElegibilidadeGarantia,
 } from '../services/api';
 import type { OrdemServico } from '../types';
+import { AvisoErroCarregamento } from '../components/AvisoErroCarregamento';
 
 export const GarantiaRetorno: React.FC = () => {
   const [ordens, setOrdens] = useState<OrdemServico[]>([]);
@@ -27,11 +28,14 @@ export const GarantiaRetorno: React.FC = () => {
     return validarElegibilidadeGarantiaOS(os, { servicosCadastrados: listaServicos });
   };
 
-  const carregarOrdens = async () => {
+  const [erroCarregamento, setErroCarregamento] = useState<string | null>(null);
+
+  const carregarOrdens = async (forcar = false) => {
     setLoading(true);
+    setErroCarregamento(null);
     try {
       const [listaOrdens, listaServicos] = await Promise.all([
-        buscarOrdensServico(),
+        buscarOrdensServico(forcar),
         buscarServicosCadastrados(),
       ]);
 
@@ -44,9 +48,9 @@ export const GarantiaRetorno: React.FC = () => {
       setOsSelecionada(
         osAtualizada && elegivel(osAtualizada) ? osAtualizada : listaOrdens.find(elegivel) || null
       );
-    } catch (err) {
+    } catch (err: any) {
       console.error('Erro ao carregar ordens para garantia:', err);
-      setOrdens([]);
+      setErroCarregamento(err?.message || 'Verifique a conexão e tente novamente.');
     } finally {
       setLoading(false);
     }
@@ -159,6 +163,10 @@ export const GarantiaRetorno: React.FC = () => {
           Registre retornos dentro do prazo de garantia configurado em cada OS e acompanhe o impacto financeiro.
         </p>
       </div>
+
+      {erroCarregamento && (
+        <AvisoErroCarregamento mensagem={erroCarregamento} onTentarNovamente={() => carregarOrdens(true)} />
+      )}
 
       {/* ================= GRADE PRINCIPAL (2 COLUNAS DO FIGMA) ================= */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">

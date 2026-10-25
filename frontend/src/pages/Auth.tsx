@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { fazerLogin, cadastrarUsuario, recuperarSenha } from '../services/api';
+import { validarSenhaForte } from '../utils/formatadores';
 
 interface Props {
   onLoginSuccess?: () => void;
@@ -68,8 +69,9 @@ export const Auth: React.FC<Props> = ({ onLoginSuccess, modoInicial = 'login', o
       return;
     }
 
-    if (cadSenha.length < 6) {
-      setMensagem({ tipo: 'erro', texto: 'A senha deve conter no mínimo 6 caracteres.' });
+    const erroSenha = validarSenhaForte(cadSenha);
+    if (erroSenha) {
+      setMensagem({ tipo: 'erro', texto: erroSenha });
       return;
     }
 
@@ -443,7 +445,7 @@ export const Auth: React.FC<Props> = ({ onLoginSuccess, modoInicial = 'login', o
                       required
                       value={cadSenha}
                       onChange={(e) => setCadSenha(e.target.value)}
-                      placeholder="Mínimo 6 dígitos"
+                      placeholder="8+ caracteres, letras e números"
                       className="w-full px-3.5 py-2.5 bg-[#0d131f] border border-zinc-800 rounded-xl text-xs sm:text-sm text-white placeholder-zinc-400 focus:outline-none focus:border-blue-500 transition"
                     />
                   </div>

@@ -5,7 +5,21 @@ import {
   obterMetaFinanceiraConta,
   parsearValorMonetarioBR,
   salvarMetaFinanceiraConta,
+  calcularValorTaxas,
+  modalidadeDaForma,
+  ROTULOS_MODALIDADE,
+  type ModalidadePagamento,
+  contaNoFaturamento,
+  diaLocalDaData,
 } from '../services/api';
+import { AvisoErroCarregamento } from '../components/AvisoErroCarregamento';
+
+/** Célula de CSV entre aspas; textos que começam com = + - @ ganham apóstrofo para o Excel não executar como fórmula. */
+const celulaCsv = (valor: unknown) => {
+  const texto = String(valor ?? '');
+  const seguro = /^[=+\-@\t\r]/.test(texto) ? `'${texto}` : texto;
+  return `"${seguro.replace(/"/g, '""')}"`;
+};
 import type { OrdemServico } from '../types';
 import { formatarValor } from '../utils/formatadores';
 import { StatusBadge } from '../components/StatusBadge';
@@ -37,6 +51,10 @@ const custoGarantiaOS = (os: OrdemServico) =>
       0
   );
 const custosOS = (os: OrdemServico) => custoPecaOS(os) + custoFreteOS(os) + custoGarantiaOS(os);
+// Taxa retida pela maquininha: coluna valor_taxas (ou bruto − líquido nas ordens antigas)
+const valorTaxasOS = (os: OrdemServico) => Number(os.valorTaxas ?? calcularValorTaxas(valorBrutoOS(os), valorLiquidoOS(os)));
+const modalidadeOS = (os: OrdemServico): ModalidadePagamento =>
+  (os.modalidadePagamento as ModalidadePagamento) || modalidadeDaForma(os.formaPagamento || '', Number(os.parcelas || 1));
 const somar = (ordens: OrdemServico[], fn: (os: OrdemServico) => number) => ordens.reduce((acc, os) => acc + fn(os), 0);
 
 /** Quantas linhas a listagem de auditoria mostra antes de "Mostrar mais". */
@@ -74,8 +92,8 @@ function filtrarOrdensPorPeriodo(
   return ordens.filter((os) => {
     if (!os.data_abertura) return false;
     const dataOs = new Date(os.data_abertura);
-    const matchIso = String(os.data_abertura).match(/^(\d{4}-\d{2}-\d{2})/);
-    const dataOsStr = matchIso ? matchIso[1] : chaveDia(dataOs);
+    // Data no horário local (OS registradas à noite não caem no dia seguinte)
+    const dataOsStr = diaLocalDaData(os.data_abertura);
 
     switch (filtro) {
       case 'HOJE':
@@ -119,17 +137,25 @@ export const Relatorios: React.FC = () => {
     return `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-${String(hoje.getDate()).padStart(2, '0')}`;
   });
 
-  const carregarRelatorios = async () => {
+  const [erroCarregamento, setErroCarregamento] = useState<string | null>(null);
+
+  const carregarRelatorios = async (forcar = false) => {
     setLoading(true);
+    setErroCarregamento(null);
     try {
-      const data = await buscarOrdensServico();
+      const data = await buscarOrdensServico(forcar);
       setOrdens(data);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Erro ao buscar relatórios:', err);
+      setErroCarregamento(err?.message || 'Verifique a conexão e tente novamente.');
     } finally {
       setLoading(false);
     }
   };
+
+  // Rascunhos e canceladas não são receita: ficam fora de todos os totais e da auditoria
+  const ordensFaturaveis = useMemo(() => ordens.filter(contaNoFaturamento), [ordens]);
+  const foraDoFaturamento = ordens.length - ordensFaturaveis.length;
 
   useEffect(() => {
     carregarRelatorios();
@@ -187,8 +213,8 @@ export const Relatorios: React.FC = () => {
 
   // Filtro de Ordens por Dia / Mês / Ano / Intervalo Personalizado
   const ordensFiltradas = useMemo(
-    () => filtrarOrdensPorPeriodo(ordens, mesSelecionado, dataInicioPersonalizada, dataFimPersonalizada) ?? [],
-    [ordens, mesSelecionado, dataInicioPersonalizada, dataFimPersonalizada]
+    () => filtrarOrdensPorPeriodo(ordensFaturaveis, mesSelecionado, dataInicioPersonalizada, dataFimPersonalizada) ?? [],
+    [ordensFaturaveis, mesSelecionado, dataInicioPersonalizada, dataFimPersonalizada]
   );
 
   // CÁLCULOS FINANCEIROS BLINDADOS
@@ -201,7 +227,7 @@ export const Relatorios: React.FC = () => {
   // Variação real do faturamento bruto em relação ao período anterior equivalente (nada inventado)
   const variacaoFaturamento = useMemo(() => {
     const ordensAnteriores = filtrarOrdensPorPeriodo(
-      ordens,
+      ordensFaturaveis,
       mesSelecionado,
       dataInicioPersonalizada,
       dataFimPersonalizada,
@@ -222,7 +248,7 @@ export const Relatorios: React.FC = () => {
     const pctTexto = `${pct > 0 ? '+' : ''}${pct.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`;
     const cor = pct > 0 ? ('alta' as const) : pct < 0 ? ('queda' as const) : ('neutra' as const);
     return { texto: `${pctTexto} vs. ${rotulo}`, badge: pctTexto, cor };
-  }, [ordens, mesSelecionado, dataInicioPersonalizada, dataFimPersonalizada, faturamentoBruto]);
+  }, [ordensFaturaveis, mesSelecionado, dataInicioPersonalizada, dataFimPersonalizada, faturamentoBruto]);
 
   const corTextoVariacao = { alta: 'text-emerald-400', queda: 'text-rose-400', neutra: 'text-zinc-400' }[variacaoFaturamento.cor];
   const corBadgeVariacao = {
@@ -238,6 +264,22 @@ export const Relatorios: React.FC = () => {
   const custoPecas = useMemo(() => somar(ordensFiltradas, custoPecaOS), [ordensFiltradas]);
   const custoFretes = useMemo(() => somar(ordensFiltradas, custoFreteOS), [ordensFiltradas]);
   const custoGarantias = useMemo(() => somar(ordensFiltradas, custoGarantiaOS), [ordensFiltradas]);
+  const totalTaxas = useMemo(() => somar(ordensFiltradas, valorTaxasOS), [ordensFiltradas]);
+
+  // Bruto, taxas e líquido por forma de pagamento, das que mais faturaram para as que menos
+  const porModalidade = useMemo(() => {
+    const grupos = new Map<ModalidadePagamento, { quantidade: number; bruto: number; taxas: number; liquido: number }>();
+    ordensFiltradas.forEach((os) => {
+      const chave = modalidadeOS(os);
+      const g = grupos.get(chave) || { quantidade: 0, bruto: 0, taxas: 0, liquido: 0 };
+      g.quantidade += 1;
+      g.bruto += valorBrutoOS(os);
+      g.taxas += valorTaxasOS(os);
+      g.liquido += valorLiquidoOS(os);
+      grupos.set(chave, g);
+    });
+    return [...grupos.entries()].sort((a, b) => b[1].bruto - a[1].bruto);
+  }, [ordensFiltradas]);
 
   // Auditoria: ordens que compõem os totais do período, da mais recente para a mais antiga
   const [auditoriaAberta, setAuditoriaAberta] = useState(false);
@@ -310,21 +352,25 @@ export const Relatorios: React.FC = () => {
       return;
     }
 
-    const cabecalho = 'Numero OS,Cliente,Aparelho,Servico,Data Abertura,Status,Valor Total,Custo Peca,Frete,Garantia,Lucro Estimado\n';
+    const cabecalho = 'Numero OS,Cliente,Aparelho,Servico,Data Abertura,Status,Forma Pagamento,Valor Bruto,Taxas Maquininha,Valor Liquido,Custo Peca,Frete,Garantia,Lucro Liquido\n';
     const linhas = ordensFiltradas.map((os) => {
       const numOs = os.numero_os || '';
-      const cli = `"${(os.cliente?.nome || '').replace(/"/g, '""')}"`;
-      const apr = `"${(os.aparelho?.modelo || '').replace(/"/g, '""')}"`;
-      const srv = `"${(os.servicoRealizado || os.defeitoRelatado || '').replace(/"/g, '""')}"`;
+      const cli = celulaCsv(os.cliente?.nome);
+      const apr = celulaCsv(os.aparelho?.modelo);
+      const srv = celulaCsv(os.servicoRealizado || os.defeitoRelatado);
       const data = os.data_abertura ? new Date(os.data_abertura).toLocaleDateString('pt-BR') : '';
       const st = os.status_os || '';
-      const val = (os.orcamentoCalculado?.valorTotalOrcamento || os.valor_total || 0).toFixed(2);
-      const cp = (os.orcamentoCalculado?.custoPeca || os.custo_peca || 0).toFixed(2);
-      const fr = (os.orcamentoCalculado?.freteReal || os.frete_real || 0).toFixed(2);
-      const gar = (os.orcamentoCalculado?.custoPecaGarantia || 0).toFixed(2);
-      const luc = (Number(val) - (Number(cp) + Number(fr) + Number(gar))).toFixed(2);
+      // Mesmas funções dos cards: o CSV soma exatamente os totais da tela
+      const forma = `"${ROTULOS_MODALIDADE[modalidadeOS(os)]}"`;
+      const val = valorBrutoOS(os).toFixed(2);
+      const tax = valorTaxasOS(os).toFixed(2);
+      const liq = valorLiquidoOS(os).toFixed(2);
+      const cp = custoPecaOS(os).toFixed(2);
+      const fr = custoFreteOS(os).toFixed(2);
+      const gar = custoGarantiaOS(os).toFixed(2);
+      const luc = (valorLiquidoOS(os) - custosOS(os)).toFixed(2);
 
-      return `${numOs},${cli},${apr},${srv},${data},${st},${val},${cp},${fr},${gar},${luc}`;
+      return `${numOs},${cli},${apr},${srv},${data},${st},${forma},${val},${tax},${liq},${cp},${fr},${gar},${luc}`;
     }).join('\n');
 
     const blob = new Blob([cabecalho + linhas], { type: 'text/csv;charset=utf-8;' });
@@ -414,6 +460,10 @@ export const Relatorios: React.FC = () => {
         </div>
       </div>
 
+      {erroCarregamento && (
+        <AvisoErroCarregamento mensagem={erroCarregamento} onTentarNovamente={() => carregarRelatorios(true)} />
+      )}
+
       {/* ================= 4 CARDS FINANCEIROS: 2x2 NO MOBILE, 4 COLUNAS NO DESKTOP ================= */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
         {/* Card 1: Faturamento Bruto */}
@@ -498,6 +548,66 @@ export const Relatorios: React.FC = () => {
         </div>
       </div>
 
+      {/* ================= DO FATURAMENTO BRUTO AO LUCRO LÍQUIDO REAL ================= */}
+      <div className="bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-4 sm:p-6 shadow-sm min-w-0 space-y-5">
+        <div>
+          <h3 className="text-sm font-bold text-white">Do faturamento bruto ao lucro líquido real</h3>
+          <p className="text-xs text-zinc-400 mt-0.5">
+            O que o cliente pagou, quanto a maquininha reteve, o que entrou na conta e o que sobrou depois dos custos.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-2.5 sm:gap-3">
+          {[
+            { rotulo: 'Faturamento bruto', valor: faturamentoBruto, sinal: '', cor: 'text-white', dica: 'Cobrado dos clientes' },
+            { rotulo: 'Taxas de maquininha', valor: totalTaxas, sinal: '−', cor: 'text-rose-400', dica: 'Retido pelas operadoras' },
+            { rotulo: 'Líquido recebido', valor: faturamentoLiquido, sinal: '=', cor: 'text-blue-400', dica: 'O que entrou na conta' },
+            { rotulo: 'Custos', valor: custosTotais, sinal: '−', cor: 'text-amber-400', dica: 'Peças, fretes e garantias' },
+            { rotulo: 'Lucro líquido real', valor: lucroLiquido, sinal: '=', cor: lucroLiquido >= 0 ? 'text-emerald-400' : 'text-rose-400', dica: 'O que sobrou' },
+          ].map((etapa) => (
+            <div key={etapa.rotulo} className="p-3 sm:p-4 bg-[#080c14] border border-zinc-800/80 rounded-xl min-w-0">
+              <span className="text-[10px] sm:text-[11px] font-bold text-zinc-400 uppercase tracking-wider block truncate">
+                {etapa.sinal && <span className="text-zinc-500 mr-1">{etapa.sinal}</span>}
+                {etapa.rotulo}
+              </span>
+              <p className={`text-sm sm:text-lg font-extrabold mt-1 truncate ${etapa.cor}`}>R$ {formatarValor(etapa.valor)}</p>
+              <p className="text-[10px] text-zinc-500 mt-0.5 truncate">{etapa.dica}</p>
+            </div>
+          ))}
+        </div>
+
+        {porModalidade.length > 0 && (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs min-w-[560px]">
+              <thead className="text-[10px] text-zinc-500 uppercase tracking-wider border-b border-zinc-800/80">
+                <tr>
+                  <th className="py-2 px-3 font-semibold">Forma de pagamento</th>
+                  <th className="py-2 px-3 font-semibold text-right">Ordens</th>
+                  <th className="py-2 px-3 font-semibold text-right">Bruto</th>
+                  <th className="py-2 px-3 font-semibold text-right">Taxas</th>
+                  <th className="py-2 px-3 font-semibold text-right">Taxa média</th>
+                  <th className="py-2 px-3 font-semibold text-right">Líquido</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-800/40">
+                {porModalidade.map(([modalidade, g]) => (
+                  <tr key={modalidade}>
+                    <td className="py-2 px-3 text-zinc-200 font-medium">{ROTULOS_MODALIDADE[modalidade]}</td>
+                    <td className="py-2 px-3 text-right text-zinc-400">{g.quantidade}</td>
+                    <td className="py-2 px-3 text-right text-white font-semibold">R$ {formatarValor(g.bruto)}</td>
+                    <td className="py-2 px-3 text-right text-rose-400">{g.taxas > 0 ? `− R$ ${formatarValor(g.taxas)}` : '—'}</td>
+                    <td className="py-2 px-3 text-right text-zinc-400">
+                      {g.bruto > 0 ? `${((g.taxas / g.bruto) * 100).toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%` : '—'}
+                    </td>
+                    <td className="py-2 px-3 text-right text-blue-400 font-semibold">R$ {formatarValor(g.liquido)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
       {/* ================= AUDITORIA: ORDENS QUE COMPÕEM OS TOTAIS ================= */}
       <div className="bg-[#0c101a] border border-zinc-800/80 rounded-2xl shadow-sm min-w-0 overflow-hidden">
         <button
@@ -513,6 +623,7 @@ export const Relatorios: React.FC = () => {
             </h3>
             <p className="text-xs text-zinc-400 mt-0.5">
               Confira de onde vêm o faturamento, os custos e o lucro do período selecionado.
+              {foraDoFaturamento > 0 && ' Rascunhos e ordens canceladas não entram nos totais.'}
             </p>
           </div>
           <div className="flex items-center gap-2 text-xs font-semibold text-blue-400 shrink-0">
@@ -536,13 +647,14 @@ export const Relatorios: React.FC = () => {
             ) : (
               <>
                 <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs min-w-[760px]">
+                  <table className="w-full text-left text-xs min-w-[860px]">
                     <thead className="text-[10px] text-zinc-500 uppercase tracking-wider border-b border-zinc-800/80">
                       <tr>
                         <th className="py-2.5 px-4 font-semibold">Ordem</th>
                         <th className="py-2.5 px-4 font-semibold">Data</th>
                         <th className="py-2.5 px-4 font-semibold">Cliente</th>
                         <th className="py-2.5 px-4 font-semibold text-right">Cobrado</th>
+                        <th className="py-2.5 px-4 font-semibold text-right">Taxas</th>
                         <th className="py-2.5 px-4 font-semibold text-right">Líquido</th>
                         <th className="py-2.5 px-4 font-semibold text-right">Custos</th>
                         <th className="py-2.5 px-4 font-semibold text-right">Lucro</th>
@@ -565,6 +677,9 @@ export const Relatorios: React.FC = () => {
                             </td>
                             <td className="py-2.5 px-4 text-zinc-200 font-medium truncate max-w-[220px]">{os.cliente?.nome || 'Cliente balcão'}</td>
                             <td className="py-2.5 px-4 text-right text-white font-semibold">R$ {formatarValor(valorBrutoOS(os))}</td>
+                            <td className="py-2.5 px-4 text-right text-rose-400/90">
+                              {valorTaxasOS(os) > 0 ? `- R$ ${formatarValor(valorTaxasOS(os))}` : '—'}
+                            </td>
                             <td className="py-2.5 px-4 text-right text-zinc-300">R$ {formatarValor(valorLiquidoOS(os))}</td>
                             <td className="py-2.5 px-4 text-right text-amber-400/90">
                               {custosOS(os) > 0 ? `- R$ ${formatarValor(custosOS(os))}` : '—'}
@@ -582,6 +697,7 @@ export const Relatorios: React.FC = () => {
                           Total do período ({ordensAuditoria.length} {ordensAuditoria.length === 1 ? 'ordem' : 'ordens'})
                         </td>
                         <td className="py-3 px-4 text-right text-white">R$ {formatarValor(faturamentoBruto)}</td>
+                        <td className="py-3 px-4 text-right text-rose-400">- R$ {formatarValor(totalTaxas)}</td>
                         <td className="py-3 px-4 text-right text-zinc-200">R$ {formatarValor(faturamentoLiquido)}</td>
                         <td className="py-3 px-4 text-right text-amber-400">- R$ {formatarValor(custosTotais)}</td>
                         <td className={`py-3 px-4 text-right ${lucroLiquido >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
@@ -593,7 +709,7 @@ export const Relatorios: React.FC = () => {
                 </div>
                 <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-t border-zinc-800/60 text-[11px] text-zinc-500">
                   <span>
-                    Cobrado = card Faturamento · Custos = peças, fretes e garantias · Lucro = líquido (após taxas e descontos) menos custos.
+                    Cobrado = card Faturamento · Taxas = retido pela maquininha · Líquido = cobrado − taxas · Lucro = líquido − custos (peças, fretes e garantias).
                   </span>
                   {linhasVisiveis < ordensAuditoria.length && (
                     <button

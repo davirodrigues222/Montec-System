@@ -300,7 +300,7 @@ export const AcoesLinha: React.FC<{ onVer: () => void; onEditar: () => void; onE
   </div>
 );
 
-const Modal: React.FC<{ onFechar: () => void; children: ReactNode; largura?: string }> = ({
+export const Modal: React.FC<{ onFechar: () => void; children: ReactNode; largura?: string }> = ({
   onFechar,
   children,
   largura = 'max-w-lg',
