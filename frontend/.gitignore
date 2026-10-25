@@ -34,4 +34,3 @@ dist_app/
 *.exe
 
 dist/
-dist_electron/
