@@ -9,6 +9,7 @@ import {
 import type { OrdemServico, StatusOS } from '../types';
 import type { AbaSistema } from '../services/acesso';
 import { formatarValor } from '../utils/formatadores';
+import { useOperador } from '../contexts/OperadorContext';
 
 interface Props {
   onNavigate?: (tab: AbaSistema) => void;
@@ -160,6 +161,22 @@ export const Dashboard: React.FC<Props> = ({ onNavigate, session }) => {
   );
 
   const lucroLiquidoReal = faturamentoMes - custosTotais;
+
+  // Faturamento, lucro, valores em R$ e meta só aparecem para quem tem acesso a Análises e relatórios.
+  // Os demais veem indicadores operacionais (quantidade e andamento das ordens), sem valores.
+  const { pode } = useOperador();
+  const veFinanceiro = pode('tela_relatorios');
+
+  // Indicadores operacionais do mês (ordens abertas no mês, sem rascunhos e cancelamentos)
+  const ordensValidasDoMes = useMemo(
+    () => ordensDoMesAtual.filter((os) => os.status_os !== 'RASCUNHO' && os.status_os !== 'CANCELADO'),
+    [ordensDoMesAtual]
+  );
+  const concluidasNoMes = ordensValidasDoMes.filter((os) => os.status_os === 'PRONTO' || os.status_os === 'ENTREGUE').length;
+  const entreguesNoMes = ordensValidasDoMes.filter((os) => os.status_os === 'ENTREGUE').length;
+  const percentualConclusao =
+    ordensValidasDoMes.length > 0 ? Math.round((concluidasNoMes / ordensValidasDoMes.length) * 100) : 0;
+  const rotuloMes = new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
 
   // CÁLCULOS DO BLOCO "HOJE NA LOJA"
   const hojeStr = useMemo(() => {
@@ -351,7 +368,9 @@ export const Dashboard: React.FC<Props> = ({ onNavigate, session }) => {
             {String(ordensProntas.length).padStart(2, '0')}
           </h3>
           <p className="text-[10px] sm:text-[11px] text-zinc-400 mt-1 sm:mt-2 font-medium truncate">
-            R$ {valorTotalProntos.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} em serviços
+            {veFinanceiro
+              ? `R$ ${valorTotalProntos.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} em serviços`
+              : 'Aguardando retirada'}
           </p>
         </div>
 
@@ -378,24 +397,43 @@ export const Dashboard: React.FC<Props> = ({ onNavigate, session }) => {
           </p>
         </div>
 
-        {/* Card 4: Faturamento do Mês */}
-        <div className="bg-[#0c101a] border border-zinc-800/80 rounded-xl sm:rounded-2xl p-3 sm:p-5 relative overflow-hidden shadow-sm flex flex-col justify-between">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] sm:text-xs font-medium text-zinc-400 truncate">Faturamento (mês)</span>
-            <div className="p-1 sm:p-2 rounded-md sm:rounded-lg bg-purple-500/10 text-purple-400 border border-purple-500/20 shrink-0">
-              <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                <rect x="2" y="4" width="20" height="16" rx="2" />
-                <line x1="2" y1="10" x2="22" y2="10" />
-              </svg>
+        {/* Card 4: Faturamento do mês (acesso financeiro) ou Ordens do mês (demais funcionários) */}
+        {veFinanceiro ? (
+          <div className="bg-[#0c101a] border border-zinc-800/80 rounded-xl sm:rounded-2xl p-3 sm:p-5 relative overflow-hidden shadow-sm flex flex-col justify-between">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] sm:text-xs font-medium text-zinc-400 truncate">Faturamento (mês)</span>
+              <div className="p-1 sm:p-2 rounded-md sm:rounded-lg bg-purple-500/10 text-purple-400 border border-purple-500/20 shrink-0">
+                <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                  <rect x="2" y="4" width="20" height="16" rx="2" />
+                  <line x1="2" y1="10" x2="22" y2="10" />
+                </svg>
+              </div>
             </div>
+            <h3 className="text-base sm:text-3xl font-extrabold text-white mt-1.5 sm:mt-3 tracking-tight truncate">
+              R$ {formatarValor(faturamentoMes)}
+            </h3>
+            <p className="text-[10px] sm:text-[11px] text-zinc-400 mt-1 sm:mt-2 font-medium truncate">
+              Lucro R$ {formatarValor(lucroLiquidoReal)}
+            </p>
           </div>
-          <h3 className="text-base sm:text-3xl font-extrabold text-white mt-1.5 sm:mt-3 tracking-tight truncate">
-            R$ {formatarValor(faturamentoMes)}
-          </h3>
-          <p className="text-[10px] sm:text-[11px] text-zinc-400 mt-1 sm:mt-2 font-medium truncate">
-            Lucro R$ {formatarValor(lucroLiquidoReal)}
-          </p>
-        </div>
+        ) : (
+          <div className="bg-[#0c101a] border border-zinc-800/80 rounded-xl sm:rounded-2xl p-3 sm:p-5 relative overflow-hidden shadow-sm flex flex-col justify-between">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] sm:text-xs font-medium text-zinc-400 truncate">Ordens (mês)</span>
+              <div className="p-1 sm:p-2 rounded-md sm:rounded-lg bg-purple-500/10 text-purple-400 border border-purple-500/20 shrink-0">
+                <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+              </div>
+            </div>
+            <h3 className="text-xl sm:text-3xl font-extrabold text-white mt-1.5 sm:mt-3 tracking-tight">
+              {String(ordensValidasDoMes.length).padStart(2, '0')}
+            </h3>
+            <p className="text-[10px] sm:text-[11px] text-zinc-400 mt-1 sm:mt-2 font-medium truncate">
+              {entreguesNoMes} {entreguesNoMes === 1 ? 'entregue' : 'entregues'} no mês
+            </p>
+          </div>
+        )}
       </div>
 
       {/* ================= BLOCO PRINCIPAL (TABELA + COLUNA LATERAL) ================= */}
@@ -522,83 +560,130 @@ export const Dashboard: React.FC<Props> = ({ onNavigate, session }) => {
             </div>
           </div>
 
-          {/* Card: Meta de faturamento (Integrado com Análises e Relatórios) */}
-          <div className="bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-5 shadow-sm space-y-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-bold text-white">Meta de faturamento</p>
-                <p className="text-[11px] text-zinc-400">{resumoMeta.rotuloCompetencia}</p>
-              </div>
-              {onNavigate && (
-                <button
-                  type="button"
-                  onClick={() => onNavigate('relatorios')}
-                  className="text-[11px] font-semibold text-blue-400 hover:text-blue-300 transition"
-                >
-                  {resumoMeta.metaConfigurada ? 'Editar meta' : 'Definir meta'} &rsaquo;
-                </button>
-              )}
-            </div>
-
-            <div className="flex items-baseline justify-between pt-1">
-              <div>
-                <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider block">
-                  ALCANÇADO NO MÊS
-                </span>
-                <h4 className="text-2xl font-extrabold text-white mt-0.5">
-                  R$ {formatarValor(resumoMeta.valorAlcancado)}
-                </h4>
-              </div>
-              <div className="text-right">
-                <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider block">
-                  META DEFINIDA
-                </span>
-                <span className="text-xs font-bold text-zinc-300 mt-0.5 block">
-                  {resumoMeta.metaConfigurada
-                    ? `R$ ${formatarValor(resumoMeta.metaDefinida)}`
-                    : 'Não definida'}
-                </span>
-              </div>
-            </div>
-
-            {/* Barra de Progresso */}
-            <div className="w-full bg-zinc-800/80 rounded-full h-2.5 overflow-hidden">
-              <div
-                className={`h-full rounded-full transition-all duration-500 ${
-                  resumoMeta.metaBatida ? 'bg-emerald-500' : 'bg-blue-600'
-                }`}
-                style={{ width: `${resumoMeta.percentualBarraVisual}%` }}
-              />
-            </div>
-
-            {resumoMeta.metaConfigurada ? (
-              <div className="flex items-center justify-between text-xs pt-1 border-t border-zinc-800/60">
-                <span className={`font-bold ${resumoMeta.metaBatida ? 'text-emerald-400' : 'text-zinc-200'}`}>
-                  {resumoMeta.percentualAtingido}% da meta mensal
-                </span>
-                <span className="text-zinc-400 font-medium">
-                  {resumoMeta.valorExcedente > 0
-                    ? `+ R$ ${formatarValor(resumoMeta.valorExcedente)} acima`
-                    : resumoMeta.valorRestante > 0
-                    ? `Faltam R$ ${formatarValor(resumoMeta.valorRestante)}`
-                    : 'Meta concluída!'}
-                </span>
-              </div>
-            ) : (
-              <div className="pt-1 border-t border-zinc-800/60 flex items-center justify-between text-xs">
-                <span className="text-zinc-400">Nenhuma meta configurada para este mês.</span>
+          {/* Card lateral: meta de faturamento (acesso financeiro) ou conclusão das ordens do mês */}
+          {veFinanceiro ? (
+            <div className="bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-5 shadow-sm space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-bold text-white">Meta de faturamento</p>
+                  <p className="text-[11px] text-zinc-400">{resumoMeta.rotuloCompetencia}</p>
+                </div>
                 {onNavigate && (
                   <button
                     type="button"
                     onClick={() => onNavigate('relatorios')}
-                    className="font-bold text-blue-400 hover:underline"
+                    className="text-[11px] font-semibold text-blue-400 hover:text-blue-300 transition"
                   >
-                    Configurar agora
+                    {resumoMeta.metaConfigurada ? 'Editar meta' : 'Definir meta'} &rsaquo;
                   </button>
                 )}
               </div>
-            )}
-          </div>
+  
+              <div className="flex items-baseline justify-between pt-1">
+                <div>
+                  <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider block">
+                    ALCANÇADO NO MÊS
+                  </span>
+                  <h4 className="text-2xl font-extrabold text-white mt-0.5">
+                    R$ {formatarValor(resumoMeta.valorAlcancado)}
+                  </h4>
+                </div>
+                <div className="text-right">
+                  <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider block">
+                    META DEFINIDA
+                  </span>
+                  <span className="text-xs font-bold text-zinc-300 mt-0.5 block">
+                    {resumoMeta.metaConfigurada
+                      ? `R$ ${formatarValor(resumoMeta.metaDefinida)}`
+                      : 'Não definida'}
+                  </span>
+                </div>
+              </div>
+  
+              {/* Barra de Progresso */}
+              <div className="w-full bg-zinc-800/80 rounded-full h-2.5 overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all duration-500 ${
+                    resumoMeta.metaBatida ? 'bg-emerald-500' : 'bg-blue-600'
+                  }`}
+                  style={{ width: `${resumoMeta.percentualBarraVisual}%` }}
+                />
+              </div>
+  
+              {resumoMeta.metaConfigurada ? (
+                <div className="flex items-center justify-between text-xs pt-1 border-t border-zinc-800/60">
+                  <span className={`font-bold ${resumoMeta.metaBatida ? 'text-emerald-400' : 'text-zinc-200'}`}>
+                    {resumoMeta.percentualAtingido}% da meta mensal
+                  </span>
+                  <span className="text-zinc-400 font-medium">
+                    {resumoMeta.valorExcedente > 0
+                      ? `+ R$ ${formatarValor(resumoMeta.valorExcedente)} acima`
+                      : resumoMeta.valorRestante > 0
+                      ? `Faltam R$ ${formatarValor(resumoMeta.valorRestante)}`
+                      : 'Meta concluída!'}
+                  </span>
+                </div>
+              ) : (
+                <div className="pt-1 border-t border-zinc-800/60 flex items-center justify-between text-xs">
+                  <span className="text-zinc-400">Nenhuma meta configurada para este mês.</span>
+                  {onNavigate && (
+                    <button
+                      type="button"
+                      onClick={() => onNavigate('relatorios')}
+                      className="font-bold text-blue-400 hover:underline"
+                    >
+                      Configurar agora
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          ) : (
+            /* Card operacional: andamento das ordens do mês, sem nenhum valor financeiro */
+            <div className="bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-5 shadow-sm space-y-3">
+              <div>
+                <p className="text-xs font-bold text-white">Conclusão das ordens do mês</p>
+                <p className="text-[11px] text-zinc-400 first-letter:uppercase">{rotuloMes}</p>
+              </div>
+
+              <div className="flex items-baseline justify-between pt-1">
+                <div>
+                  <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider block">
+                    PRONTAS OU ENTREGUES
+                  </span>
+                  <h4 className="text-2xl font-extrabold text-white mt-0.5">{concluidasNoMes}</h4>
+                </div>
+                <div className="text-right">
+                  <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider block">
+                    ABERTAS NO MÊS
+                  </span>
+                  <span className="text-xs font-bold text-zinc-300 mt-0.5 block">{ordensValidasDoMes.length}</span>
+                </div>
+              </div>
+
+              <div className="w-full bg-zinc-800/80 rounded-full h-2.5 overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all duration-500 ${
+                    ordensValidasDoMes.length > 0 && percentualConclusao === 100 ? 'bg-emerald-500' : 'bg-blue-600'
+                  }`}
+                  style={{ width: `${percentualConclusao}%` }}
+                />
+              </div>
+
+              <div className="flex items-center justify-between text-xs pt-1 border-t border-zinc-800/60">
+                {ordensValidasDoMes.length > 0 ? (
+                  <>
+                    <span className="font-bold text-zinc-200">{percentualConclusao}% concluídas</span>
+                    <span className="text-zinc-400 font-medium">
+                      {ordensValidasDoMes.length - concluidasNoMes} em andamento
+                    </span>
+                  </>
+                ) : (
+                  <span className="text-zinc-400">Nenhuma ordem aberta neste mês.</span>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
