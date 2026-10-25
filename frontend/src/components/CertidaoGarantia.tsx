@@ -3,7 +3,11 @@ import type { OrdemServico } from '../types';
 import { obterConfiguracoesLojaSincrono } from '../services/api';
 import { itensVisiveisChecklist, rotuloItemChecklist } from '../utils/checklist';
 import { formatarValor } from '../utils/formatadores';
+import { GARANTIA_LEGAL_DIAS } from '../utils/conformidade';
 import {
+  AvisoPrivacidadeImpressao,
+  BlocoGarantiaLegalImpressao,
+  BlocoOrcamentoImpressao,
   CabecalhoLojaImpressao,
   DocumentoParaImpressao,
   RodapeLojaImpressao,
@@ -32,7 +36,11 @@ export const CertidaoGarantia: React.FC<Props> = ({ os, onClose }) => {
 
   const valorTotal = os.orcamentoCalculado?.valorTotalOrcamento || 0;
   const itensChecklist = itensVisiveisChecklist(os.checklistEntrada);
-  const prazoGarantia = os.possuiGarantia === false ? 0 : Number(os.prazoGarantiaDias) || cfg.prazoGarantiaDias;
+  // A garantia legal vale mesmo para OS registrada sem garantia da loja (CDC, art. 24)
+  const prazoGarantia = Math.max(
+    GARANTIA_LEGAL_DIAS,
+    os.possuiGarantia === false ? 0 : Number(os.prazoGarantiaDias) || cfg.prazoGarantiaDias
+  );
   const dataAbertura = os.data_abertura ? new Date(`${os.data_abertura.substring(0, 10)}T12:00:00`) : new Date();
 
   const documento = (via: string | null) => (
@@ -59,7 +67,8 @@ export const CertidaoGarantia: React.FC<Props> = ({ os, onClose }) => {
           <h3 className="font-bold uppercase text-slate-500 mb-1">Dados do aparelho</h3>
           <p><strong>Modelo:</strong> {os.aparelho?.modelo}</p>
           <p><strong>IMEI / Nº série:</strong> {os.aparelho?.imei1 || 'Não informado'}</p>
-          <p><strong>Senha:</strong> {os.aparelho?.senhaDesbloqueio || 'Sem senha'}</p>
+          {/* LGPD: a senha fica só no sistema, nunca no papel */}
+          <p><strong>Senha:</strong> {os.aparelho?.senhaDesbloqueio ? 'Informada (não impressa)' : 'Sem senha'}</p>
         </div>
       </div>
 
@@ -90,13 +99,16 @@ export const CertidaoGarantia: React.FC<Props> = ({ os, onClose }) => {
         <span className={`${termica ? 'text-xs' : 'text-sm'} font-black text-slate-900 shrink-0`}>R$ {formatarValor(valorTotal)}</span>
       </div>
 
-      {/* Garantia e termos configurados */}
+      <BlocoOrcamentoImpressao os={os} />
+
+      {/* Termo de garantia (CDC, art. 50) e termos configurados pela loja */}
       <div className="space-y-1 text-slate-600">
-        <h4 className="font-bold uppercase text-slate-800">
-          {prazoGarantia > 0 ? `Garantia de ${prazoGarantia} dias — termos e condições` : 'Serviço sem garantia — condições'}
-        </h4>
+        <h4 className="font-bold uppercase text-slate-800">Garantia de {prazoGarantia} dias — termos e condições</h4>
+        <BlocoGarantiaLegalImpressao prazoDias={prazoGarantia} cfg={cfg} />
         <TermosImpressos texto={cfg.termosGarantiaTexto} />
       </div>
+
+      <AvisoPrivacidadeImpressao cfg={cfg} />
 
       {/* Assinaturas */}
       <div className={`grid ${termica ? 'grid-cols-1 gap-6' : 'grid-cols-2 gap-10'} pt-6 text-center`}>

@@ -15,6 +15,13 @@ import {
 } from '../services/api';
 import { CertidaoGarantia } from '../components/CertidaoGarantia';
 import { CampoModeloAparelho } from '../components/CampoModeloAparelho';
+import { CamposLegaisOS } from '../components/CamposLegaisOS';
+import {
+  type DadosLegaisOS,
+  GARANTIA_LEGAL_DIAS,
+  dadosLegaisParaChecklist,
+  faltaAutorizacaoPeca,
+} from '../utils/conformidade';
 import type { AbaSistema } from '../services/acesso';
 import type { OrdemServico } from '../types';
 import { OPCOES_CHECKLIST, criarChecklistPadrao, itensChecklistAtivos } from '../utils/checklist';
@@ -114,6 +121,8 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
   // Topo: Cobertura
   const [possuiGarantia, setPossuiGarantia] = useState<boolean>(true);
   const [prazoGarantiaDias, setPrazoGarantiaDias] = useState<number>(() => obterPrazoGarantiaConfiguradoLoja());
+  // Peça empregada, valor das peças e aprovação do orçamento (CDC, arts. 21, 39, VI, 40 e 70)
+  const [dadosLegais, setDadosLegais] = useState<DadosLegaisOS>({});
 
   // Card 01: Cliente
   const [idClienteSelecionado, setIdClienteSelecionado] = useState('');
@@ -224,7 +233,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
           setPossuiGarantia(false);
         } else {
           setPossuiGarantia(true);
-          setPrazoGarantiaDias(diasServico);
+          setPrazoGarantiaDias(Math.max(GARANTIA_LEGAL_DIAS, diasServico));
         }
       }
     }
@@ -358,7 +367,10 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
   // Os textos padrão só entram no rascunho: na criação os campos obrigatórios já foram validados.
   const montarPayload = () => {
     const { formaPagamentoTexto, parcelasFinal, pagamentosArray } = gerarDadosPagamento();
-    const prazoFinal = possuiGarantia ? (Number(prazoGarantiaDias) || obterPrazoGarantiaConfiguradoLoja()) : 0;
+    // Garantia da loja nunca abaixo da legal; "só garantia legal" grava 0 e vale os 90 dias do CDC
+    const prazoFinal = possuiGarantia
+      ? Math.max(GARANTIA_LEGAL_DIAS, Number(prazoGarantiaDias) || obterPrazoGarantiaConfiguradoLoja())
+      : 0;
     const defeito = defeitoRelatado.trim();
 
     return {
@@ -390,6 +402,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
         __pagamentos: pagamentosArray,
         __possuiGarantia: possuiGarantia,
         __prazoGarantiaDias: prazoFinal,
+        ...dadosLegaisParaChecklist(dadosLegais),
       },
       pagamentos: pagamentosArray,
       orcamentoCalculado: {
@@ -419,6 +432,16 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
 
     if (numPrecoServico <= 0) {
       alert('Informe o Valor do Serviço (*) antes de criar a ordem.');
+      return;
+    }
+
+    if (faltaAutorizacaoPeca(dadosLegais)) {
+      alert('Peça não original ou usada só pode ser empregada com autorização do cliente (CDC, arts. 21 e 70). Marque a autorização ou troque o tipo de peça.');
+      return;
+    }
+
+    if ((dadosLegais.valorPecas || 0) > valorCobrado) {
+      alert('O valor das peças não pode ser maior que o valor cobrado.');
       return;
     }
 
@@ -496,6 +519,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
     setDataAbertura(dataHojeISO());
     setDataPrevista(dataPrevistaSugerida());
     setPossuiGarantia(true);
+    setDadosLegais({});
     setCustoPeca('');
     setFreteReal(0);
     setFornecedorPeca('');
@@ -543,7 +567,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
                 ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
                 : 'bg-zinc-800 text-zinc-400 border-zinc-700'
             }`}>
-              {possuiGarantia ? `Garantia Ativa (${prazoGarantiaDias} dias)` : 'Sem Garantia'}
+              {possuiGarantia ? `Garantia da loja (${prazoGarantiaDias} dias)` : `Garantia legal (${GARANTIA_LEGAL_DIAS} dias)`}
             </span>
 
             {/* Seletor/Input de Prazo Individual da OS (translúcido e desabilitado se Sem Garantia) */}
@@ -555,10 +579,12 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
               </label>
               <input
                 type="number"
-                min={1}
+                min={GARANTIA_LEGAL_DIAS}
                 disabled={!possuiGarantia}
-                value={possuiGarantia ? prazoGarantiaDias : 0}
-                onChange={(e) => setPrazoGarantiaDias(Math.max(1, Number(e.target.value) || 90))}
+                value={possuiGarantia ? prazoGarantiaDias : GARANTIA_LEGAL_DIAS}
+                onChange={(e) => setPrazoGarantiaDias(Number(e.target.value) || 0)}
+                // Nunca abaixo dos 90 dias da garantia legal (CDC, art. 26, II)
+                onBlur={() => setPrazoGarantiaDias((p) => Math.max(GARANTIA_LEGAL_DIAS, Number(p) || 0))}
                 className={`w-20 px-2.5 py-1 bg-[#080c14] border border-zinc-800 rounded-xl text-xs text-white font-bold text-center outline-none focus:border-blue-500 ${
                   possuiGarantia ? '' : 'cursor-not-allowed text-zinc-500'
                 }`}
@@ -579,7 +605,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
                 possuiGarantia ? 'bg-blue-600 text-white font-bold' : 'bg-zinc-900 text-zinc-400 hover:text-white'
               }`}
             >
-              Com garantia
+              Garantia da loja
             </button>
             <button
               type="button"
@@ -588,7 +614,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
                 !possuiGarantia ? 'bg-zinc-700 text-white font-bold' : 'bg-zinc-900 text-zinc-400 hover:text-white'
               }`}
             >
-              Sem garantia
+              Só garantia legal
             </button>
           </div>
         </div>
@@ -903,6 +929,8 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
               />
             </div>
           </div>
+
+          <CamposLegaisOS valor={dadosLegais} onChange={setDadosLegais} valorTotal={valorCobrado} />
 
           {/* ================= SEÇÃO DE PAGAMENTO E TAXAS DA MAQUINETA ================= */}
           <div className="pt-3 border-t border-zinc-800/60 space-y-4">

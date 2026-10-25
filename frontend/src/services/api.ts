@@ -1,5 +1,6 @@
 import { supabase } from './supabaseClient';
 import { validarSenhaForte } from '../utils/formatadores';
+import { GARANTIA_LEGAL_DIAS, STATUS_APAGAM_SENHA } from '../utils/conformidade';
 
 // ==========================================
 // 1. ISOLAMENTO DE CONFIGURAÇÕES, TEMA, METAS E IDENTIDADE VISUAL POR CONTA
@@ -217,7 +218,8 @@ function completarConfigLoja(cfgEntrada: Partial<ConfiguracoesLojaIsolada>, padr
       : 'A4',
     exibirPixImpressao: cfg.exibirPixImpressao ?? padrao.exibirPixImpressao,
     exibirContatosImpressao: cfg.exibirContatosImpressao ?? padrao.exibirContatosImpressao,
-    prazoGarantiaDias: numeroEntre(cfg.prazoGarantiaDias, padrao.prazoGarantiaDias, 1, 3650),
+    // Nunca abaixo da garantia legal (CDC, arts. 24 e 26)
+    prazoGarantiaDias: numeroEntre(cfg.prazoGarantiaDias, padrao.prazoGarantiaDias, GARANTIA_LEGAL_DIAS, 3650),
     prazoAbandonoDias: numeroEntre(cfg.prazoAbandonoDias, padrao.prazoAbandonoDias, 1, 3650),
     prazoEntregaDiasUteis: Math.floor(numeroEntre(cfg.prazoEntregaDiasUteis, padrao.prazoEntregaDiasUteis, 0, 120)),
     prefixoOS: normalizarPrefixoOS(cfg.prefixoOS),
@@ -231,10 +233,10 @@ function completarConfigLoja(cfgEntrada: Partial<ConfiguracoesLojaIsolada>, padr
   };
 }
 
-export const TERMOS_GARANTIA_PADRAO = `1. A garantia legal de 90 (noventa) dias cobre exclusivamente as peças substituídas e os serviços expressamente discriminados nesta ordem de serviço, contados a partir da data de entrega do dispositivo (Art. 26 do Código de Defesa do Consumidor).
-2. A garantia será automaticamente invalidada em caso de: quedas, trincos, pressões mecânicas, oxidação/contato com líquidos, violação dos selos internos de segurança ou intervenção técnica efetuada por terceiros não autorizados.
-3. Não nos responsabilizamos por perdas de dados, contas ou mídias armazenadas no dispositivo. Recomendamos expressamente a realização de backup prévio antes do reparo.
-4. Conforme o Código Civil Brasileiro, aparelhos prontos não retirados no prazo superior a 90 dias após a notificação serão considerados abandonados, podendo ser descartados ou vendidos para custeio de despesas operacionais.`;
+export const TERMOS_GARANTIA_PADRAO = `1. A garantia cobre o serviço executado e as peças substituídas discriminados nesta ordem de serviço, pelo prazo indicado acima, contado da entrega do aparelho (CDC, art. 26).
+2. Não são cobertos defeitos causados após a entrega por quedas, trincos, pressão, contato com líquidos, violação dos selos de segurança ou reparo feito por terceiros.
+3. Recomendamos fazer backup dos dados antes do reparo. Se o serviço exigir apagar dados do aparelho, o cliente será avisado antes da execução.
+4. Peças usadas, recondicionadas ou não originais só são empregadas com autorização do cliente (CDC, arts. 21 e 70).`;
 
 const CHAVE_USUARIO_ATIVO = 'montec_active_user_json';
 const PREFIXO_CONFIG_CONTA = 'sig_apple_configs_user_';
@@ -724,7 +726,9 @@ export function variaveisMensagemOS(os: any, cfg: ConfiguracoesLojaIsolada = obt
     numero_os: String(os?.numero_os || ''),
     valor: valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),
     loja: cfg.nomeLoja,
-    prazo_garantia: String(os?.possuiGarantia === false ? 0 : Number(os?.prazoGarantiaDias) || cfg.prazoGarantiaDias),
+    prazo_garantia: String(
+      Math.max(GARANTIA_LEGAL_DIAS, os?.possuiGarantia === false ? 0 : Number(os?.prazoGarantiaDias) || cfg.prazoGarantiaDias)
+    ),
   };
 }
 
@@ -1262,7 +1266,7 @@ export function obterPrazoGarantiaConfiguradoLoja(): number {
     const configIsolada = obterConfiguracoesLojaSincrono();
     const dias = extrairDiasGarantia(configIsolada?.prazoGarantiaDias);
     if (dias !== null && dias > 0) {
-      return dias;
+      return Math.max(GARANTIA_LEGAL_DIAS, dias);
     }
   } catch (e) {
     console.error('Erro ao ler configuração de prazo de garantia:', e);
@@ -1315,9 +1319,15 @@ export function verificarPossuiGarantiaOS(os: any): boolean {
 
 /**
  * Obtém a duração (em dias) da garantia atribuída individualmente à OS original.
- * Respeita qualquer prazo configurado (30, 90, 120, 180, 365 dias, etc.) sem limite fixo de 90 dias.
+ * Nunca é menor que a garantia legal de 90 dias: OS "sem garantia" da loja ou com prazo menor
+ * continuam com a garantia legal, que não pode ser excluída (CDC, arts. 24 e 26, II).
  */
 export function obterPrazoGarantiaOS(os: any, servicosCadastrados?: any[]): number {
+  return Math.max(GARANTIA_LEGAL_DIAS, prazoGarantiaInformadoOS(os, servicosCadastrados));
+}
+
+/** Prazo gravado na OS, no serviço do catálogo, no texto da OS ou na configuração (0 = só a garantia legal). */
+function prazoGarantiaInformadoOS(os: any, servicosCadastrados?: any[]): number {
   if (!verificarPossuiGarantiaOS(os)) {
     return 0;
   }
@@ -1478,17 +1488,8 @@ export function validarElegibilidadeGarantiaOS(
     };
   }
 
-  // 1. Regra prioritária: OS marcada como "Sem garantia" NUNCA permite retorno em garantia
-  if (!verificarPossuiGarantiaOS(os)) {
-    return {
-      elegivel: false,
-      codigo: 'SEM_GARANTIA',
-      motivo: 'Esta Ordem de Serviço foi registrada sem garantia e não permite retorno em garantia.',
-      prazoDias: 0,
-      diasDecorridos: 0,
-      diasRestantes: 0,
-    };
-  }
+  // 1. OS registrada "sem garantia" da loja continua com a garantia legal de 90 dias (CDC, art. 24):
+  //    o prazo vem de obterPrazoGarantiaOS, que nunca fica abaixo dela.
 
   // 2. Verifica se a OS está cancelada ou em rascunho
   const statusUpper = String(os.status_os || os.statusOs || '').toUpperCase().trim();
@@ -1886,6 +1887,8 @@ export async function criarOrdemServico(payload: {
     __servicoRealizado: payload.servicoRealizado || '',
     __pecasUtilizadas: payload.pecasUtilizadas || '',
     __senhaDesbloqueio: payload.aparelho?.senhaDesbloqueio || '',
+    // Previsão de término informada ao cliente no orçamento (CDC, art. 40)
+    __dataPrevistaEntrega: payload.dataPrevistaEntrega || (payload.checklistEntrada as any)?.__dataPrevistaEntrega || null,
   };
 
   const valorLiqFinal = payload.valorLiquido !== undefined && payload.valorLiquido !== null
@@ -1997,6 +2000,8 @@ export async function editarOrdemServico(id_os: string, payload: any): Promise<v
   if (payload.servicoRealizado !== undefined) extras.__servicoRealizado = payload.servicoRealizado || '';
   if (payload.pecasUtilizadas !== undefined) extras.__pecasUtilizadas = payload.pecasUtilizadas || '';
   if (payload.aparelho?.senhaDesbloqueio !== undefined) extras.__senhaDesbloqueio = payload.aparelho.senhaDesbloqueio || '';
+  // Entregue ou cancelada: a senha do aparelho deixa de ser necessária e é apagada (LGPD, arts. 6º, III, e 16)
+  if (status && STATUS_APAGAM_SENHA.includes(status)) extras.__senhaDesbloqueio = '';
   const conclusaoInformada = payload.dataConclusao ?? payload.data_conclusao;
   if (conclusaoInformada) {
     extras.__dataConclusao = formatarDataParaBanco(conclusaoInformada);
@@ -2216,6 +2221,7 @@ async function carregarOrdensDoBanco(): Promise<any[]> {
         pecasUtilizadas: item.pecas_utilizadas || item.checklist_entrada?.__pecasUtilizadas || '',
         // Data de entrega: coluna (se existir) ou JSON da OS; é o início da garantia
         data_conclusao: item.data_conclusao || item.checklist_entrada?.__dataConclusao || undefined,
+        data_prevista_entrega: item.data_prevista_entrega || item.checklist_entrada?.__dataPrevistaEntrega || undefined,
         diagnostico: item.diagnostico_tecnico || '',
         observacoes: item.observacoes_internas || '',
         formaPagamento: item.forma_pagamento || 'PIX',

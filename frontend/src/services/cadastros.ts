@@ -152,6 +152,59 @@ export async function excluirCliente(idCliente: string): Promise<void> {
 /** Quantidade de OS por cliente, para exibir na listagem. */
 export const contarOrdensPorCliente = () => contarOrdensPor('id_cliente');
 
+/**
+ * Acesso e portabilidade (LGPD, art. 18, II e V): cadastro do cliente e resumo das ordens de serviço
+ * dele, para entregar ao titular. A senha do aparelho e os dados internos da loja não entram.
+ */
+export async function exportarDadosCliente(idCliente: string): Promise<Record<string, any>> {
+  const [{ data: cliente, error: errCliente }, { data: ordens, error: errOrdens }] = await Promise.all([
+    supabase.from('clientes').select('*').eq('id_cliente', idCliente).single(),
+    supabase
+      .from('ordens_servico')
+      .select('numero_os, status_os, data_abertura, data_conclusao, defeito_relatado, valor_total, forma_pagamento, aparelhos_cliente(modelo, imei_1)')
+      .eq('id_cliente', idCliente)
+      .order('data_abertura', { ascending: true }),
+  ]);
+  if (errCliente) tratarErro(errCliente, 'clientes');
+  if (errOrdens) tratarErro(errOrdens, 'ordens_servico');
+  return {
+    geradoEm: new Date().toISOString(),
+    baseLegal: 'Lei 13.709/2018 (LGPD), art. 18, II e V',
+    cliente: cliente && {
+      nome: cliente.nome,
+      whatsapp: cliente.whatsapp,
+      cpfCnpj: cliente.cpf_cnpj,
+      email: cliente.email ?? null,
+      observacoes: cliente.observacoes ?? null,
+    },
+    ordensDeServico: (ordens || []).map((o: any) => ({
+      numero: o.numero_os,
+      status: o.status_os,
+      abertura: o.data_abertura,
+      entrega: o.data_conclusao,
+      defeitoRelatado: o.defeito_relatado,
+      valorTotal: o.valor_total,
+      formaPagamento: o.forma_pagamento,
+      aparelho: o.aparelhos_cliente ? { modelo: o.aparelhos_cliente.modelo, imei: o.aparelhos_cliente.imei_1 } : null,
+    })),
+  };
+}
+
+/**
+ * Eliminação a pedido do titular (LGPD, art. 18, VI): apaga nome, contato, CPF/CNPJ e observações.
+ * As ordens de serviço continuam (obrigações fiscais e prazo de reclamação do CDC, LGPD art. 16, I),
+ * mas deixam de identificar a pessoa.
+ */
+export async function anonimizarCliente(idCliente: string): Promise<void> {
+  // email e observacoes são colunas opcionais: se não existirem no banco, não há o que apagar nelas
+  await gravarComColunasOpcionais(
+    { nome: 'Cliente anonimizado (LGPD)', whatsapp: '', cpf_cnpj: null, email: null, observacoes: null },
+    ['email', 'observacoes'],
+    (p) => supabase.from('clientes').update(p).eq('id_cliente', idCliente),
+    'clientes'
+  );
+}
+
 // ==========================================
 // SERVIÇOS (tabela existente cad_servicos)
 // garantia_padrao é texto ("90 dias", "1 ano", "Sem garantia") e é lido por extrairDiasGarantia (api.ts)

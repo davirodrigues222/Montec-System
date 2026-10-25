@@ -1,9 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   type Cliente,
+  anonimizarCliente,
   avisoColunasIgnoradas,
   contarOrdensPorCliente,
   excluirCliente,
+  exportarDadosCliente,
   listarClientes,
   salvarCliente,
 } from '../../services/cadastros';
@@ -31,6 +33,7 @@ import {
   validarEmail,
   validarTelefone,
 } from '../../utils/formatadores';
+import { baixarArquivo } from '../../utils/arquivo';
 
 const FORM_VAZIO = { nome: '', whatsapp: '', email: '', cpf_cnpj: '', observacoes: '' };
 type FormCliente = typeof FORM_VAZIO;
@@ -129,6 +132,38 @@ export const ClientesCadastro: React.FC = () => {
       feedback.erro(err.message);
     } finally {
       setSalvando(false);
+    }
+  };
+
+  // Direitos do titular (LGPD, art. 18): cópia dos dados e eliminação por anonimização
+  const [paraAnonimizar, setParaAnonimizar] = useState<Cliente | null>(null);
+  const [anonimizando, setAnonimizando] = useState(false);
+
+  const exportarDados = async (c: Cliente) => {
+    try {
+      const dados = await exportarDadosCliente(c.id_cliente);
+      const nome = c.nome.normalize('NFD').replace(/[^a-zA-Z0-9]+/g, '-').toLowerCase().replace(/^-|-$/g, '') || 'cliente';
+      baixarArquivo(JSON.stringify(dados, null, 2), `dados-${nome}.json`, 'application/json');
+      feedback.sucesso('Arquivo com os dados do cliente gerado. Entregue ao titular que pediu.');
+    } catch (err: any) {
+      feedback.erro(err.message);
+    }
+  };
+
+  const confirmarAnonimizacao = async () => {
+    if (!paraAnonimizar) return;
+    setAnonimizando(true);
+    try {
+      await anonimizarCliente(paraAnonimizar.id_cliente);
+      if (editandoId === paraAnonimizar.id_cliente) limpar();
+      feedback.sucesso('Dados pessoais do cliente apagados. As ordens de serviço foram mantidas sem identificação.');
+      setParaAnonimizar(null);
+      setDetalhe(null);
+      await carregar();
+    } catch (err: any) {
+      feedback.erro(err.message);
+    } finally {
+      setAnonimizando(false);
     }
   };
 
@@ -284,8 +319,47 @@ export const ClientesCadastro: React.FC = () => {
             ['Ordens de serviço', String(ordensPorCliente[detalhe.id_cliente] || 0)],
             ['Observações', detalhe.observacoes || ''],
           ]}
+          extra={
+            <div className="border-t border-zinc-800/60 pt-4">
+              <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-2">Pedidos do titular (LGPD)</p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => exportarDados(detalhe)}
+                  className="px-3 py-2 rounded-lg text-xs font-semibold bg-zinc-800 text-zinc-200 hover:bg-zinc-700 transition"
+                >
+                  Exportar dados do cliente
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setParaAnonimizar(detalhe)}
+                  className="px-3 py-2 rounded-lg text-xs font-semibold bg-rose-500/10 text-rose-300 hover:bg-rose-500/20 transition"
+                >
+                  Apagar dados pessoais
+                </button>
+              </div>
+            </div>
+          }
           onFechar={() => setDetalhe(null)}
           onEditar={() => iniciarEdicao(detalhe)}
+        />
+      )}
+
+      {paraAnonimizar && (
+        <ModalConfirmacao
+          titulo="Apagar dados pessoais do cliente"
+          mensagem={
+            <>
+              Nome, telefone, CPF/CNPJ, e-mail e observações de{' '}
+              <strong className="text-zinc-200">{paraAnonimizar.nome}</strong> serão apagados, a pedido do titular (LGPD, art.
+              18, VI). As ordens de serviço continuam nos relatórios, sem identificar a pessoa, porque a loja precisa
+              guardá-las por obrigação legal (LGPD, art. 16, I). Esta ação não pode ser desfeita.
+            </>
+          }
+          rotuloConfirmar="Apagar dados pessoais"
+          carregando={anonimizando}
+          onConfirmar={confirmarAnonimizacao}
+          onCancelar={() => setParaAnonimizar(null)}
         />
       )}
 
