@@ -31,6 +31,9 @@ export interface PagamentoOS {
   taxaPercentual: number;
   valorTaxa: number;
   valorLiquido: number;
+  /** Maquininha usada no pagamento com cartão (Configurações › Taxas). */
+  maquininhaId?: string;
+  maquininha?: string;
 }
 
 export interface OrcamentoCalculado {
@@ -99,6 +102,10 @@ export interface OrdemServico {
   formaPagamento?: string;
   parcelas?: number;
   valorLiquido?: number;
+  /** Valor retido pela maquininha/operadora (R$) = bruto − líquido. */
+  valorTaxas?: number;
+  /** DEBITO | CREDITO_VISTA | CREDITO_PARCELADO | PIX | DINHEIRO | MISTO | OUTRO */
+  modalidadePagamento?: string;
   pagamentos?: PagamentoOS[];
   garantia?: RegistroGarantia | null;
   historico?: HistoricoItem[];
@@ -106,6 +113,7 @@ export interface OrdemServico {
   // Colunas originais da tabela ordens_servico (repassadas por buscarOrdensServico)
   valor_total?: number;
   valor_liquido?: number;
+  valor_taxas?: number;
   custo_peca?: number;
   frete_real?: number;
   custo_peca_garantia?: number;

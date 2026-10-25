@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { alterarSenhaConta, gerarBackupConta, type ConfiguracoesLojaIsolada, type TemaVisual } from '../../services/api';
 import { Campo, inputCls } from '../../components/cadastros/ui';
 import { cardCls } from './tipos';
+import { validarSenhaForte } from '../../utils/formatadores';
 
 interface Props {
   config: ConfiguracoesLojaIsolada;
@@ -28,7 +29,12 @@ const baixarArquivo = (conteudo: string, nome: string, tipo: string) => {
   URL.revokeObjectURL(url);
 };
 
-const celulaCsv = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+/** Célula de CSV; textos que começam com = + - @ ganham apóstrofo para o Excel não executar como fórmula. */
+const celulaCsv = (v: unknown) => {
+  const texto = String(v ?? '');
+  const seguro = /^[=+\-@\t\r]/.test(texto) ? `'${texto}` : texto;
+  return `"${seguro.replace(/"/g, '""')}"`;
+};
 
 export const AbaAparenciaConta: React.FC<Props> = ({ config, emailConta, onSelecionarTema, onLogoUpload, onRemoverLogo }) => {
   const [novaSenha, setNovaSenha] = useState('');
@@ -39,7 +45,8 @@ export const AbaAparenciaConta: React.FC<Props> = ({ config, emailConta, onSelec
 
   const trocarSenha = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (novaSenha.length < 6) return setMsgSenha({ ok: false, texto: 'A nova senha deve ter pelo menos 6 caracteres.' });
+    const erroSenha = validarSenhaForte(novaSenha);
+    if (erroSenha) return setMsgSenha({ ok: false, texto: erroSenha });
     if (novaSenha !== confirmarSenha) return setMsgSenha({ ok: false, texto: 'As senhas não conferem.' });
     setSalvandoSenha(true);
     setMsgSenha(null);

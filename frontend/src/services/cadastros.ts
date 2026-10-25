@@ -495,8 +495,10 @@ export async function salvarFuncionario(
 
   let id = idFuncionario;
   if (id) {
-    const { error } = await supabase.from('funcionarios').update(payload).eq('id_funcionario', id);
+    // Alteração recusada pelas regras do banco não dá erro: só não altera nenhuma linha
+    const { data, error } = await supabase.from('funcionarios').update(payload).eq('id_funcionario', id).select('id_funcionario');
     if (error) tratarErroFuncionario(error);
+    if (!data?.length) throw new Error(MENSAGEM_SO_ADMIN);
   } else {
     const { data, error } = await supabase.from('funcionarios').insert([payload]).select('id_funcionario').single();
     if (error) tratarErroFuncionario(error);
@@ -528,7 +530,12 @@ export async function salvarFuncionario(
   }
 }
 
+/** Recusa das regras do banco (migração 20261025150000): falta um administrador identificado. */
+export const MENSAGEM_SO_ADMIN =
+  'Somente um administrador pode cadastrar, alterar ou excluir funcionários. Peça a autorização de um administrador.';
+
 function tratarErroFuncionario(error: any): never {
+  if (error?.code === '42501') throw new Error(MENSAGEM_SO_ADMIN);
   if (error?.code === '23505') {
     throw new Error('Este código de acesso já está em uso por outro funcionário.');
   }
@@ -550,8 +557,9 @@ export async function contarFuncionarios(): Promise<number> {
 }
 
 export async function excluirFuncionario(idFuncionario: string): Promise<void> {
-  const { error } = await supabase.from('funcionarios').delete().eq('id_funcionario', idFuncionario);
-  if (error) tratarErro(error, 'funcionarios');
+  const { data, error } = await supabase.from('funcionarios').delete().eq('id_funcionario', idFuncionario).select('id_funcionario');
+  if (error) tratarErroFuncionario(error);
+  if (!data?.length) throw new Error(MENSAGEM_SO_ADMIN);
 }
 
 // ==========================================

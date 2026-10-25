@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   CARGOS,
   type CargoFuncionario,
@@ -27,6 +27,7 @@ import {
   Carregando,
   FiltroSegmentado,
   ListaCadastro,
+  Modal,
   ModalConfirmacao,
   ModalDetalhes,
   PaginaCadastro,
@@ -38,16 +39,27 @@ import {
   useFeedback,
 } from '../../components/cadastros/ui';
 import {
+  DICA_SENHA,
   formatarDataHora,
   mascaraCpf,
   mascaraTelefone,
   somenteDigitos,
   validarCpf,
   validarEmail,
+  validarSenhaForte,
   validarTelefone,
 } from '../../utils/formatadores';
+import { aplicarTokenAutorizacao, conferirSenhaFuncionario, temAutorizacaoAdmin } from '../../services/acesso';
+import { useOperador } from '../../contexts/OperadorContext';
+import { AutorizacaoAdministrativa } from '../../components/AutorizacaoAdministrativa';
 
-const SENHA_MINIMA = 6;
+/**
+ * Redefinição de senha na edição: primeiro confirma a senha atual do funcionário
+ * ('confirmar') ou, se ele esqueceu, a de um administrador ('admin'); só então
+ * libera os campos de nova senha ('liberado').
+ */
+type EtapaSenha = 'fechado' | 'confirmar' | 'admin' | 'liberado';
+
 
 const formVazio = () => ({
   nome: '',
@@ -85,7 +97,10 @@ export const FuncionariosCadastro: React.FC = () => {
   const [form, setForm] = useState<FormFuncionario>(formVazio);
   const [erros, setErros] = useState<Erros>({});
   const [editandoId, setEditandoId] = useState<string | null>(null);
-  const [redefinirSenha, setRedefinirSenha] = useState(false);
+  const [etapaSenha, setEtapaSenha] = useState<EtapaSenha>('fechado');
+  const [senhaAtual, setSenhaAtual] = useState('');
+  const [erroSenhaAtual, setErroSenhaAtual] = useState<string | null>(null);
+  const [verificandoSenha, setVerificandoSenha] = useState(false);
   const [mostrarSenha, setMostrarSenha] = useState(false);
 
   const [busca, setBusca] = useState('');
@@ -93,6 +108,26 @@ export const FuncionariosCadastro: React.FC = () => {
   const [detalhe, setDetalhe] = useState<Funcionario | null>(null);
   const [paraExcluir, setParaExcluir] = useState<Funcionario | null>(null);
   const feedback = useFeedback();
+
+  // O banco só aceita alterações de funcionários feitas por um administrador identificado
+  // (migração 20261025150000): quem não é administrador pede a autorização antes de gravar.
+  const { operador } = useOperador();
+  const [aguardandoAdmin, setAguardandoAdmin] = useState<'salvar' | 'excluir' | null>(null);
+  const autorizacaoPropria = useRef(false);
+  const administradorIdentificado = () =>
+    (!!operador && (operador.proprietario || operador.cargo === 'ADMIN')) || temAutorizacaoAdmin();
+  const usarAutorizacao = (token: string | null) => {
+    if (!token) return;
+    aplicarTokenAutorizacao(token);
+    autorizacaoPropria.current = true;
+  };
+  // Ao sair da tela, encerra a autorização dada aqui
+  useEffect(
+    () => () => {
+      if (autorizacaoPropria.current) aplicarTokenAutorizacao(null);
+    },
+    []
+  );
 
   const carregar = async () => {
     try {
@@ -113,7 +148,41 @@ export const FuncionariosCadastro: React.FC = () => {
   }, []);
 
   const nomeLoja = (id: string) => lojas.find((l) => l.id_loja === id)?.nome || 'Loja removida';
-  const precisaSenha = !editandoId || redefinirSenha;
+  const precisaSenha = !editandoId || etapaSenha === 'liberado';
+
+  const fecharRedefinicao = () => {
+    setEtapaSenha('fechado');
+    setSenhaAtual('');
+    setErroSenhaAtual(null);
+    setForm((f) => ({ ...f, senha: '', confirmarSenha: '' }));
+  };
+
+  // Confere a senha atual com o código salvo no banco (não o do formulário, que pode estar sendo alterado)
+  const confirmarSenhaAtual = async () => {
+    const salvo = funcionarios.find((f) => f.id_funcionario === editandoId);
+    if (!salvo) return;
+    if (!senhaAtual) {
+      setErroSenhaAtual('Informe a senha atual do funcionário.');
+      return;
+    }
+    setVerificandoSenha(true);
+    setErroSenhaAtual(null);
+    try {
+      // Confere sem registrar "último acesso" do funcionário (migração 20261025120000)
+      const correta = await conferirSenhaFuncionario(salvo.id_funcionario, salvo.codigo_acesso, senhaAtual);
+      if (!correta) {
+        setErroSenhaAtual('Senha atual incorreta. Após 5 tentativas erradas a conferência fica bloqueada por 15 minutos.');
+        setSenhaAtual('');
+        return;
+      }
+      setSenhaAtual('');
+      setEtapaSenha('liberado');
+    } catch (err: any) {
+      setErroSenhaAtual(err?.message || 'Não foi possível verificar a senha.');
+    } finally {
+      setVerificandoSenha(false);
+    }
+  };
 
   const atualizar = <K extends keyof FormFuncionario>(campo: K, valor: FormFuncionario[K]) => {
     setForm((f) => ({ ...f, [campo]: valor }));
@@ -144,7 +213,8 @@ export const FuncionariosCadastro: React.FC = () => {
     if (form.telefone.trim() && !validarTelefone(form.telefone)) e.telefone = 'Telefone inválido.';
     if (form.email.trim() && !validarEmail(form.email)) e.email = 'E-mail inválido.';
     if (precisaSenha) {
-      if (form.senha.length < SENHA_MINIMA) e.senha = `A senha deve ter pelo menos ${SENHA_MINIMA} caracteres.`;
+      const erroSenha = validarSenhaForte(form.senha);
+      if (erroSenha) e.senha = erroSenha;
       else if (form.senha !== form.confirmarSenha) e.confirmarSenha = 'As senhas não conferem.';
     }
     return e;
@@ -154,7 +224,7 @@ export const FuncionariosCadastro: React.FC = () => {
     setForm(formVazio());
     setErros({});
     setEditandoId(null);
-    setRedefinirSenha(false);
+    fecharRedefinicao();
     setMostrarSenha(false);
   };
 
@@ -174,7 +244,9 @@ export const FuncionariosCadastro: React.FC = () => {
     });
     setErros({});
     setEditandoId(f.id_funcionario);
-    setRedefinirSenha(false);
+    setEtapaSenha('fechado');
+    setSenhaAtual('');
+    setErroSenhaAtual(null);
     setDetalhe(null);
     rolarParaFormulario();
   };
@@ -183,7 +255,11 @@ export const FuncionariosCadastro: React.FC = () => {
     const e = validar();
     setErros(e);
     if (Object.keys(e).length > 0) return;
+    if (!administradorIdentificado()) return setAguardandoAdmin('salvar');
+    await gravar();
+  };
 
+  const gravar = async () => {
     setSalvando(true);
     try {
       await salvarFuncionario(
@@ -213,6 +289,12 @@ export const FuncionariosCadastro: React.FC = () => {
   };
 
   const confirmarExclusao = async () => {
+    if (!paraExcluir) return;
+    if (!administradorIdentificado()) return setAguardandoAdmin('excluir');
+    await excluir();
+  };
+
+  const excluir = async () => {
     if (!paraExcluir) return;
     setExcluindo(true);
     try {
@@ -327,24 +409,104 @@ export const FuncionariosCadastro: React.FC = () => {
               </div>
             </Campo>
 
-            {editandoId && !redefinirSenha ? (
-              <div className="md:col-span-8 flex items-end">
+            {editandoId && etapaSenha === 'fechado' && (
+              // Mesmo formato de campo (rótulo em cima) para alinhar com o código de acesso
+              <Campo label="Senha" dica="A senha atual é mantida se você não redefinir." className="md:col-span-4">
                 <button
                   type="button"
-                  onClick={() => setRedefinirSenha(true)}
-                  className="px-4 py-2.5 bg-[#080c14] hover:bg-zinc-800 border border-zinc-700/80 text-white rounded-xl text-xs font-semibold transition"
+                  onClick={() => setEtapaSenha('confirmar')}
+                  className="w-full px-4 py-2.5 bg-[#080c14] hover:bg-zinc-800 border border-zinc-700/80 text-white rounded-xl text-xs font-semibold transition"
                 >
                   Redefinir senha
                 </button>
-                <p className="text-[11px] text-zinc-500 ml-3 mb-2.5">A senha atual é mantida se você não redefinir.</p>
+              </Campo>
+            )}
+
+            {editandoId && etapaSenha === 'confirmar' && (
+              <>
+                <Campo
+                  label="Senha atual do funcionário"
+                  obrigatorio
+                  erro={erroSenhaAtual}
+                  dica="Confirme a senha atual antes de definir uma nova."
+                  className="md:col-span-4"
+                >
+                  <input
+                    type="password"
+                    value={senhaAtual}
+                    onChange={(e) => {
+                      setSenhaAtual(e.target.value);
+                      setErroSenhaAtual(null);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        confirmarSenhaAtual();
+                      }
+                    }}
+                    autoComplete="off"
+                    autoFocus
+                    className={inputCls(erroSenhaAtual)}
+                  />
+                </Campo>
+                <div className="md:col-span-4">
+                  <span className="block text-[11px] mb-1.5 invisible" aria-hidden="true">
+                    Ações
+                  </span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={confirmarSenhaAtual}
+                      disabled={verificandoSenha}
+                      className="px-4 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition"
+                    >
+                      {verificandoSenha ? 'Verificando...' : 'Confirmar'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={fecharRedefinicao}
+                      disabled={verificandoSenha}
+                      className="px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-xl text-xs font-semibold transition"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setErroSenhaAtual(null);
+                      setEtapaSenha('admin');
+                    }}
+                    className="mt-1.5 text-[11px] font-semibold text-blue-400 hover:text-blue-300"
+                  >
+                    Esqueci a senha atual
+                  </button>
+                </div>
+              </>
+            )}
+
+            {editandoId && etapaSenha === 'admin' && (
+              <div className="md:col-span-8">
+                <AutorizacaoAdministrativa
+                  variante="compacta"
+                  recurso="redefinir a senha sem confirmar a senha atual"
+                  textoBotao="Autorizar redefinição"
+                  onAutorizado={(admin) => {
+                    usarAutorizacao(admin.token);
+                    setEtapaSenha('liberado');
+                  }}
+                  onVoltar={() => setEtapaSenha('confirmar')}
+                />
               </div>
-            ) : (
+            )}
+
+            {precisaSenha && (
               <>
                 <Campo
                   label={editandoId ? 'Nova senha' : 'Senha'}
                   obrigatorio
                   erro={erros.senha}
-                  dica={`Mínimo de ${SENHA_MINIMA} caracteres.`}
+                  dica={DICA_SENHA}
                   className="md:col-span-4"
                 >
                   <div className="relative">
@@ -569,6 +731,25 @@ export const FuncionariosCadastro: React.FC = () => {
           onConfirmar={confirmarExclusao}
           onCancelar={() => setParaExcluir(null)}
         />
+      )}
+
+      {aguardandoAdmin && (
+        <Modal onFechar={() => setAguardandoAdmin(null)}>
+          <div className="p-5">
+            <AutorizacaoAdministrativa
+              variante="compacta"
+              recurso={aguardandoAdmin === 'salvar' ? 'salvar o cadastro de funcionário' : 'excluir o funcionário'}
+              textoBotao="Autorizar"
+              onAutorizado={async (admin) => {
+                usarAutorizacao(admin.token);
+                const acao = aguardandoAdmin;
+                setAguardandoAdmin(null);
+                await (acao === 'salvar' ? gravar() : excluir());
+              }}
+              onVoltar={() => setAguardandoAdmin(null)}
+            />
+          </div>
+        </Modal>
       )}
     </PaginaCadastro>
   );

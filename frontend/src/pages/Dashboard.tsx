@@ -5,7 +5,10 @@ import {
   carregarConfiguracoesLoja,
   filtrarOrdensPorCompetenciaMensal,
   calcularResumoMetaFinanceira,
+  contaNoFaturamento,
+  diaLocalDaData,
 } from '../services/api';
+import { AvisoErroCarregamento } from '../components/AvisoErroCarregamento';
 import type { OrdemServico, StatusOS } from '../types';
 import type { AbaSistema } from '../services/acesso';
 import { formatarValor } from '../utils/formatadores';
@@ -24,15 +27,18 @@ export const Dashboard: React.FC<Props> = ({ onNavigate, session }) => {
     new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
   );
   const [versaoConfig, setVersaoConfig] = useState(0);
+  const [erroCarregamento, setErroCarregamento] = useState<string | null>(null);
 
-  const carregarOrdens = async () => {
+  // forcar = botão "Atualizar dados" (ignora o cache curto das ordens)
+  const carregarOrdens = async (forcar = false) => {
     setLoading(true);
+    setErroCarregamento(null);
     try {
-      const data = await buscarOrdensServico();
+      const data = await buscarOrdensServico(forcar);
       setOrdens(data);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Erro ao carregar Dashboard:', err);
-      setOrdens([]);
+      setErroCarregamento(err?.message || 'Verifique a conexão e tente novamente.');
     } finally {
       setLoading(false);
     }
@@ -133,7 +139,8 @@ export const Dashboard: React.FC<Props> = ({ onNavigate, session }) => {
 
   // 4. Faturamento do Mês Atual e Lucro Líquido Real do Mês (coerente com Relatórios e com a Meta Mensal)
   const ordensDoMesAtual = useMemo(
-    () => filtrarOrdensPorCompetenciaMensal(listaOrdens),
+    // Financeiro do mês: rascunhos e canceladas não entram (mesma regra de Relatórios e da meta)
+    () => filtrarOrdensPorCompetenciaMensal(listaOrdens).filter(contaNoFaturamento),
     [listaOrdens]
   );
 
@@ -160,7 +167,13 @@ export const Dashboard: React.FC<Props> = ({ onNavigate, session }) => {
     [ordensDoMesAtual]
   );
 
-  const lucroLiquidoReal = faturamentoMes - custosTotais;
+  // Lucro real: o que entrou de fato (líquido, já sem as taxas da maquininha) menos os custos.
+  // Mesma regra de Análises e relatórios.
+  const liquidoMes = useMemo(
+    () => ordensDoMesAtual.reduce((acc, os) => acc + Number(os.valorLiquido ?? os.orcamentoCalculado?.valorTotalOrcamento ?? 0), 0),
+    [ordensDoMesAtual]
+  );
+  const lucroLiquidoReal = liquidoMes - custosTotais;
 
   // Faturamento, lucro, valores em R$ e meta só aparecem para quem tem acesso a Análises e relatórios.
   // Os demais veem indicadores operacionais (quantidade e andamento das ordens), sem valores.
@@ -184,18 +197,19 @@ export const Dashboard: React.FC<Props> = ({ onNavigate, session }) => {
     return `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-${String(hoje.getDate()).padStart(2, '0')}`;
   }, []);
 
+  // Datas comparadas no horário local (antes, OS abertas depois das 21h caíam no dia seguinte)
   const entradasHoje = useMemo(
-    () =>
-      listaOrdens.filter((os) => os.data_abertura && String(os.data_abertura).startsWith(hojeStr)).length,
+    () => listaOrdens.filter((os) => diaLocalDaData(os.data_abertura) === hojeStr).length,
     [listaOrdens, hojeStr]
   );
 
+  // Ficaram prontas ou foram entregues hoje (antes contava todas as prontas, de qualquer data)
   const finalizadosHoje = useMemo(
     () =>
       listaOrdens.filter(
         (os) =>
-          os.status_os === 'PRONTO' ||
-          (os.data_conclusao && String(os.data_conclusao).startsWith(hojeStr))
+          diaLocalDaData(os.checklistEntrada?.__dataPronto) === hojeStr ||
+          diaLocalDaData(os.data_conclusao) === hojeStr
       ).length,
     [listaOrdens, hojeStr]
   );
@@ -316,7 +330,7 @@ export const Dashboard: React.FC<Props> = ({ onNavigate, session }) => {
         </div>
 
         <button
-          onClick={carregarOrdens}
+          onClick={() => carregarOrdens(true)}
           title="Atualizar dados"
           className="px-3 py-2 sm:px-4 sm:py-2 bg-[#0e1422] hover:bg-zinc-800 border border-zinc-800 rounded-xl text-xs font-semibold text-zinc-200 transition flex items-center space-x-1.5 shrink-0 shadow-sm"
         >
@@ -333,6 +347,10 @@ export const Dashboard: React.FC<Props> = ({ onNavigate, session }) => {
           <span className="sm:hidden text-[11px]">Atualizar</span>
         </button>
       </div>
+
+      {erroCarregamento && (
+        <AvisoErroCarregamento mensagem={erroCarregamento} onTentarNovamente={() => carregarOrdens(true)} />
+      )}
 
       {/* ================= 4 CARDS SUPERIORES: 2x2 NO MOBILE, 4 COLUNAS NO DESKTOP ================= */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">

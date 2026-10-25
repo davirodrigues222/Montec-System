@@ -1,4 +1,5 @@
 import { supabase } from './supabaseClient';
+import { validarSenhaForte } from '../utils/formatadores';
 
 // ==========================================
 // 1. ISOLAMENTO DE CONFIGURAÇÕES, TEMA, METAS E IDENTIDADE VISUAL POR CONTA
@@ -10,13 +11,17 @@ export type TemaVisual = 'dark' | 'midnight' | 'light';
 export type FormatoImpressao = 'A4' | 'A4_DUAS_VIAS' | 'TERMICA_80';
 
 /** Taxas (%) cobradas pela maquininha da loja, usadas na Nova OS. */
+/**
+ * Taxas (%) de uma maquininha: débito e uma taxa para cada número de parcelas no crédito.
+ * credito[0] = 1x, credito[1] = 2x ... O tamanho da lista é o parcelamento máximo da maquininha.
+ */
 export interface TaxasMaquininha {
   debito: number;
-  credito1x: number;
-  credito2a3: number;
-  credito4a6: number;
-  credito7a12: number;
+  credito: number[];
 }
+
+/** Maior parcelamento que uma maquininha pode ter no sistema. */
+export const PARCELAS_LIMITE = 48;
 
 /** Modelos de mensagem de WhatsApp com variáveis {cliente}, {aparelho}, {numero_os}, {valor}, {loja}, {prazo_garantia}. */
 export interface MensagensWhatsapp {
@@ -53,7 +58,10 @@ export interface ConfiguracoesLojaIsolada {
   // Financeiro
   chavePix: string;
   favorecidoPix: string;
-  taxasMaquininha: TaxasMaquininha;
+  /** Maquininhas de cartão da loja, cada uma com as taxas do próprio contrato. */
+  maquininhas: Maquininha[];
+  /** Maquininha que já vem selecionada na Nova OS. */
+  maquininhaPadraoId: string;
 
   // Operacional
   prazoEntregaDiasUteis: number; // 0 = não sugere data prevista
@@ -63,13 +71,73 @@ export interface ConfiguracoesLojaIsolada {
   mensagensWhatsapp: MensagensWhatsapp;
 }
 
+export interface Maquininha {
+  id: string;
+  nome: string;
+  operadora: string;
+  taxas: TaxasMaquininha;
+}
+
+/** Valores iniciais de uma maquininha nova (o usuário ajusta conforme o contrato). */
 export const TAXAS_MAQUININHA_PADRAO: TaxasMaquininha = {
   debito: 1.49,
-  credito1x: 3.19,
-  credito2a3: 4.89,
-  credito4a6: 6.49,
-  credito7a12: 8.99,
+  // 1x | 2x-3x | 4x-6x | 7x-12x
+  credito: [3.19, 4.89, 4.89, 6.49, 6.49, 6.49, 8.99, 8.99, 8.99, 8.99, 8.99, 8.99],
 };
+
+const taxaValida = (v: any, padrao: number) => numeroEntre(v, padrao, 0, 100);
+
+/**
+ * Ajusta a tabela de crédito para N parcelas: mantém as taxas existentes e, nas parcelas novas,
+ * repete a taxa da última parcela configurada.
+ */
+export function redimensionarTaxasCredito(credito: number[], parcelasMaximas: number): number[] {
+  const n = Math.min(PARCELAS_LIMITE, Math.max(1, Math.floor(parcelasMaximas) || 1));
+  const base = credito.length > 0 ? credito : TAXAS_MAQUININHA_PADRAO.credito;
+  return Array.from({ length: n }, (_, i) => base[i] ?? base[base.length - 1]);
+}
+
+/** Operadoras para identificar a maquininha (só o nome; as taxas são as do contrato do usuário). */
+export const OPERADORAS_MAQUININHA = [
+  'InfinitePay',
+  'Ton',
+  'Mercado Pago',
+  'Stone',
+  'PagBank',
+  'SumUp',
+  'Cielo',
+  'Rede',
+  'Getnet',
+  'Sicredi',
+  'Outra',
+];
+
+/** Tabela salva: formato atual (uma taxa por parcela) ou o anterior por faixas (1x, 2-3x, 4-6x, 7-12x). */
+const normalizarTaxas = (taxas: any): TaxasMaquininha => {
+  const padrao = TAXAS_MAQUININHA_PADRAO;
+  const debito = taxaValida(taxas?.debito, padrao.debito);
+  if (Array.isArray(taxas?.credito) && taxas.credito.length > 0) {
+    const credito = taxas.credito.slice(0, PARCELAS_LIMITE).map((v: any, i: number) => taxaValida(v, padrao.credito[i] ?? 0));
+    return { debito, credito };
+  }
+  const faixa = (chave: string, i: number) => taxaValida(taxas?.[chave], padrao.credito[i]);
+  const credito = Array.from({ length: 12 }, (_, i) => {
+    const parcela = i + 1;
+    if (parcela === 1) return faixa('credito1x', 0);
+    if (parcela <= 3) return faixa('credito2a3', 1);
+    if (parcela <= 6) return faixa('credito4a6', 3);
+    return faixa('credito7a12', 6);
+  });
+  return { debito, credito };
+};
+
+/** Maquininha nova com as taxas iniciais. */
+export const criarMaquininha = (nome: string, operadora = ''): Maquininha => ({
+  id: `maq_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+  nome,
+  operadora,
+  taxas: { debito: TAXAS_MAQUININHA_PADRAO.debito, credito: [...TAXAS_MAQUININHA_PADRAO.credito] },
+});
 
 // {numero_os} já traz o prefixo da OS (ex.: OS-128584), então o texto não repete "OS".
 export const MENSAGENS_WHATSAPP_PADRAO: MensagensWhatsapp = {
@@ -117,24 +185,38 @@ const numeroEntre = (valor: any, padrao: number, min: number, max: number) => {
  * Completa uma configuração salva com os valores padrão dos campos novos ou ausentes
  * (contas antigas não têm taxas, mensagens, checklist...), sem perder o que já foi gravado.
  */
-function completarConfigLoja(cfg: Partial<ConfiguracoesLojaIsolada>, padrao: ConfiguracoesLojaIsolada): ConfiguracoesLojaIsolada {
-  const taxas: Partial<TaxasMaquininha> = cfg.taxasMaquininha || {};
+function completarConfigLoja(cfgEntrada: Partial<ConfiguracoesLojaIsolada>, padrao: ConfiguracoesLojaIsolada): ConfiguracoesLojaIsolada {
+  // Versão anterior tinha uma única tabela (taxasMaquininha): vira a "Maquininha principal"
+  const { taxasMaquininha: taxasLegadas, ...cfg } = cfgEntrada as Partial<ConfiguracoesLojaIsolada> & {
+    taxasMaquininha?: Partial<TaxasMaquininha>;
+  };
   const mensagens: Partial<MensagensWhatsapp> = cfg.mensagensWhatsapp || {};
+
+  let maquininhas: Maquininha[] = (Array.isArray(cfg.maquininhas) ? cfg.maquininhas : [])
+    .filter((m) => m && typeof m.id === 'string' && m.id)
+    .map((m) => ({
+      id: m.id,
+      nome: String(m.nome || '').trim() || 'Maquininha',
+      operadora: String(m.operadora || ''),
+      taxas: normalizarTaxas(m.taxas),
+    }));
+  if (maquininhas.length === 0) {
+    maquininhas = [{ id: 'principal', nome: 'Maquininha principal', operadora: '', taxas: normalizarTaxas(taxasLegadas) }];
+  }
+  const maquininhaPadraoId = maquininhas.some((m) => m.id === cfg.maquininhaPadraoId)
+    ? (cfg.maquininhaPadraoId as string)
+    : maquininhas[0].id;
+
   return {
     ...padrao,
     ...cfg,
+    maquininhas,
+    maquininhaPadraoId,
     formatoImpressao: FORMATOS_IMPRESSAO.includes(cfg.formatoImpressao as FormatoImpressao)
       ? (cfg.formatoImpressao as FormatoImpressao)
       : 'A4',
     exibirPixImpressao: cfg.exibirPixImpressao ?? padrao.exibirPixImpressao,
     exibirContatosImpressao: cfg.exibirContatosImpressao ?? padrao.exibirContatosImpressao,
-    taxasMaquininha: {
-      debito: numeroEntre(taxas.debito, TAXAS_MAQUININHA_PADRAO.debito, 0, 100),
-      credito1x: numeroEntre(taxas.credito1x, TAXAS_MAQUININHA_PADRAO.credito1x, 0, 100),
-      credito2a3: numeroEntre(taxas.credito2a3, TAXAS_MAQUININHA_PADRAO.credito2a3, 0, 100),
-      credito4a6: numeroEntre(taxas.credito4a6, TAXAS_MAQUININHA_PADRAO.credito4a6, 0, 100),
-      credito7a12: numeroEntre(taxas.credito7a12, TAXAS_MAQUININHA_PADRAO.credito7a12, 0, 100),
-    },
     prazoGarantiaDias: numeroEntre(cfg.prazoGarantiaDias, padrao.prazoGarantiaDias, 1, 3650),
     prazoAbandonoDias: numeroEntre(cfg.prazoAbandonoDias, padrao.prazoAbandonoDias, 1, 3650),
     prazoEntregaDiasUteis: Math.floor(numeroEntre(cfg.prazoEntregaDiasUteis, padrao.prazoEntregaDiasUteis, 0, 120)),
@@ -248,7 +330,15 @@ export function obterConfigPadraoConta(user?: any): ConfiguracoesLojaIsolada {
     exibirContatosImpressao: true,
     chavePix: '',
     favorecidoPix: '',
-    taxasMaquininha: { ...TAXAS_MAQUININHA_PADRAO },
+    maquininhas: [
+      {
+        id: 'principal',
+        nome: 'Maquininha principal',
+        operadora: '',
+        taxas: { debito: TAXAS_MAQUININHA_PADRAO.debito, credito: [...TAXAS_MAQUININHA_PADRAO.credito] },
+      },
+    ],
+    maquininhaPadraoId: 'principal',
     prazoEntregaDiasUteis: 0,
     prefixoOS: 'OS-',
     checklistItensAtivos: [...ITENS_CHECKLIST_PADRAO],
@@ -317,7 +407,7 @@ export function sincronizarSessaoConfiguracoesLoja(user: any | null): Configurac
       );
 
       const configConta = obterConfiguracoesLojaSincrono(user);
-      window.localStorage.setItem(CHAVE_ESPELHO_SESSAO, JSON.stringify(configConta));
+      gravarEspelhoSessao(configConta);
       aplicarTemaVisualNoDOM(configConta.temaVisual);
       window.dispatchEvent(new Event('storage_configs_updated'));
       return configConta;
@@ -334,6 +424,31 @@ export function sincronizarSessaoConfiguracoesLoja(user: any | null): Configurac
  * Lê de forma síncrona e estritamente isolada as configurações da conta autenticada.
  * Jamais retorna dados, tema, meta ou logo pertencentes a outro userId.
  */
+/** Espelho da sessão (compatibilidade): sem o logotipo, que fica só no cofre da conta. */
+function gravarEspelhoSessao(cfg: Partial<ConfiguracoesLojaIsolada>) {
+  try {
+    window.localStorage.setItem(CHAVE_ESPELHO_SESSAO, JSON.stringify({ ...cfg, logoUrl: '' }));
+  } catch (e) {
+    console.warn('Não foi possível atualizar o espelho das configurações:', e);
+  }
+}
+
+/** Grava no armazenamento do navegador com mensagem clara quando o espaço acaba. */
+function gravarLocal(chave: string, valor: string) {
+  try {
+    window.localStorage.setItem(chave, valor);
+  } catch (e: any) {
+    if (e?.name === 'QuotaExceededError' || /quota/i.test(String(e?.message))) {
+      throw new Error('O armazenamento do navegador está cheio. Use um logotipo menor e tente novamente.');
+    }
+    throw e;
+  }
+}
+
+// Leitura das configurações é chamada muitas vezes por tela: guarda o último resultado e só
+// recalcula quando o cofre da conta ou os metadados mudam.
+let cacheConfig: { chave: string; config: ConfiguracoesLojaIsolada } | null = null;
+
 export function obterConfiguracoesLojaSincrono(userParam?: any): ConfiguracoesLojaIsolada {
   const user = obterUsuarioAtivoSincrono(userParam);
   const padrao = obterConfigPadraoConta(user);
@@ -349,6 +464,8 @@ export function obterConfiguracoesLojaSincrono(userParam?: any): ConfiguracoesLo
     if (typeof window !== 'undefined' && window.localStorage) {
       // 1. Verifica cofre exclusivo desta conta no localStorage
       const rawConta = window.localStorage.getItem(chaveConta);
+      const chaveCache = rawConta ? `${user.id}|${metaConfig ? JSON.stringify(metaConfig) : ''}|${rawConta}` : '';
+      if (rawConta && cacheConfig?.chave === chaveCache) return cacheConfig.config;
       if (rawConta) {
         const parsedConta = JSON.parse(rawConta);
         if (!parsedConta.ownerUserId || parsedConta.ownerUserId === user.id) {
@@ -368,6 +485,7 @@ export function obterConfiguracoesLojaSincrono(userParam?: any): ConfiguracoesLo
               ...sanitizarHistoricoMetas(parsedConta.historicoMetasMensais),
             },
           }, padrao);
+          cacheConfig = { chave: chaveCache, config: mesclado };
           return mesclado;
         }
       }
@@ -384,7 +502,7 @@ export function obterConfiguracoesLojaSincrono(userParam?: any): ConfiguracoesLo
             historicoMetasMensais: sanitizarHistoricoMetas(metaConfig.historicoMetasMensais),
           }, padrao);
           window.localStorage.setItem(chaveConta, JSON.stringify(restaurado));
-          window.localStorage.setItem(CHAVE_ESPELHO_SESSAO, JSON.stringify(restaurado));
+          gravarEspelhoSessao(restaurado);
           return restaurado;
         }
       }
@@ -405,7 +523,7 @@ export function obterConfiguracoesLojaSincrono(userParam?: any): ConfiguracoesLo
               historicoMetasMensais: sanitizarHistoricoMetas(legado.historicoMetasMensais),
             }, padrao);
             window.localStorage.setItem(chaveConta, JSON.stringify(migrado));
-            window.localStorage.setItem(CHAVE_ESPELHO_SESSAO, JSON.stringify(migrado));
+            gravarEspelhoSessao(migrado);
             return migrado;
           }
         }
@@ -413,7 +531,7 @@ export function obterConfiguracoesLojaSincrono(userParam?: any): ConfiguracoesLo
 
       // 4. Conta sem configurações personalizadas prévias: inicializa cofre limpo da conta
       window.localStorage.setItem(chaveConta, JSON.stringify(padrao));
-      window.localStorage.setItem(CHAVE_ESPELHO_SESSAO, JSON.stringify(padrao));
+      gravarEspelhoSessao(padrao);
     }
   } catch (e) {
     console.error('Erro ao obter configurações isoladas da loja:', e);
@@ -496,9 +614,11 @@ export async function salvarConfiguracoesLoja(
 
   const chaveConta = `${PREFIXO_CONFIG_CONTA}${user.id}`;
   if (typeof window !== 'undefined' && window.localStorage) {
-    window.localStorage.setItem(chaveConta, JSON.stringify(configFinal));
-    window.localStorage.setItem(CHAVE_ESPELHO_SESSAO, JSON.stringify(configFinal));
-    window.localStorage.setItem(
+    // O logotipo é gravado uma única vez (no cofre da conta); antes ia em 3 cópias e estourava o espaço
+    gravarLocal(chaveConta, JSON.stringify(configFinal));
+    gravarEspelhoSessao(configFinal);
+    const { logoUrl: _logoSessao, ...configSemLogoSessao } = configFinal;
+    gravarLocal(
       CHAVE_USUARIO_ATIVO,
       JSON.stringify({
         id: user.id,
@@ -508,7 +628,7 @@ export async function salvarConfiguracoesLoja(
           nome_assistencia: configFinal.nomeLoja,
           whatsapp: configFinal.telefone,
           cpf_cnpj: configFinal.cnpj,
-          configuracoes_loja: configFinal,
+          configuracoes_loja: configSemLogoSessao,
         },
       })
     );
@@ -547,21 +667,36 @@ export async function salvarConfiguracoesLoja(
   return configFinal;
 }
 
+/** Maquininha pelo id; sem id (ou id removido), a maquininha padrão da conta. */
+export function obterMaquininha(maquininhaId?: string): Maquininha {
+  const cfg = obterConfiguracoesLojaSincrono();
+  return (
+    cfg.maquininhas.find((m) => m.id === maquininhaId) ||
+    cfg.maquininhas.find((m) => m.id === cfg.maquininhaPadraoId) ||
+    cfg.maquininhas[0]
+  );
+}
+
 /**
- * Taxa (%) da maquininha configurada na conta para a forma de pagamento e o número de parcelas.
+ * Taxa (%) da maquininha escolhida (ou da padrão) para a forma de pagamento e o número de parcelas.
  * Dinheiro, PIX e formas desconhecidas não têm taxa.
  */
-export function obterTaxaMaquininha(forma: string, parcelas: number = 1): number {
-  const taxas = obterConfiguracoesLojaSincrono().taxasMaquininha;
+export function obterTaxaMaquininha(forma: string, parcelas: number = 1, maquininhaId?: string): number {
+  const taxas = normalizarTaxas(obterMaquininha(maquininhaId).taxas);
   if (forma === 'Cartão de débito') return taxas.debito;
   if (forma === 'Cartão de crédito') {
-    if (parcelas <= 1) return taxas.credito1x;
-    if (parcelas <= 3) return taxas.credito2a3;
-    if (parcelas <= 6) return taxas.credito4a6;
-    return taxas.credito7a12;
+    const indice = Math.min(Math.max(1, Math.floor(parcelas) || 1), taxas.credito.length) - 1;
+    return taxas.credito[indice] ?? 0;
   }
   return 0;
 }
+
+/** Parcelamento máximo no crédito da maquininha (tamanho da tabela de taxas). */
+export const parcelasMaximasMaquininha = (maquininhaId?: string) =>
+  normalizarTaxas(obterMaquininha(maquininhaId).taxas).credito.length;
+
+/** Taxas sempre no formato atual (uma por parcela), mesmo vindas de uma configuração antiga em memória. */
+export const normalizarTaxasMaquininha = (taxas: any): TaxasMaquininha => normalizarTaxas(taxas);
 
 /** Data (AAAA-MM-DD) somando dias úteis (segunda a sexta) a partir de hoje. */
 export function calcularDataPrevistaEntrega(diasUteis: number, base: Date = new Date()): string {
@@ -665,12 +800,28 @@ export function formatarRotuloCompetenciaMensal(competencia?: string): string {
  * Extrai com precisão a competência 'YYYY-MM' da data de abertura de uma OS,
  * evitando deslocamentos indevidos de fuso horário.
  */
+/** Ordens que entram no faturamento: rascunhos e canceladas não são receita. */
+export const contaNoFaturamento = (os: any) => {
+  const status = String(os?.status_os || '').toUpperCase();
+  return status !== 'RASCUNHO' && status !== 'CANCELADO';
+};
+
+/** Data local AAAA-MM-DD de uma data da OS (com horário, converte para o fuso do computador). */
+export function diaLocalDaData(dataInput: any): string {
+  if (!dataInput) return '';
+  const str = String(dataInput).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+  const d = new Date(str);
+  if (isNaN(d.getTime())) return '';
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 export function extrairCompetenciaDeDataOS(dataInput: any): string | null {
   if (!dataInput) return null;
   if (typeof dataInput === 'string') {
     const str = dataInput.trim();
     const matchIso = str.match(/^(\d{4})-(\d{2})/);
-    if (matchIso) {
+    if (matchIso && !str.includes('T')) {
       return `${matchIso[1]}-${matchIso[2]}`;
     }
     const matchBr = str.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
@@ -832,7 +983,7 @@ export function calcularResumoMetaFinanceira(
       ? opcoes.competencia
       : obterChaveCompetenciaMensal();
 
-  const ordensDoPeriodo = filtrarOrdensPorCompetenciaMensal(ordens, competencia);
+  const ordensDoPeriodo = filtrarOrdensPorCompetenciaMensal(ordens, competencia).filter(contaNoFaturamento);
   const valorAlcancado = calcularFaturamentoBrutoOrdens(ordensDoPeriodo);
 
   const metaBruta =
@@ -1000,7 +1151,7 @@ export async function cadastrarUsuario(dados: {
             },
           })
         );
-        window.localStorage.setItem(CHAVE_ESPELHO_SESSAO, JSON.stringify(configComOwner));
+        gravarEspelhoSessao(configComOwner);
         aplicarTemaVisualNoDOM(configComOwner.temaVisual);
         window.dispatchEvent(new Event('storage_configs_updated'));
       }
@@ -1018,7 +1169,8 @@ export async function recuperarSenha(email: string) {
 
 /** Troca a senha da conta autenticada (Supabase Auth). */
 export async function alterarSenhaConta(novaSenha: string): Promise<void> {
-  if (!novaSenha || novaSenha.length < 6) throw new Error('A nova senha deve ter pelo menos 6 caracteres.');
+  const erroSenha = validarSenhaForte(novaSenha || '');
+  if (erroSenha) throw new Error(erroSenha);
   const { error } = await supabase.auth.updateUser({ password: novaSenha });
   if (error) {
     const msg = error.message || '';
@@ -1053,6 +1205,8 @@ export async function gerarBackupConta() {
 
 export async function fazerLogout() {
   const { error } = await supabase.auth.signOut();
+  invalidarCacheOrdens();
+  cacheConfig = null;
   // Limpa os ponteiros da sessão ativa sem apagar os cofres individuais (`sig_apple_configs_user_<id>`) de cada conta
   if (typeof window !== 'undefined' && window.localStorage) {
     window.localStorage.removeItem(CHAVE_USUARIO_ATIVO);
@@ -1257,7 +1411,8 @@ export function calcularDiasDecorridosGarantia(
 
   if (typeof dataInicioInput === 'string') {
     const str = dataInicioInput.trim();
-    const mIso = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    // Com horário (ISO com "T"), usa a data local; só "AAAA-MM-DD" puro é lido direto
+    const mIso = str.includes('T') ? null : str.match(/^(\d{4})-(\d{2})-(\d{2})/);
     const mBr = str.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
     if (mIso) {
       anoInicio = Number(mIso[1]);
@@ -1363,13 +1518,15 @@ export function validarElegibilidadeGarantiaOS(
 
   // 4. Obtém a data de início da garantia da OS original
   const checklist = os.checklist_entrada || os.checklistEntrada || {};
+  // Garantia conta a partir da ENTREGA (CDC, art. 26); OS ainda não entregue usa a data de abertura
   const dataInicioRaw =
     os.data_inicio_garantia ||
     os.dataInicioGarantia ||
     checklist.__dataInicioGarantia ||
+    os.data_conclusao ||
+    checklist.__dataConclusao ||
     os.data_abertura ||
-    os.dataAbertura ||
-    os.data_conclusao;
+    os.dataAbertura;
 
   const diasDecorridos = calcularDiasDecorridosGarantia(
     dataInicioRaw,
@@ -1436,6 +1593,28 @@ export async function buscarFornecedores(): Promise<any[]> {
   }
 }
 
+/**
+ * Modelos de aparelho já cadastrados nas OS da loja (somente leitura de aparelhos_cliente),
+ * sem repetição e sem os nomes genéricos usados quando o modelo não foi informado.
+ */
+export async function buscarModelosAparelhos(): Promise<string[]> {
+  try {
+    const { data, error } = await supabase.from('aparelhos_cliente').select('modelo').limit(2000);
+    if (error) throw error;
+    const genericos = ['smartphone genérico', 'aparelho em avaliação', 'smartphone'];
+    const vistos = new Map<string, string>();
+    (data || []).forEach((linha: any) => {
+      const modelo = String(linha?.modelo || '').trim();
+      const chave = modelo.toLowerCase();
+      if (modelo && !genericos.includes(chave) && !vistos.has(chave)) vistos.set(chave, modelo);
+    });
+    return [...vistos.values()];
+  } catch (err) {
+    console.error('Erro ao buscar modelos de aparelhos:', err);
+    return [];
+  }
+}
+
 export async function buscarServicosCadastrados(): Promise<any[]> {
   try {
     const { data, error } = await supabase.from('cad_servicos').select('*').order('nome', { ascending: true });
@@ -1483,6 +1662,179 @@ function extrairListaRetornosGarantia(garantiaJson: any): any[] {
 // 4. ORDENS DE SERVIÇO (CRIAÇÃO, RASCUNHO E EDIÇÃO)
 // ==========================================
 
+// ==========================================
+// TAXAS DE PAGAMENTO (bruto x líquido)
+// Colunas valor_taxas e modalidade_pagamento: migração 20261025090000_taxas_pagamento_ordens.sql
+// ==========================================
+
+export type ModalidadePagamento = 'DEBITO' | 'CREDITO_VISTA' | 'CREDITO_PARCELADO' | 'PIX' | 'DINHEIRO' | 'MISTO' | 'OUTRO';
+
+export const ROTULOS_MODALIDADE: Record<ModalidadePagamento, string> = {
+  DEBITO: 'Débito',
+  CREDITO_VISTA: 'Crédito à vista',
+  CREDITO_PARCELADO: 'Crédito parcelado',
+  PIX: 'PIX',
+  DINHEIRO: 'Dinheiro',
+  MISTO: 'Pagamento dividido',
+  OUTRO: 'Outra forma',
+};
+
+/** Modalidade de uma forma de pagamento em texto (ex.: "Cartão de crédito (3x)"). */
+export function modalidadeDaForma(forma: string, parcelas: number = 1): ModalidadePagamento {
+  const f = String(forma || '').toLowerCase();
+  if (f.includes('+')) return 'MISTO';
+  if (f.includes('pix')) return 'PIX';
+  if (f.includes('dinheiro')) return 'DINHEIRO';
+  if (f.includes('débito') || f.includes('debito')) return 'DEBITO';
+  if (f.includes('crédito') || f.includes('credito')) return Number(parcelas) > 1 ? 'CREDITO_PARCELADO' : 'CREDITO_VISTA';
+  return 'OUTRO';
+}
+
+/** Modalidade da OS: pelos pagamentos estruturados (2 formas = MISTO) ou pelo texto da forma. */
+function modalidadeDaOS(pagamentos: any[] | null | undefined, forma: string, parcelas: number): ModalidadePagamento {
+  const lista = Array.isArray(pagamentos) ? pagamentos.filter((p) => Number(p?.valor) > 0) : [];
+  if (lista.length > 1) return 'MISTO';
+  if (lista.length === 1) return modalidadeDaForma(lista[0].forma, Number(lista[0].parcelas) || 1);
+  return modalidadeDaForma(forma, parcelas);
+}
+
+const arredondar2 = (v: number) => Math.round(v * 100) / 100;
+
+/** Taxa retida (R$) = bruto − líquido, nunca negativa. */
+export const calcularValorTaxas = (bruto: number, liquido: number) => arredondar2(Math.max(0, Number(bruto || 0) - Number(liquido || 0)));
+
+// Colunas que podem ainda não existir no banco (migrações opcionais): a gravação tenta de novo sem elas
+const COLUNAS_TAXAS = ['valor_taxas', 'modalidade_pagamento', 'data_conclusao'];
+
+/** A coluna forma_pagamento aceita no máximo 50 caracteres no banco. */
+const LIMITE_FORMA_PAGAMENTO = 50;
+const limitarFormaPagamento = (texto: string) => {
+  const t = String(texto || '').trim();
+  return t.length <= LIMITE_FORMA_PAGAMENTO ? t : `${t.slice(0, LIMITE_FORMA_PAGAMENTO - 1).trimEnd()}…`;
+};
+
+/** Mensagens do banco em português para os erros mais comuns ao gravar uma OS. */
+function traduzirErroBanco(error: any, padrao: string): string {
+  const msg = String(error?.message || '');
+  const limite = msg.match(/value too long for type character varying\((\d+)\)/i);
+  if (limite) return `Um dos campos da OS passou do limite de ${limite[1]} caracteres do banco. Encurte o texto e tente novamente.`;
+  return msg || padrao;
+}
+
+/**
+ * Grava a OS com as colunas de taxas. Se a migração ainda não foi executada (coluna inexistente),
+ * grava de novo sem elas: o sistema continua funcionando e as colunas passam a ser preenchidas
+ * assim que a migração rodar.
+ */
+async function gravarComColunasDeTaxas<T extends { error: any }>(
+  dados: Record<string, any>,
+  executar: (d: Record<string, any>) => PromiseLike<T>
+): Promise<T> {
+  const resultado = await executar(dados);
+  const msg = String(resultado.error?.message || '');
+  const colunaAusente = resultado.error && COLUNAS_TAXAS.some((c) => msg.includes(c));
+  if (!colunaAusente) return resultado;
+  const semTaxas = { ...dados };
+  COLUNAS_TAXAS.forEach((c) => delete semTaxas[c]);
+  return executar(semTaxas);
+}
+
+/**
+ * Número da OS: sequência por conta no banco (função gerar_numero_os, migração 20261025120000);
+ * sem a migração, número aleatório. Em ambos os casos confere se o número ainda não existe.
+ */
+async function gerarNumeroOS(): Promise<string> {
+  const prefixo = obterConfiguracoesLojaSincrono().prefixoOS; // Configurações › Operacional
+  for (let tentativa = 0; tentativa < 6; tentativa++) {
+    const { data, error } = await supabase.rpc('gerar_numero_os');
+    const sequencia = Number(data);
+    const numero =
+      !error && Number.isFinite(sequencia) && sequencia > 0
+        ? `${prefixo}${String(sequencia).padStart(6, '0')}`
+        : `${prefixo}${Math.floor(100000 + Math.random() * 900000)}`;
+    const { count, error: erroBusca } = await supabase
+      .from('ordens_servico')
+      .select('id_os', { count: 'exact', head: true })
+      .eq('numero_os', numero);
+    if (erroBusca || !count) return numero;
+  }
+  throw new Error('Não foi possível gerar um número de OS único. Tente novamente.');
+}
+
+/** Escapa % e _ para buscas com ilike (o texto digitado é comparado literalmente). */
+const escaparLike = (texto: string) => texto.replace(/[\\%_]/g, (c) => `\\${c}`);
+
+const digitosTelefone = (v: any) => {
+  const d = String(v || '').replace(/\D/g, '');
+  return d.length > 11 && d.startsWith('55') ? d.slice(2) : d;
+};
+
+const nomeComparavel = (v: any) =>
+  String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+
+/**
+ * Cliente da OS. Com id (escolhido na lista) usa o próprio cadastro. Avulso: reaproveita um cadastro
+ * só quando WhatsApp E nome coincidem; caso contrário cria um cadastro novo. Nunca vincula só pelo nome
+ * (dois clientes "Maria" ficariam misturados e editar um alteraria o outro).
+ */
+async function resolverClienteDaOS(cliente: any): Promise<string> {
+  if (cliente?.idCliente) return cliente.idCliente;
+
+  const nome = String(cliente?.nome || '').trim() || 'Cliente Balcão';
+  const whatsapp = String(cliente?.whatsapp || '').trim();
+  const fone = digitosTelefone(whatsapp);
+
+  if (fone.length >= 10) {
+    const { data: candidatos, error } = await supabase
+      .from('clientes')
+      .select('id_cliente, nome, whatsapp')
+      .ilike('whatsapp', `%${escaparLike(fone.slice(-4))}`)
+      .limit(50);
+    if (error) throw new Error(`Falha ao procurar o cliente: ${error.message}`);
+    const mesmo = (candidatos || []).find(
+      (c: any) => digitosTelefone(c.whatsapp) === fone && nomeComparavel(c.nome) === nomeComparavel(nome)
+    );
+    if (mesmo?.id_cliente) return mesmo.id_cliente;
+  }
+
+  const { data: authData } = await supabase.auth.getUser();
+  const novoId = gerarId('cli');
+  const { error } = await supabase.from('clientes').insert([
+    {
+      id_cliente: novoId,
+      nome,
+      whatsapp,
+      cpf_cnpj: String(cliente?.cpfCnpj || '').trim() || null,
+      ...(authData?.user?.id ? { user_id: authData.user.id } : {}),
+    },
+  ]);
+  if (error) throw new Error(`Falha ao cadastrar o cliente: ${error.message}`);
+  return novoId;
+}
+
+/** Aparelho da OS: reaproveita o mesmo modelo já cadastrado para o cliente ou cria um novo. */
+async function resolverAparelhoDaOS(idCliente: string, aparelho: any): Promise<string> {
+  if (aparelho?.idAparelho) return aparelho.idAparelho;
+  const modelo = String(aparelho?.modelo || '').trim() || 'Smartphone Genérico';
+  const imei = aparelho?.imei1 || aparelho?.imei || null;
+
+  const { data: existentes, error } = await supabase
+    .from('aparelhos_cliente')
+    .select('id_aparelho')
+    .eq('id_cliente', idCliente)
+    .ilike('modelo', escaparLike(modelo))
+    .limit(1);
+  if (error) throw new Error(`Falha ao procurar o aparelho: ${error.message}`);
+  if (existentes?.[0]?.id_aparelho) return existentes[0].id_aparelho;
+
+  const novoId = gerarId('apr');
+  const { error: erroInsert } = await supabase
+    .from('aparelhos_cliente')
+    .insert([{ id_aparelho: novoId, id_cliente: idCliente, modelo, imei_1: imei }]);
+  if (erroInsert) throw new Error(`Falha ao cadastrar o aparelho: ${erroInsert.message}`);
+  return novoId;
+}
+
 export async function criarOrdemServico(payload: {
   cliente: any;
   aparelho: any;
@@ -1503,73 +1855,12 @@ export async function criarOrdemServico(payload: {
   status_os?: string;
   pagamentos?: any[];
 }): Promise<{ idOs: string; numeroOs: string }> {
-  // Prefixo configurável em Configurações › Operacional (padrão "OS-")
-  const prefixoOS = obterConfiguracoesLojaSincrono().prefixoOS;
-  const numeroOsGerado = `${prefixoOS}${Math.floor(100000 + Math.random() * 900000)}`;
+  const numeroOsGerado = await gerarNumeroOS();
   const idOsGerado = gerarId('os');
 
-  let idClienteFinal = payload.cliente?.idCliente;
-  if (!idClienteFinal && payload.cliente?.nome) {
-    const { data: clienteExistente } = await supabase
-      .from('clientes')
-      .select('id_cliente')
-      .ilike('nome', payload.cliente.nome.trim())
-      .maybeSingle();
-
-    if (clienteExistente?.id_cliente) {
-      idClienteFinal = clienteExistente.id_cliente;
-    } else {
-      const novoIdCliente = gerarId('cli');
-      const { error: erroCli } = await supabase.from('clientes').insert([{
-        id_cliente: novoIdCliente,
-        nome: payload.cliente.nome.trim(),
-        whatsapp: payload.cliente.whatsapp || '',
-      }]);
-      if (!erroCli) idClienteFinal = novoIdCliente;
-    }
-  }
-
-  if (!idClienteFinal) {
-    idClienteFinal = crypto.randomUUID ? crypto.randomUUID() : 'cli_balcao';
-    await supabase.from('clientes').upsert([{
-      id_cliente: idClienteFinal,
-      nome: 'Cliente Balcão',
-      whatsapp: ''
-    }], { onConflict: 'id_cliente' });
-  }
-
-  let idAparelhoFinal = payload.aparelho?.idAparelho;
-  if (!idAparelhoFinal && payload.aparelho?.modelo) {
-    const modeloStr = payload.aparelho.modelo.trim();
-    const { data: aparelhoExistente } = await supabase
-      .from('aparelhos_cliente')
-      .select('id_aparelho')
-      .eq('id_cliente', idClienteFinal)
-      .ilike('modelo', modeloStr)
-      .maybeSingle();
-
-    if (aparelhoExistente?.id_aparelho) {
-      idAparelhoFinal = aparelhoExistente.id_aparelho;
-    } else {
-      const novoIdAparelho = gerarId('apr');
-      const { error: erroApr } = await supabase.from('aparelhos_cliente').insert([{
-        id_aparelho: novoIdAparelho,
-        id_cliente: idClienteFinal,
-        modelo: modeloStr,
-        imei_1: payload.aparelho?.imei1 || payload.aparelho?.imei || null
-      }]);
-      if (!erroApr) idAparelhoFinal = novoIdAparelho;
-    }
-  }
-
-  if (!idAparelhoFinal) {
-    idAparelhoFinal = crypto.randomUUID ? crypto.randomUUID() : 'apr_generico';
-    await supabase.from('aparelhos_cliente').upsert([{
-      id_aparelho: idAparelhoFinal,
-      id_cliente: idClienteFinal,
-      modelo: 'Smartphone Genérico',
-    }], { onConflict: 'id_aparelho' });
-  }
+  // Cliente e aparelho: escolhido na lista = usa o cadastro; avulso = reaproveita só se WhatsApp e nome baterem
+  const idClienteFinal = await resolverClienteDaOS(payload.cliente);
+  const idAparelhoFinal = await resolverAparelhoDaOS(idClienteFinal, payload.aparelho);
 
   const possuiGarantiaFinal = payload.possuiGarantia ?? true;
   const prazoGarantiaFinal = possuiGarantiaFinal
@@ -1591,6 +1882,10 @@ export async function criarOrdemServico(payload: {
     __tipoDesconto: payload.orcamentoCalculado?.tipoDesconto || 'VALOR',
     __descontoValor: Number(payload.orcamentoCalculado?.descontoGeralAplicado || 0),
     __descontoInput: Number(payload.orcamentoCalculado?.descontoInput ?? payload.orcamentoCalculado?.descontoGeralAplicado ?? 0),
+    // Campos sem coluna própria na tabela: ficam no JSON da OS
+    __servicoRealizado: payload.servicoRealizado || '',
+    __pecasUtilizadas: payload.pecasUtilizadas || '',
+    __senhaDesbloqueio: payload.aparelho?.senhaDesbloqueio || '',
   };
 
   const valorLiqFinal = payload.valorLiquido !== undefined && payload.valorLiquido !== null
@@ -1611,24 +1906,26 @@ export async function criarOrdemServico(payload: {
     lucro_estimado_total: payload.orcamentoCalculado?.lucroTotalEstimadoInterno || 0,
     custo_peca: payload.orcamentoCalculado?.custoPeca || 0,
     frete_real: payload.orcamentoCalculado?.freteReal || 0,
-    forma_pagamento: payload.formaPagamento || 'Dinheiro',
+    forma_pagamento: limitarFormaPagamento(payload.formaPagamento || 'Dinheiro'),
     parcelas: payload.parcelas || 1,
     valor_liquido: valorLiqFinal,
+    // Bruto (valor_total) x líquido (valor_liquido): a diferença é o que a maquininha reteve
+    valor_taxas: calcularValorTaxas(payload.orcamentoCalculado?.valorTotalOrcamento || 0, valorLiqFinal),
+    modalidade_pagamento: modalidadeDaOS(payload.pagamentos, payload.formaPagamento || 'Dinheiro', payload.parcelas || 1),
     possui_garantia: possuiGarantiaFinal,
     data_abertura: payload.dataAbertura ? formatarDataParaBanco(payload.dataAbertura) : new Date().toISOString(),
   };
 
-  const { data, error } = await supabase
-    .from('ordens_servico')
-    .insert([dadosParaSalvar])
-    .select()
-    .single();
+  const { data, error } = await gravarComColunasDeTaxas(dadosParaSalvar, (dados) =>
+    supabase.from('ordens_servico').insert([dados]).select().single()
+  );
 
   if (error) {
-    throw new Error(error.message || 'Falha ao salvar Ordem de Serviço no Supabase');
+    throw new Error(traduzirErroBanco(error, 'Falha ao salvar Ordem de Serviço no Supabase'));
   }
 
-  return { 
+  invalidarCacheOrdens();
+  return {
     idOs: data?.id_os || idOsGerado, 
     numeroOs: data?.numero_os || numeroOsGerado 
   };
@@ -1638,32 +1935,33 @@ export async function editarOrdemServico(id_os: string, payload: any): Promise<v
   // 1. Busca a OS atual para sabermos o id_cliente, id_aparelho e metadados de garantia/pagamento
   const { data: osAtual, error: errBusca } = await supabase
     .from('ordens_servico')
-    .select('id_cliente, id_aparelho, checklist_entrada, possui_garantia')
+    .select('id_cliente, id_aparelho, checklist_entrada, possui_garantia, status_os')
     .eq('id_os', id_os)
     .single();
 
   if (errBusca) throw new Error('Falha ao localizar Ordem de Serviço para edição.');
 
-  // 2. Se o cliente foi alterado, atualiza na tabela de clientes
+  // 2. Se o cliente foi alterado, atualiza na tabela de clientes (inclui CPF/CNPJ)
   if (payload.cliente?.nome && osAtual?.id_cliente) {
-    await supabase
-      .from('clientes')
-      .update({
-        nome: payload.cliente.nome.trim(),
-        whatsapp: payload.cliente.whatsapp || '',
-      })
-      .eq('id_cliente', osAtual.id_cliente);
+    const dadosCliente: Record<string, any> = {
+      nome: payload.cliente.nome.trim(),
+      whatsapp: payload.cliente.whatsapp || '',
+    };
+    if (payload.cliente.cpfCnpj !== undefined) dadosCliente.cpf_cnpj = String(payload.cliente.cpfCnpj || '').trim() || null;
+    const { error: erroCliente } = await supabase.from('clientes').update(dadosCliente).eq('id_cliente', osAtual.id_cliente);
+    if (erroCliente) throw new Error(`Falha ao atualizar o cliente: ${erroCliente.message}`);
   }
 
   // 3. Se o aparelho foi alterado, atualiza na tabela de aparelhos
   if (payload.aparelho?.modelo && osAtual?.id_aparelho) {
-    await supabase
+    const { error: erroAparelho } = await supabase
       .from('aparelhos_cliente')
       .update({
         modelo: payload.aparelho.modelo.trim(),
         imei_1: payload.aparelho?.imei1 || payload.aparelho?.imei || null,
       })
       .eq('id_aparelho', osAtual.id_aparelho);
+    if (erroAparelho) throw new Error(`Falha ao atualizar o aparelho: ${erroAparelho.message}`);
   }
 
   // 4. Prepara a atualização dos campos da Ordem de Serviço
@@ -1676,7 +1974,7 @@ export async function editarOrdemServico(id_os: string, payload: any): Promise<v
   if (status !== undefined) dadosAtualizados.status_os = status;
 
   const formaPg = payload.formaPagamento !== undefined ? payload.formaPagamento : payload.forma_pagamento;
-  if (formaPg !== undefined) dadosAtualizados.forma_pagamento = formaPg;
+  if (formaPg !== undefined) dadosAtualizados.forma_pagamento = limitarFormaPagamento(formaPg);
 
   if (payload.parcelas !== undefined) dadosAtualizados.parcelas = payload.parcelas;
 
@@ -1693,12 +1991,31 @@ export async function editarOrdemServico(id_os: string, payload: any): Promise<v
 
   const checklistExistente = osAtual?.checklist_entrada || {};
   const orc = payload.orcamentoCalculado;
+
+  // Campos sem coluna própria (antes descartados na edição) e datas de pronto/entrega
+  const extras: Record<string, any> = {};
+  if (payload.servicoRealizado !== undefined) extras.__servicoRealizado = payload.servicoRealizado || '';
+  if (payload.pecasUtilizadas !== undefined) extras.__pecasUtilizadas = payload.pecasUtilizadas || '';
+  if (payload.aparelho?.senhaDesbloqueio !== undefined) extras.__senhaDesbloqueio = payload.aparelho.senhaDesbloqueio || '';
+  const conclusaoInformada = payload.dataConclusao ?? payload.data_conclusao;
+  if (conclusaoInformada) {
+    extras.__dataConclusao = formatarDataParaBanco(conclusaoInformada);
+  } else if (status === 'ENTREGUE' && osAtual?.status_os !== 'ENTREGUE' && !checklistExistente.__dataConclusao) {
+    // Entregue agora: a garantia passa a contar a partir de hoje
+    extras.__dataConclusao = new Date().toISOString();
+  }
+  if (status === 'PRONTO' && osAtual?.status_os !== 'PRONTO' && !checklistExistente.__dataPronto) {
+    extras.__dataPronto = new Date().toISOString();
+  }
+  if (extras.__dataConclusao) dadosAtualizados.data_conclusao = extras.__dataConclusao;
+
   if (
     payload.checklistEntrada !== undefined ||
     payload.pagamentos !== undefined ||
     payload.prazoGarantiaDias !== undefined ||
     possuiGarantiaInput !== undefined ||
-    orc !== undefined
+    orc !== undefined ||
+    Object.keys(extras).length > 0
   ) {
     const checklistBase = payload.checklistEntrada !== undefined ? payload.checklistEntrada : checklistExistente;
     const possuiGarantiaPreservado =
@@ -1737,6 +2054,15 @@ export async function editarOrdemServico(id_os: string, payload: any): Promise<v
         orc?.descontoInput !== undefined || orc?.descontoGeralAplicado !== undefined
           ? Number(orc.descontoInput ?? orc.descontoGeralAplicado ?? 0)
           : ((checklistBase as any)?.__descontoInput ?? checklistExistente.__descontoInput),
+      // Metadados que o checklist enviado pela tela não traz: preserva os já salvos
+      __servicoRealizado: (checklistBase as any)?.__servicoRealizado ?? checklistExistente.__servicoRealizado,
+      __pecasUtilizadas: (checklistBase as any)?.__pecasUtilizadas ?? checklistExistente.__pecasUtilizadas,
+      __senhaDesbloqueio: (checklistBase as any)?.__senhaDesbloqueio ?? checklistExistente.__senhaDesbloqueio,
+      __dataConclusao: (checklistBase as any)?.__dataConclusao ?? checklistExistente.__dataConclusao,
+      __dataPronto: (checklistBase as any)?.__dataPronto ?? checklistExistente.__dataPronto,
+      __servicoNome: (checklistBase as any)?.__servicoNome ?? checklistExistente.__servicoNome,
+      __servicoId: (checklistBase as any)?.__servicoId ?? checklistExistente.__servicoId,
+      ...extras,
     };
   }
 
@@ -1768,24 +2094,59 @@ export async function editarOrdemServico(id_os: string, payload: any): Promise<v
     dadosAtualizados.valor_liquido = payload.orcamentoCalculado.valorTotalOrcamento;
   }
 
-  const { error } = await supabase
-    .from('ordens_servico')
-    .update(dadosAtualizados)
-    .eq('id_os', id_os);
+  // Bruto e líquido alterados juntos: recalcula a taxa retida
+  if (dadosAtualizados.valor_total !== undefined && dadosAtualizados.valor_liquido !== undefined) {
+    dadosAtualizados.valor_taxas = calcularValorTaxas(dadosAtualizados.valor_total, dadosAtualizados.valor_liquido);
+  }
+  if (dadosAtualizados.forma_pagamento !== undefined) {
+    dadosAtualizados.modalidade_pagamento = modalidadeDaForma(dadosAtualizados.forma_pagamento, dadosAtualizados.parcelas ?? 1);
+  }
+
+  const { error } = await gravarComColunasDeTaxas(dadosAtualizados, (dados) =>
+    supabase.from('ordens_servico').update(dados).eq('id_os', id_os)
+  );
 
   if (error) {
-    throw new Error(error.message || 'Falha ao atualizar Ordem de Serviço');
+    throw new Error(traduzirErroBanco(error, 'Falha ao atualizar Ordem de Serviço'));
   }
+  invalidarCacheOrdens();
 }
 
-export async function buscarOrdensServico(): Promise<any[]> {
+// Cache curto das ordens: várias telas abertas em sequência não baixam tudo de novo a cada vez.
+// É por conta (troca de conta não mostra dados da anterior) e é limpo a cada gravação.
+const VALIDADE_CACHE_ORDENS_MS = 30_000;
+let cacheOrdens: { conta: string; em: number; promessa: Promise<any[]> } | null = null;
+
+export function invalidarCacheOrdens() {
+  cacheOrdens = null;
+}
+
+/**
+ * Ordens de serviço da conta. Em falha de conexão LANÇA um erro (antes devolvia lista vazia e a tela
+ * mostrava "nenhuma ordem", como se os dados tivessem sumido).
+ * forcarAtualizacao ignora o cache (botões "Atualizar").
+ */
+export async function buscarOrdensServico(forcarAtualizacao = false): Promise<any[]> {
+  const conta = obterUsuarioAtivoSincrono()?.id || '';
+  if (!forcarAtualizacao && cacheOrdens && cacheOrdens.conta === conta && Date.now() - cacheOrdens.em < VALIDADE_CACHE_ORDENS_MS) {
+    return cacheOrdens.promessa;
+  }
+  const promessa = carregarOrdensDoBanco();
+  cacheOrdens = { conta, em: Date.now(), promessa };
+  promessa.catch(() => {
+    if (cacheOrdens?.promessa === promessa) cacheOrdens = null;
+  });
+  return promessa;
+}
+
+async function carregarOrdensDoBanco(): Promise<any[]> {
   try {
     const [{ data, error }, servicosCadastrados] = await Promise.all([
       supabase
         .from('ordens_servico')
         .select(`
           *,
-          clientes:id_cliente (nome, whatsapp),
+          clientes:id_cliente (nome, whatsapp, cpf_cnpj),
           aparelhos_cliente:id_aparelho (modelo, imei_1)
         `)
         .order('data_abertura', { ascending: false }),
@@ -1806,6 +2167,11 @@ export async function buscarOrdensServico(): Promise<any[]> {
 
       const valorBruto = Number(item.valor_total || 0);
       const valorLiq = Number(item.valor_liquido !== null && item.valor_liquido !== undefined ? item.valor_liquido : valorBruto);
+      // Taxa retida pela maquininha: coluna própria (após a migração) ou bruto − líquido
+      const valorTaxas =
+        item.valor_taxas !== null && item.valor_taxas !== undefined
+          ? Number(item.valor_taxas)
+          : calcularValorTaxas(valorBruto, valorLiq);
       const pecaBase = Number(item.custo_peca || 0);
       const freteBase = Number(item.frete_real || 0);
 
@@ -1845,12 +2211,20 @@ export async function buscarOrdensServico(): Promise<any[]> {
         status_os: item.status_os || 'AGUARDANDO_AVALIACAO',
         defeitoRelatado: item.defeito_relatado || '',
         // Serviço do catálogo escolhido na abertura (salvo em checklist_entrada)
-        servicoRealizado: item.servico_realizado || item.checklist_entrada?.__servicoNome || '',
+        servicoRealizado:
+          item.servico_realizado || item.checklist_entrada?.__servicoRealizado || item.checklist_entrada?.__servicoNome || '',
+        pecasUtilizadas: item.pecas_utilizadas || item.checklist_entrada?.__pecasUtilizadas || '',
+        // Data de entrega: coluna (se existir) ou JSON da OS; é o início da garantia
+        data_conclusao: item.data_conclusao || item.checklist_entrada?.__dataConclusao || undefined,
         diagnostico: item.diagnostico_tecnico || '',
         observacoes: item.observacoes_internas || '',
         formaPagamento: item.forma_pagamento || 'PIX',
         parcelas: Number(item.parcelas || 1),
         valorLiquido: valorLiq,
+        valorTaxas,
+        modalidadePagamento:
+          (item.modalidade_pagamento as ModalidadePagamento) ||
+          modalidadeDaOS(pagamentosLista, item.forma_pagamento || '', Number(item.parcelas || 1)),
         pagamentos: pagamentosLista,
         possuiGarantia: possuiGarantiaReal,
         prazoGarantiaDias: prazoGarantiaDiasReal,
@@ -1858,10 +2232,12 @@ export async function buscarOrdensServico(): Promise<any[]> {
         cliente: {
           nome: item.clientes?.nome || item.cliente_nome || 'Cliente Balcão',
           whatsapp: item.clientes?.whatsapp || item.cliente_telefone || '',
+          cpfCnpj: item.clientes?.cpf_cnpj || '',
         },
         aparelho: {
           modelo: item.aparelhos_cliente?.modelo || item.aparelho_modelo || 'Smartphone',
           imei1: item.aparelhos_cliente?.imei_1 || item.aparelho_imei || '',
+          senhaDesbloqueio: item.checklist_entrada?.__senhaDesbloqueio || '',
         },
         orcamentoCalculado: {
           // Desconto: prioriza colunas diretas (se existirem) e depois os metadados salvos em checklist_entrada
@@ -1892,19 +2268,13 @@ export async function buscarOrdensServico(): Promise<any[]> {
     });
   } catch (error) {
     console.error('Erro ao buscar ordens no Supabase:', error);
-    return [];
+    throw new Error('Não foi possível carregar as ordens de serviço. Verifique a conexão e tente novamente.');
   }
 }
 
 export async function atualizarStatusOS(id_os: string, status_os: string): Promise<void> {
-  const { error } = await supabase
-    .from('ordens_servico')
-    .update({ status_os })
-    .eq('id_os', id_os);
-
-  if (error) {
-    throw new Error(error.message || 'Falha ao atualizar status');
-  }
+  // Pela edição: registra a data de pronto/entrega (início da garantia) junto com o status
+  await editarOrdemServico(id_os, { status_os });
 }
 
 export async function registrarGarantiaOS(
@@ -1931,13 +2301,24 @@ export async function registrarGarantiaOS(
     throw new Error(validacao.motivo || 'Esta Ordem de Serviço não é elegível para retorno em garantia.');
   }
 
-  const listaRetornos = extrairListaRetornosGarantia(osAtual.garantia_json);
-  listaRetornos.push({
+  const retorno = {
     ...garantia,
     prazoGarantiaDiasOriginal: validacao.prazoDias,
     diasDecorridosNoRetorno: validacao.diasDecorridos,
-  });
+  };
 
+  // Acrescenta dentro do banco com a linha travada (migração 20261025120000)
+  const { error: erroRpc } = await supabase.rpc('acrescentar_retorno_garantia', { p_id_os: String(id_os), p_retorno: retorno });
+  if (!erroRpc) {
+    invalidarCacheOrdens();
+    return;
+  }
+  const funcaoAusente = /acrescentar_retorno_garantia|PGRST202|function/i.test(`${erroRpc.code} ${erroRpc.message}`);
+  if (!funcaoAusente) throw new Error(erroRpc.message || 'Falha ao registrar garantia');
+
+  // Sem a migração: grava a lista completa (como antes)
+  const listaRetornos = extrairListaRetornosGarantia(osAtual.garantia_json);
+  listaRetornos.push(retorno);
   const { error } = await supabase
     .from('ordens_servico')
     .update({ garantia_json: listaRetornos })
@@ -1946,6 +2327,7 @@ export async function registrarGarantiaOS(
   if (error) {
     throw new Error(error.message || 'Falha ao registrar garantia');
   }
+  invalidarCacheOrdens();
 }
 
 export async function excluirOrdemServico(id_os: string): Promise<void> {
@@ -1957,4 +2339,5 @@ export async function excluirOrdemServico(id_os: string): Promise<void> {
   if (error) {
     throw new Error(error.message || 'Falha ao excluir a Ordem de Serviço');
   }
+  invalidarCacheOrdens();
 }
