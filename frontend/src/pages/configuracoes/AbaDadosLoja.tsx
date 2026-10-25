@@ -148,8 +148,8 @@ export const AbaDadosLoja: React.FC<PropsAba> = ({ config, alterar }) => (
             label="Exibir chave PIX"
             descricao={
               config.chavePix.trim()
-                ? 'Mostra a chave PIX cadastrada em Configurações › Financeiro & taxas.'
-                : 'Cadastre a chave PIX em Configurações › Financeiro & taxas.'
+                ? 'Mostra a chave PIX cadastrada em Configurações › Taxas.'
+                : 'Cadastre a chave PIX em Configurações › Taxas.'
             }
           />
         </div>

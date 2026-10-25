@@ -4,17 +4,17 @@ import type { SecaoConfiguracao } from '../../types';
 export const SECOES_CONFIGURACAO: { id: SecaoConfiguracao; rotulo: string; descricao: string }[] = [
   {
     id: 'loja',
-    rotulo: 'Dados da loja & impressão',
+    rotulo: 'Impressão',
     descricao: 'Identidade impressa nos documentos, horário de atendimento e formato do papel.',
   },
   {
     id: 'financeiro',
-    rotulo: 'Financeiro & taxas',
+    rotulo: 'Taxas',
     descricao: 'Meta mensal, chave PIX e taxas da maquininha usadas na Nova OS.',
   },
   {
     id: 'operacional',
-    rotulo: 'Operacional & garantia',
+    rotulo: 'Operacional',
     descricao: 'Prazos, prefixo da OS, termos de garantia e itens do checklist de entrada.',
   },
   {
@@ -24,12 +24,12 @@ export const SECOES_CONFIGURACAO: { id: SecaoConfiguracao; rotulo: string; descr
   },
   {
     id: 'equipe',
-    rotulo: 'Equipe & acesso',
+    rotulo: 'Equipe',
     descricao: 'Quem pode liberar telas restritas e o que cada funcionário acessa.',
   },
   {
     id: 'conta',
-    rotulo: 'Aparência, conta & backup',
+    rotulo: 'Conta',
     descricao: 'Logotipo, tema, senha da conta e exportação dos dados da loja.',
   },
 ];
