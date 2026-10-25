@@ -11,13 +11,38 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-const supabaseUrl = process.env.SUPABASE_URL || 'https://mlgkdyeujcglwlfdirin.supabase.co';
-const supabaseKey = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_HGJD0kFeVf03Gm-4vft8uQ_b4R4Om9P';
-const supabase = createClient(supabaseUrl, supabaseKey);
+// Configuração só por variáveis de ambiente (backend/.env, fora do git)
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_PUBLISHABLE_KEY;
+if (!supabaseUrl || !supabaseKey) {
+  throw new Error("Defina SUPABASE_URL e SUPABASE_ANON_KEY no arquivo backend/.env");
+}
+
+// Cliente sem login: usado apenas nas rotas de autenticação
+const supabaseAnon = createClient(supabaseUrl, supabaseKey);
+
+/**
+ * Rotas de dados exigem login: o cabeçalho "Authorization: Bearer <token do Supabase>" é validado
+ * e as consultas rodam com o acesso do próprio usuário (as regras do banco valem também aqui).
+ */
+app.use("/v1", async (req: Request, res: Response, next: () => void) => {
+  if (req.path.startsWith("/auth/")) return next();
+  const token = String(req.headers.authorization || "").replace(/^Bearer\s+/i, "");
+  if (!token) return res.status(401).json({ sucesso: false, erro: "Login necessário." });
+  const { data, error } = await supabaseAnon.auth.getUser(token);
+  if (error || !data?.user) return res.status(401).json({ sucesso: false, erro: "Sessão inválida ou expirada." });
+  res.locals.supabase = createClient(supabaseUrl, supabaseKey, {
+    global: { headers: { Authorization: `Bearer ${token}` } },
+  });
+  next();
+});
+
+/** Cliente do Supabase da requisição (com o login de quem chamou). */
+const sb = (res: Response) => res.locals.supabase as any;
 
 app.get("/v1/cadastros/servicos", async (_req: Request, res: Response) => {
   try {
-    const { data, error } = await supabase.from("cad_servicos").select("*").order("nome", { ascending: true });
+    const { data, error } = await sb(res).from("cad_servicos").select("*").order("nome", { ascending: true });
     if (error) throw error;
     return res.json({ sucesso: true, data });
   } catch (err: any) {
@@ -28,7 +53,7 @@ app.get("/v1/cadastros/servicos", async (_req: Request, res: Response) => {
 app.post("/v1/cadastros/servicos", async (req: Request, res: Response) => {
   try {
     const { nome, precoSugerido } = req.body;
-    const { data, error } = await supabase.from("cad_servicos").insert([
+    const { data, error } = await sb(res).from("cad_servicos").insert([
       { nome, preco_sugerido: Number(precoSugerido) || 0 }
     ]).select();
     if (error) throw error;
@@ -40,7 +65,7 @@ app.post("/v1/cadastros/servicos", async (req: Request, res: Response) => {
 
 app.get("/v1/cadastros/fornecedores", async (_req: Request, res: Response) => {
   try {
-    const { data, error } = await supabase.from("cad_fornecedores").select("*").order("nome", { ascending: true });
+    const { data, error } = await sb(res).from("cad_fornecedores").select("*").order("nome", { ascending: true });
     if (error) throw error;
     return res.json({ sucesso: true, data });
   } catch (err: any) {
@@ -51,7 +76,7 @@ app.get("/v1/cadastros/fornecedores", async (_req: Request, res: Response) => {
 app.post("/v1/cadastros/fornecedores", async (req: Request, res: Response) => {
   try {
     const { nome, contato } = req.body;
-    const { data, error } = await supabase.from("cad_fornecedores").insert([
+    const { data, error } = await sb(res).from("cad_fornecedores").insert([
       { nome, contato: contato || "" }
     ]).select();
     if (error) throw error;
@@ -126,7 +151,7 @@ app.post("/v1/ordens-servico/:id/garantia", async (req: Request, res: Response) 
     const totalRetorno = pecaGarantia + freteGarantia;
 
     // 1. Busca a OS atual
-    const { data: osAtual, error: errBusca } = await supabase
+    const { data: osAtual, error: errBusca } = await sb(res)
       .from("ordens_servico")
       .select("garantia_json, custo_peca_garantia")
       .eq("id_os", id)
@@ -171,7 +196,7 @@ app.post("/v1/ordens-servico/:id/garantia", async (req: Request, res: Response) 
       custo_peca_garantia: custoTotalGarantiaOS // Grava direto na coluna física para segurança total
     };
 
-    const { data, error: errUpdate } = await supabase
+    const { data, error: errUpdate } = await sb(res)
       .from("ordens_servico")
       .update(dadosUpdate)
       .eq("id_os", id)
@@ -182,70 +207,6 @@ app.post("/v1/ordens-servico/:id/garantia", async (req: Request, res: Response) 
     return res.json({ sucesso: true, mensagem: "Garantia registrada com sucesso!", data: data[0] });
   } catch (err: any) {
     console.error("Erro ao salvar garantia:", err.message);
-    return res.status(500).json({ sucesso: false, erro: err.message });
-  }
-});
-
-// Rota crucial para registrar garantia e abater no lucro líquido
-app.post("/v1/ordens-servico/:id/garantia", async (req: Request, res: Response) => {
-  try {
-    const { id } = req.params;
-    const dadosGarantia = req.body;
-
-    const { data: osAtual, error: errBusca } = await supabase
-      .from("ordens_servico")
-      .select("garantia_json")
-      .eq("id_os", id)
-      .single();
-
-    if (errBusca) throw errBusca;
-
-    let listaGarantias: any[] = [];
-    let garantiaRaw = osAtual?.garantia_json;
-
-    if (typeof garantiaRaw === 'string') {
-      try { garantiaRaw = JSON.parse(garantiaRaw); } catch (e) { garantiaRaw = null; }
-    }
-
-    if (Array.isArray(garantiaRaw)) {
-      listaGarantias = garantiaRaw;
-    } else if (garantiaRaw && typeof garantiaRaw === 'object') {
-      if (Array.isArray(garantiaRaw.listaRetornos)) {
-        listaGarantias = garantiaRaw.listaRetornos;
-      } else {
-        listaGarantias = [garantiaRaw];
-      }
-    }
-
-    listaGarantias.push(dadosGarantia);
-
-    let custoTotalGarantiaOS = 0;
-    listaGarantias.forEach((g: any) => {
-      const peca = Number(g?.custoPecaGarantia ?? g?.custo_peca_garantia ?? g?.custoPeca ?? 0);
-      const frete = Number(g?.freteGarantia ?? g?.frete_garantia ?? g?.freteReal ?? 0);
-      custoTotalGarantiaOS += (peca + frete);
-    });
-
-    const objetoGarantiaSalvar = {
-      listaRetornos: listaGarantias,
-      custoTotalGarantia: custoTotalGarantiaOS,
-      custoPecaGarantia: custoTotalGarantiaOS,
-      totalVoltas: listaGarantias.length,
-      ultimaAtualizacao: new Date().toISOString()
-    };
-
-    const { data, error: errUpdate } = await supabase
-      .from("ordens_servico")
-      .update({
-        garantia_json: objetoGarantiaSalvar
-      })
-      .eq("id_os", id)
-      .select();
-
-    if (errUpdate) throw errUpdate;
-
-    return res.json({ sucesso: true, mensagem: "Garantia registrada com sucesso!", data: data[0] });
-  } catch (err: any) {
     return res.status(500).json({ sucesso: false, erro: err.message });
   }
 });
@@ -309,7 +270,7 @@ app.put("/v1/ordens-servico/:id", async (req: Request, res: Response) => {
     if (dataAbertura) dadosAtualizados.data_abertura = dataAbertura;
     if (data_conclusao) dadosAtualizados.data_conclusao = data_conclusao;
 
-    const { data, error } = await supabase
+    const { data, error } = await sb(res)
       .from("ordens_servico")
       .update(dadosAtualizados)
       .eq("id_os", id)
@@ -325,7 +286,7 @@ app.put("/v1/ordens-servico/:id", async (req: Request, res: Response) => {
 
 app.get("/v1/ordens-servico", async (_req: Request, res: Response) => {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await sb(res)
       .from("ordens_servico")
       .select("*")
       .order("data_abertura", { ascending: false });
@@ -434,7 +395,7 @@ app.get("/v1/ordens-servico", async (_req: Request, res: Response) => {
 app.delete("/v1/ordens-servico/:id", async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { error } = await supabase.from("ordens_servico").delete().eq("id_os", id);
+    const { error } = await sb(res).from("ordens_servico").delete().eq("id_os", id);
     if (error) throw error;
     return res.json({ sucesso: true, mensagem: "Ordem de Serviço excluída com sucesso!" });
   } catch (err: any) {
@@ -446,7 +407,7 @@ app.delete("/v1/ordens-servico/:id", async (req: Request, res: Response) => {
 app.post("/v1/auth/login", async (req: Request, res: Response) => {
   try {
     const { email, password } = req.body;
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error } = await supabaseAnon.auth.signInWithPassword({ email, password });
     if (error) throw error;
     return res.json({ sucesso: true, data });
   } catch (err: any) {
@@ -457,7 +418,7 @@ app.post("/v1/auth/login", async (req: Request, res: Response) => {
 app.post("/v1/auth/registro", async (req: Request, res: Response) => {
   try {
     const { email, password, nomeResponsavel, nomeAssistencia, whatsapp, cpfCnpj } = req.body;
-    const { data, error } = await supabase.auth.signUp({
+    const { data, error } = await supabaseAnon.auth.signUp({
       email,
       password,
       options: {
