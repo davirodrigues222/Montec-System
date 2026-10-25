@@ -8,6 +8,7 @@ import {
 } from '../services/api';
 import type { OrdemServico } from '../types';
 import { formatarValor } from '../utils/formatadores';
+import { StatusBadge } from '../components/StatusBadge';
 
 type FiltroPeriodo = 'HOJE' | 'ATUAL' | 'ANTERIOR' | 'ANO_ATUAL' | 'TODOS' | 'PERSONALIZADO';
 
@@ -20,7 +21,26 @@ const somarDias = (chave: string, dias: number) => {
   return chaveDia(d);
 };
 
+// Valores de cada OS usados nos cards. A listagem de auditoria usa exatamente as mesmas funções,
+// então a soma das linhas sempre bate com os totais exibidos.
 const valorBrutoOS = (os: OrdemServico) => Number(os.orcamentoCalculado?.valorTotalOrcamento || os.valor_total || 0);
+const valorLiquidoOS = (os: OrdemServico) =>
+  os.valorLiquido !== undefined && os.valorLiquido !== null ? Number(os.valorLiquido) : valorBrutoOS(os);
+const custoPecaOS = (os: OrdemServico) => Number(os.orcamentoCalculado?.custoPeca || os.custo_peca || 0);
+const custoFreteOS = (os: OrdemServico) => Number(os.orcamentoCalculado?.freteReal || os.frete_real || 0);
+const custoGarantiaOS = (os: OrdemServico) =>
+  Number(
+    os.orcamentoCalculado?.custoPecaGarantia ||
+      os.garantia?.custoPecaGarantia ||
+      os.garantia?.custoTotalGarantia ||
+      os.custo_peca_garantia ||
+      0
+  );
+const custosOS = (os: OrdemServico) => custoPecaOS(os) + custoFreteOS(os) + custoGarantiaOS(os);
+const somar = (ordens: OrdemServico[], fn: (os: OrdemServico) => number) => ordens.reduce((acc, os) => acc + fn(os), 0);
+
+/** Quantas linhas a listagem de auditoria mostra antes de "Mostrar mais". */
+const LINHAS_POR_PAGINA = 50;
 
 /**
  * Ordens do período escolhido no filtro. Com deslocamento = -1 devolve o período anterior equivalente
@@ -212,41 +232,25 @@ export const Relatorios: React.FC = () => {
   }[variacaoFaturamento.cor];
 
   // Faturamento Líquido (se houver desconto aplicado na OS)
-  const faturamentoLiquido = useMemo(() => {
-    return ordensFiltradas.reduce((acc, os) => {
-      const bruto = Number(os.orcamentoCalculado?.valorTotalOrcamento || os.valor_total || 0);
-      const liq = os.valorLiquido !== undefined && os.valorLiquido !== null ? Number(os.valorLiquido) : bruto;
-      return acc + liq;
-    }, 0);
-  }, [ordensFiltradas]);
+  const faturamentoLiquido = useMemo(() => somar(ordensFiltradas, valorLiquidoOS), [ordensFiltradas]);
 
   // 2. Custos Operacionais detalhados
-  const custoPecas = useMemo(() => {
-    return ordensFiltradas.reduce((acc, os) => {
-      return acc + Number(os.orcamentoCalculado?.custoPeca || os.custo_peca || 0);
-    }, 0);
-  }, [ordensFiltradas]);
+  const custoPecas = useMemo(() => somar(ordensFiltradas, custoPecaOS), [ordensFiltradas]);
+  const custoFretes = useMemo(() => somar(ordensFiltradas, custoFreteOS), [ordensFiltradas]);
+  const custoGarantias = useMemo(() => somar(ordensFiltradas, custoGarantiaOS), [ordensFiltradas]);
 
-  const custoFretes = useMemo(() => {
-    return ordensFiltradas.reduce((acc, os) => {
-      return acc + Number(os.orcamentoCalculado?.freteReal || os.frete_real || 0);
-    }, 0);
-  }, [ordensFiltradas]);
-
-  const custoGarantias = useMemo(() => {
-    return ordensFiltradas.reduce((acc, os) => {
-      return (
-        acc +
-        Number(
-          os.orcamentoCalculado?.custoPecaGarantia ||
-            os.garantia?.custoPecaGarantia ||
-            os.garantia?.custoTotalGarantia ||
-            os.custo_peca_garantia ||
-            0
-        )
-      );
-    }, 0);
-  }, [ordensFiltradas]);
+  // Auditoria: ordens que compõem os totais do período, da mais recente para a mais antiga
+  const [auditoriaAberta, setAuditoriaAberta] = useState(false);
+  const [linhasVisiveis, setLinhasVisiveis] = useState(LINHAS_POR_PAGINA);
+  const ordensAuditoria = useMemo(
+    () =>
+      [...ordensFiltradas].sort(
+        (a, b) =>
+          (b.data_abertura ? new Date(b.data_abertura).getTime() : 0) -
+          (a.data_abertura ? new Date(a.data_abertura).getTime() : 0)
+      ),
+    [ordensFiltradas]
+  );
 
   const custosTotais = custoPecas + custoFretes + custoGarantias;
 
@@ -492,6 +496,119 @@ export const Relatorios: React.FC = () => {
             {totalAtendimentos} {totalAtendimentos === 1 ? 'atendimento' : 'atendimentos'}
           </p>
         </div>
+      </div>
+
+      {/* ================= AUDITORIA: ORDENS QUE COMPÕEM OS TOTAIS ================= */}
+      <div className="bg-[#0c101a] border border-zinc-800/80 rounded-2xl shadow-sm min-w-0 overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setAuditoriaAberta((v) => !v)}
+          aria-expanded={auditoriaAberta}
+          className="w-full flex flex-wrap items-center justify-between gap-3 p-4 sm:p-5 text-left hover:bg-zinc-800/20 transition"
+        >
+          <div className="min-w-0">
+            <h3 className="text-sm font-bold text-white">
+              Ordens que compõem este relatório{' '}
+              <span className="text-zinc-500 font-semibold">({ordensAuditoria.length})</span>
+            </h3>
+            <p className="text-xs text-zinc-400 mt-0.5">
+              Confira de onde vêm o faturamento, os custos e o lucro do período selecionado.
+            </p>
+          </div>
+          <div className="flex items-center gap-2 text-xs font-semibold text-blue-400 shrink-0">
+            {auditoriaAberta ? 'Ocultar ordens' : 'Ver ordens'}
+            <svg
+              className={`w-4 h-4 transition-transform duration-200 ${auditoriaAberta ? 'rotate-180' : ''}`}
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+            </svg>
+          </div>
+        </button>
+
+        {auditoriaAberta && (
+          <div className="border-t border-zinc-800/80">
+            {ordensAuditoria.length === 0 ? (
+              <p className="p-8 text-center text-xs text-zinc-500">Nenhuma ordem no período selecionado.</p>
+            ) : (
+              <>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs min-w-[760px]">
+                    <thead className="text-[10px] text-zinc-500 uppercase tracking-wider border-b border-zinc-800/80">
+                      <tr>
+                        <th className="py-2.5 px-4 font-semibold">Ordem</th>
+                        <th className="py-2.5 px-4 font-semibold">Data</th>
+                        <th className="py-2.5 px-4 font-semibold">Cliente</th>
+                        <th className="py-2.5 px-4 font-semibold text-right">Cobrado</th>
+                        <th className="py-2.5 px-4 font-semibold text-right">Líquido</th>
+                        <th className="py-2.5 px-4 font-semibold text-right">Custos</th>
+                        <th className="py-2.5 px-4 font-semibold text-right">Lucro</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-800/40">
+                      {ordensAuditoria.slice(0, linhasVisiveis).map((os) => {
+                        const lucroOS = valorLiquidoOS(os) - custosOS(os);
+                        return (
+                          <tr key={os.id_os} className="hover:bg-zinc-800/20">
+                            <td className="py-2.5 px-4">
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono font-bold text-blue-400">{os.numero_os}</span>
+                                {/* Status ajuda a auditar: rascunhos e canceladas também entram no período */}
+                                {(os.status_os === 'RASCUNHO' || os.status_os === 'CANCELADO') && <StatusBadge status={os.status_os} />}
+                              </div>
+                            </td>
+                            <td className="py-2.5 px-4 text-zinc-400">
+                              {os.data_abertura ? new Date(os.data_abertura).toLocaleDateString('pt-BR') : '—'}
+                            </td>
+                            <td className="py-2.5 px-4 text-zinc-200 font-medium truncate max-w-[220px]">{os.cliente?.nome || 'Cliente balcão'}</td>
+                            <td className="py-2.5 px-4 text-right text-white font-semibold">R$ {formatarValor(valorBrutoOS(os))}</td>
+                            <td className="py-2.5 px-4 text-right text-zinc-300">R$ {formatarValor(valorLiquidoOS(os))}</td>
+                            <td className="py-2.5 px-4 text-right text-amber-400/90">
+                              {custosOS(os) > 0 ? `- R$ ${formatarValor(custosOS(os))}` : '—'}
+                            </td>
+                            <td className={`py-2.5 px-4 text-right font-semibold ${lucroOS >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                              R$ {formatarValor(lucroOS)}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                    <tfoot className="border-t border-zinc-700/80 bg-[#090d15] font-bold">
+                      <tr>
+                        <td className="py-3 px-4 text-zinc-300" colSpan={3}>
+                          Total do período ({ordensAuditoria.length} {ordensAuditoria.length === 1 ? 'ordem' : 'ordens'})
+                        </td>
+                        <td className="py-3 px-4 text-right text-white">R$ {formatarValor(faturamentoBruto)}</td>
+                        <td className="py-3 px-4 text-right text-zinc-200">R$ {formatarValor(faturamentoLiquido)}</td>
+                        <td className="py-3 px-4 text-right text-amber-400">- R$ {formatarValor(custosTotais)}</td>
+                        <td className={`py-3 px-4 text-right ${lucroLiquido >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                          R$ {formatarValor(lucroLiquido)}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-t border-zinc-800/60 text-[11px] text-zinc-500">
+                  <span>
+                    Cobrado = card Faturamento · Custos = peças, fretes e garantias · Lucro = líquido (após taxas e descontos) menos custos.
+                  </span>
+                  {linhasVisiveis < ordensAuditoria.length && (
+                    <button
+                      type="button"
+                      onClick={() => setLinhasVisiveis((n) => n + LINHAS_POR_PAGINA)}
+                      className="font-semibold text-blue-400 hover:text-blue-300"
+                    >
+                      Mostrar mais ({ordensAuditoria.length - linhasVisiveis} restantes)
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       {/* ================= CARD: META FINANCEIRA ================= */}
