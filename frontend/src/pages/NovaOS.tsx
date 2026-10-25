@@ -15,6 +15,7 @@ import type { AbaSistema } from '../services/acesso';
 import type { OrdemServico } from '../types';
 import { OPCOES_CHECKLIST, criarChecklistPadrao, itensChecklistAtivos } from '../utils/checklist';
 import { formatarValor } from '../utils/formatadores';
+import { enviarMensagemWhatsapp } from '../utils/whatsapp';
 
 interface Props {
   onNavigate?: (tab: AbaSistema) => void;
@@ -23,7 +24,7 @@ interface Props {
 // ================= REGRAS DE TAXAS DE MAQUINETA =================
 const FORMAS_SEM_TAXA = ['Dinheiro', 'PIX'];
 
-// Taxas da maquininha da própria loja (Configurações › Financeiro & taxas)
+// Taxas da maquininha da própria loja (Configurações › Taxas)
 const obterTaxaPadrao = (forma: string, p: number = 1): number =>
   FORMAS_SEM_TAXA.includes(forma) ? 0 : obterTaxaMaquininha(forma, p);
 
@@ -1184,7 +1185,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
               </div>
             )}
 
-            {/* Chave PIX da loja para o cliente pagar (Configurações › Financeiro & taxas) */}
+            {/* Chave PIX da loja para o cliente pagar (Configurações › Taxas) */}
             {pixLoja.chave && (formaPagamento1 === 'PIX' || (dividirPagamento && formaPagamento2 === 'PIX')) && (
               <div className="flex flex-wrap items-center justify-between gap-2 p-3.5 bg-emerald-500/10 border border-emerald-500/25 rounded-xl text-xs">
                 <div className="min-w-0">
@@ -1345,6 +1346,17 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
                 className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs transition flex items-center justify-center space-x-2 shadow-md"
               >
                 <span>Imprimir Comprovante / PDF</span>
+              </button>
+
+              {/* Mensagem "OS aberta / entrada do aparelho" (texto em Configurações › Mensagens de WhatsApp) */}
+              <button
+                type="button"
+                onClick={() => enviarMensagemWhatsapp(osCriadaSucesso.dadosCompletos, 'entrada')}
+                disabled={!osCriadaSucesso.dadosCompletos.cliente?.whatsapp}
+                title={osCriadaSucesso.dadosCompletos.cliente?.whatsapp ? undefined : 'Cliente sem WhatsApp informado'}
+                className="w-full py-2.5 bg-[#0e1320] hover:bg-emerald-600/20 border border-emerald-500/40 text-emerald-300 font-bold rounded-xl text-xs transition disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Avisar cliente no WhatsApp
               </button>
 
               <button

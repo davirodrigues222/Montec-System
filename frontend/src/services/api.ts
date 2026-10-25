@@ -71,16 +71,29 @@ export const TAXAS_MAQUININHA_PADRAO: TaxasMaquininha = {
   credito7a12: 8.99,
 };
 
+// {numero_os} já traz o prefixo da OS (ex.: OS-128584), então o texto não repete "OS".
 export const MENSAGENS_WHATSAPP_PADRAO: MensagensWhatsapp = {
+  entrada:
+    'Olá {cliente}, recebemos seu {aparelho} na {loja}. Número da ordem de serviço: {numero_os}. Assim que o diagnóstico ficar pronto, avisaremos por aqui.',
+  orcamento:
+    'Olá {cliente}, o diagnóstico do seu {aparelho} (ordem {numero_os}) foi concluído. O valor ficou em {valor}. Podemos seguir com o reparo?',
+  pronto:
+    'Boas notícias, {cliente}! Seu {aparelho} (ordem {numero_os}) já está pronto para retirada na {loja}.',
+  entrega:
+    'Obrigado pela preferência, {cliente}! Seu {aparelho} foi entregue com garantia de {prazo_garantia} dias. Qualquer dúvida, é só chamar a {loja}.',
+};
+
+// Primeira versão dos modelos (repetia "OS #OS-..."): quem não editou o texto recebe a versão corrigida
+const MENSAGENS_WHATSAPP_ANTIGAS: Partial<MensagensWhatsapp> = {
   entrada:
     'Olá {cliente}, recebemos seu {aparelho} na {loja} (OS #{numero_os}). Assim que o diagnóstico ficar pronto, avisaremos por aqui.',
   orcamento:
     'Olá {cliente}, o diagnóstico do seu {aparelho} (OS #{numero_os}) foi concluído. O valor ficou em {valor}. Podemos seguir com o reparo?',
-  pronto:
-    'Boas notícias, {cliente}! Seu {aparelho} (OS #{numero_os}) já está pronto para retirada na {loja}.',
-  entrega:
-    'Obrigado pela preferência, {cliente}! Seu {aparelho} foi entregue com garantia de {prazo_garantia} dias. Qualquer dúvida, é só chamar a {loja}.',
+  pronto: 'Boas notícias, {cliente}! Seu {aparelho} (OS #{numero_os}) já está pronto para retirada na {loja}.',
 };
+
+const modeloMensagem = (chave: keyof MensagensWhatsapp, salvo?: string) =>
+  !salvo || salvo === MENSAGENS_WHATSAPP_ANTIGAS[chave] ? MENSAGENS_WHATSAPP_PADRAO[chave] : salvo;
 
 const ITENS_CHECKLIST_PADRAO = [
   'ligando', 'touchScreen', 'display', 'cameraTraseira', 'cameraFrontal', 'microfone',
@@ -128,10 +141,10 @@ function completarConfigLoja(cfg: Partial<ConfiguracoesLojaIsolada>, padrao: Con
     prefixoOS: normalizarPrefixoOS(cfg.prefixoOS),
     checklistItensAtivos: Array.isArray(cfg.checklistItensAtivos) ? cfg.checklistItensAtivos : padrao.checklistItensAtivos,
     mensagensWhatsapp: {
-      entrada: mensagens.entrada || MENSAGENS_WHATSAPP_PADRAO.entrada,
-      orcamento: mensagens.orcamento || MENSAGENS_WHATSAPP_PADRAO.orcamento,
-      pronto: mensagens.pronto || MENSAGENS_WHATSAPP_PADRAO.pronto,
-      entrega: mensagens.entrega || MENSAGENS_WHATSAPP_PADRAO.entrega,
+      entrada: modeloMensagem('entrada', mensagens.entrada),
+      orcamento: modeloMensagem('orcamento', mensagens.orcamento),
+      pronto: modeloMensagem('pronto', mensagens.pronto),
+      entrega: modeloMensagem('entrega', mensagens.entrega),
     },
   };
 }

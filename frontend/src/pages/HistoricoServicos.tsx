@@ -1,15 +1,12 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   buscarOrdensServico,
   excluirOrdemServico,
   editarOrdemServico,
   buscarFornecedores,
   obterConfiguracoesLojaSincrono,
-  preencherModeloMensagem,
-  variaveisMensagemOS,
-  linkWhatsapp,
-  type MensagensWhatsapp,
 } from "../services/api";
+import { MODELOS_WHATSAPP, enviarMensagemWhatsapp, podeEnviarMensagem } from "../utils/whatsapp";
 import { StatusBadge } from "../components/StatusBadge";
 import { AutorizacaoAdministrativa } from "../components/AutorizacaoAdministrativa";
 import {
@@ -23,32 +20,53 @@ import {
 import { useOperador } from "../contexts/OperadorContext";
 import type { OrdemServico, StatusOS } from "../types";
 import { ITENS_CHECKLIST, OPCOES_CHECKLIST, itensVisiveisChecklist, rotuloItemChecklist } from "../utils/checklist";
+import { formatarValor } from "../utils/formatadores";
+
+// ================= FILTROS DA LISTAGEM =================
+type FiltroData = "TODAS" | "DIA" | "MES" | "ANO";
+type Ordenacao = "RECENTES" | "ANTIGAS";
+
+const OPCOES_STATUS: { valor: StatusOS | "TODOS"; rotulo: string }[] = [
+  { valor: "TODOS", rotulo: "Todos os status" },
+  { valor: "RASCUNHO", rotulo: "Rascunho" },
+  { valor: "AGUARDANDO_AVALIACAO", rotulo: "Aguardando avaliação" },
+  { valor: "EM_ANALISE", rotulo: "Em análise" },
+  { valor: "AGUARDANDO_PECA", rotulo: "Aguardando peça" },
+  { valor: "EM_MANUTENCAO", rotulo: "Em manutenção" },
+  { valor: "PRONTO", rotulo: "Pronto para retirada" },
+  { valor: "ENTREGUE", rotulo: "Entregue / concluído" },
+  { valor: "CANCELADO", rotulo: "Cancelado" },
+];
+
+const hojeISO = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+
+/** Data de abertura da OS como AAAA-MM-DD (mesma regra de Relatórios). */
+const diaDaOS = (os: OrdemServico): string => {
+  if (!os.data_abertura) return "";
+  const iso = String(os.data_abertura).match(/^(\d{4}-\d{2}-\d{2})/);
+  if (iso) return iso[1];
+  const d = new Date(os.data_abertura);
+  return isNaN(d.getTime())
+    ? ""
+    : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+
+const dataCurta = (os: OrdemServico) => {
+  const dia = diaDaOS(os);
+  return dia ? new Date(`${dia}T12:00:00`).toLocaleDateString("pt-BR") : "—";
+};
+
+const campoFiltroCls =
+  "bg-[#080c14] border border-zinc-800/80 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-blue-500 transition [color-scheme:dark]";
 
 // Classe das abas dos modais de detalhes e edição
 const classeAba = (ativa: boolean) =>
   `px-4 py-2.5 font-bold transition border-b-2 ${
     ativa ? "border-blue-500 text-blue-400 bg-zinc-900/50" : "border-transparent text-zinc-400"
   }`;
-
-// Modelos editáveis em Configurações › Mensagens de WhatsApp
-const MODELOS_WHATSAPP: { chave: keyof MensagensWhatsapp; rotulo: string }[] = [
-  { chave: "entrada", rotulo: "Entrada do aparelho" },
-  { chave: "orcamento", rotulo: "Orçamento pronto" },
-  { chave: "pronto", rotulo: "Pronto para retirada" },
-  { chave: "entrega", rotulo: "Entrega e garantia" },
-];
-
-/** Abre o WhatsApp do cliente com o modelo escolhido já preenchido com os dados da OS. */
-const enviarWhatsapp = (os: OrdemServico, chave: keyof MensagensWhatsapp) => {
-  const cfg = obterConfiguracoesLojaSincrono();
-  const mensagem = preencherModeloMensagem(cfg.mensagensWhatsapp[chave], variaveisMensagemOS(os, cfg));
-  const link = linkWhatsapp(os.cliente?.whatsapp || "", mensagem);
-  if (!link) {
-    alert("O WhatsApp do cliente não está cadastrado ou é inválido. Edite a OS e informe o número com DDD.");
-    return;
-  }
-  window.open(link, "_blank", "noopener");
-};
 
 export const HistoricoServicos: React.FC = () => {
   const [ordens, setOrdens] = useState<OrdemServico[]>([]);
@@ -57,6 +75,13 @@ export const HistoricoServicos: React.FC = () => {
   );
   const [loading, setLoading] = useState(true);
   const [termoBusca, setTermoBusca] = useState("");
+  // Filtros da listagem: por padrão mostram todas as ordens, das mais recentes para as mais antigas
+  const [filtroData, setFiltroData] = useState<FiltroData>("TODAS");
+  const [diaFiltro, setDiaFiltro] = useState(hojeISO);
+  const [mesFiltro, setMesFiltro] = useState(() => hojeISO().substring(0, 7));
+  const [anoFiltro, setAnoFiltro] = useState(() => hojeISO().substring(0, 4));
+  const [statusFiltro, setStatusFiltro] = useState<StatusOS | "TODOS">("TODOS");
+  const [ordenacao, setOrdenacao] = useState<Ordenacao>("RECENTES");
 
 
   const [osSelecionada, setOsSelecionada] = useState<OrdemServico | null>(null);
@@ -357,149 +382,250 @@ export const HistoricoServicos: React.FC = () => {
   const ultimoRetorno = osSelecionada?.garantia?.listaRetornos?.at(-1);
   const dataUltimoRetorno = ultimoRetorno?.dataRetorno || ultimoRetorno?.dataAcionamento;
 
-  const ordensFiltradas = ordens.filter((os) => {
-    if (!os) return false;
-    const termo = termoBusca.toLowerCase();
-    const numeroOs = os.numero_os ? os.numero_os.toLowerCase() : "";
-    const nomeCliente = os.cliente?.nome ? os.cliente.nome.toLowerCase() : "";
-    const modeloAparelho = os.aparelho?.modelo
-      ? os.aparelho.modelo.toLowerCase()
-      : "";
+  // Anos com ordens cadastradas (para o filtro por ano), do mais recente para o mais antigo
+  const anosDisponiveis = useMemo(() => {
+    const anos = new Set(ordens.map((os) => diaDaOS(os).substring(0, 4)).filter(Boolean));
+    anos.add(hojeISO().substring(0, 4));
+    return [...anos].sort((a, b) => b.localeCompare(a));
+  }, [ordens]);
 
-    return (
-      numeroOs.includes(termo) ||
-      nomeCliente.includes(termo) ||
-      modeloAparelho.includes(termo)
-    );
-  });
+  const ordensFiltradas = useMemo(() => {
+    const termo = termoBusca.trim().toLowerCase();
+    const lista = ordens.filter((os) => {
+      if (!os) return false;
+      if (statusFiltro !== "TODOS" && os.status_os !== statusFiltro) return false;
+
+      const dia = diaDaOS(os);
+      if (filtroData === "DIA" && dia !== diaFiltro) return false;
+      if (filtroData === "MES" && dia.substring(0, 7) !== mesFiltro) return false;
+      if (filtroData === "ANO" && dia.substring(0, 4) !== anoFiltro) return false;
+
+      if (!termo) return true;
+      return [os.numero_os, os.cliente?.nome, os.cliente?.whatsapp, os.aparelho?.modelo, os.aparelho?.imei1]
+        .some((campo) => String(campo || "").toLowerCase().includes(termo));
+    });
+
+    const sentido = ordenacao === "RECENTES" ? -1 : 1;
+    return lista.sort((a, b) => {
+      const ta = a.data_abertura ? new Date(a.data_abertura).getTime() : 0;
+      const tb = b.data_abertura ? new Date(b.data_abertura).getTime() : 0;
+      return (ta - tb) * sentido || String(a.numero_os).localeCompare(String(b.numero_os)) * sentido;
+    });
+  }, [ordens, termoBusca, statusFiltro, filtroData, diaFiltro, mesFiltro, anoFiltro, ordenacao]);
+
+  const filtrosAtivos = termoBusca.trim() !== "" || statusFiltro !== "TODOS" || filtroData !== "TODAS";
+  const limparFiltros = () => {
+    setTermoBusca("");
+    setStatusFiltro("TODOS");
+    setFiltroData("TODAS");
+  };
 
   return (
-    <div className="space-y-6 max-w-[1600px] mx-auto">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-zinc-800 pb-4 print:hidden">
+    <div className="space-y-5 max-w-[1600px] mx-auto">
+      {/* ================= CABEÇALHO ================= */}
+      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 print:hidden">
         <div>
-          <h2 className="text-xl font-bold text-white">
-            Histórico Geral de Serviços
-          </h2>
-          <p className="text-xs text-zinc-400 mt-0.5">
-            Consulta detalhada, relatórios de consertos e gerenciamento de
-            registros.
-          </p>
+          <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">Ordens de serviço</h2>
+          <p className="text-xs text-zinc-400 mt-1">Histórico completo de atendimentos da loja.</p>
         </div>
+        <button
+          onClick={carregarHistorico}
+          title="Atualizar lista"
+          className="self-start sm:self-auto px-3.5 py-2 bg-[#0c101a] hover:bg-zinc-800 border border-zinc-800 rounded-xl text-xs font-semibold text-zinc-200 transition flex items-center gap-1.5"
+        >
+          <svg className="w-3.5 h-3.5 text-zinc-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+          Atualizar
+        </button>
+      </div>
 
-        <div className="flex items-center space-x-3">
+      {/* ================= FILTROS ================= */}
+      <div className="bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-4 space-y-3 print:hidden">
+        <div className="relative">
+          <svg className="w-4 h-4 text-zinc-500 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
           <input
             type="text"
-            placeholder="Buscar cliente, modelo, IMEI ou OS..."
+            placeholder="Buscar por cliente, telefone, aparelho, IMEI ou número da OS"
             value={termoBusca}
             onChange={(e) => setTermoBusca(e.target.value)}
-            className="bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2 text-xs text-white outline-none focus:border-blue-500 w-72"
+            className="w-full pl-10 pr-4 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs text-white placeholder-zinc-500 outline-none focus:border-blue-500 transition"
           />
-          <button
-            onClick={carregarHistorico}
-            className="p-2 bg-zinc-900 border border-zinc-800 hover:border-zinc-700 text-zinc-300 rounded-xl text-xs transition"
-            title="Atualizar lista"
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            value={filtroData}
+            onChange={(e) => setFiltroData(e.target.value as FiltroData)}
+            aria-label="Filtrar por data de abertura"
+            className={campoFiltroCls}
           >
-            🔄
-          </button>
+            <option value="TODAS">Todas as datas</option>
+            <option value="DIA">Por dia</option>
+            <option value="MES">Por mês</option>
+            <option value="ANO">Por ano</option>
+          </select>
+
+          {filtroData === "DIA" && (
+            <input type="date" value={diaFiltro} onChange={(e) => setDiaFiltro(e.target.value)} aria-label="Dia" className={campoFiltroCls} />
+          )}
+          {filtroData === "MES" && (
+            <input type="month" value={mesFiltro} onChange={(e) => setMesFiltro(e.target.value)} aria-label="Mês" className={campoFiltroCls} />
+          )}
+          {filtroData === "ANO" && (
+            <select value={anoFiltro} onChange={(e) => setAnoFiltro(e.target.value)} aria-label="Ano" className={campoFiltroCls}>
+              {anosDisponiveis.map((ano) => (
+                <option key={ano} value={ano}>
+                  {ano}
+                </option>
+              ))}
+            </select>
+          )}
+
+          <select
+            value={statusFiltro}
+            onChange={(e) => setStatusFiltro(e.target.value as StatusOS | "TODOS")}
+            aria-label="Filtrar por status"
+            className={campoFiltroCls}
+          >
+            {OPCOES_STATUS.map((o) => (
+              <option key={o.valor} value={o.valor}>
+                {o.rotulo}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={ordenacao}
+            onChange={(e) => setOrdenacao(e.target.value as Ordenacao)}
+            aria-label="Ordenação"
+            className={campoFiltroCls}
+          >
+            <option value="RECENTES">Mais recentes primeiro</option>
+            <option value="ANTIGAS">Mais antigas primeiro</option>
+          </select>
+
+          <div className="flex items-center gap-3 sm:ml-auto text-xs">
+            <span className="text-zinc-500">
+              {ordensFiltradas.length === ordens.length
+                ? `${ordens.length} ${ordens.length === 1 ? "ordem" : "ordens"}`
+                : `${ordensFiltradas.length} de ${ordens.length} ordens`}
+            </span>
+            {filtrosAtivos && (
+              <button type="button" onClick={limparFiltros} className="font-semibold text-blue-400 hover:text-blue-300 transition">
+                Limpar filtros
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
+      {/* ================= LISTAGEM ================= */}
       {loading ? (
         <div className="flex justify-center p-12 print:hidden">
-          <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+          <div className="w-8 h-8 border-4 border-blue-500/20 border-t-blue-500 rounded-full animate-spin" />
         </div>
       ) : ordensFiltradas.length === 0 ? (
-        <div className="p-16 text-center space-y-2 bg-zinc-900/50 border border-zinc-800 rounded-2xl print:hidden">
-          <h3 className="text-sm font-bold text-zinc-300">
-            Nenhuma Ordem Encontrada
-          </h3>
+        <div className="p-14 text-center space-y-1.5 bg-[#0c101a] border border-zinc-800/80 rounded-2xl print:hidden">
+          <h3 className="text-sm font-bold text-zinc-300">Nenhuma ordem encontrada</h3>
           <p className="text-xs text-zinc-500">
-            Não existem ordens de serviço salvas para o filtro pesquisado.
+            {ordens.length === 0 ? "Ainda não há ordens de serviço cadastradas." : "Nenhuma ordem corresponde aos filtros escolhidos."}
           </p>
+          {filtrosAtivos && (
+            <button type="button" onClick={limparFiltros} className="pt-2 text-xs font-semibold text-blue-400 hover:text-blue-300">
+              Limpar filtros
+            </button>
+          )}
         </div>
       ) : (
-        <div className="bg-zinc-900/50 border border-zinc-800 rounded-2xl overflow-hidden print:hidden">
+        <div className="bg-[#0c101a] border border-zinc-800/80 rounded-2xl overflow-hidden print:hidden">
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs text-zinc-300">
-              <thead className="bg-zinc-950/80 text-zinc-400 uppercase border-b border-zinc-800 font-semibold">
+            <table className="w-full text-left text-xs min-w-[860px]">
+              <thead className="text-[10px] text-zinc-500 uppercase tracking-wider border-b border-zinc-800/80">
                 <tr>
-                  <th className="p-4">Nº OS</th>
-                  <th className="p-4">Data Abertura</th>
-                  <th className="p-4">Cliente / Contato</th>
-                  <th className="p-4">Aparelho / Modelo</th>
-                  <th className="p-4">Pagamento</th>
-                  <th className="p-4 text-right">Valor Cobrado</th>
-                  <th className="p-4 text-right">Valor Líquido</th>
-                  <th className="p-4 text-center">Ações</th>
+                  <th className="py-3 px-5 font-semibold">Ordem</th>
+                  <th className="py-3 px-5 font-semibold">Cliente</th>
+                  <th className="py-3 px-5 font-semibold">Aparelho</th>
+                  <th className="py-3 px-5 font-semibold">Status</th>
+                  <th className="py-3 px-5 font-semibold text-right">Valor</th>
+                  <th className="py-3 px-5 font-semibold text-right w-28">
+                    <span className="sr-only">Ações</span>
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-800/50">
-                {ordensFiltradas.map((os) => (
-                  <tr
-                    key={os.id_os}
-                    className="hover:bg-zinc-800/30 transition"
-                  >
-                    <td className="p-4 font-mono font-bold text-blue-400">
-                      {os.numero_os}
-                    </td>
-                    <td className="p-4 text-zinc-400">
-                      {os.data_abertura
-                        ? new Date(os.data_abertura).toLocaleDateString("pt-BR")
-                        : "-"}
-                    </td>
-                    <td className="p-4 font-bold text-white">
-                      {os.cliente?.nome}
-                      <span className="block text-[10px] text-zinc-500 font-normal">
-                        {os.cliente?.whatsapp || "-"}
-                      </span>
-                    </td>
-                    <td className="p-4 font-medium text-zinc-200">
-                      {os.aparelho?.modelo}
-                    </td>
-                    <td className="p-4 text-amber-400 font-semibold">
-                      {os.formaPagamento || "PIX"}{" "}
-                      {os.formaPagamento === "Cartão de Crédito"
-                        ? `(${os.parcelas || 1}x)`
-                        : ""}
-                    </td>
-                    <td className="p-4 text-right font-bold text-white">
-                      R${" "}
-                      {(
-                        os.orcamentoCalculado?.valorTotalOrcamento || 0
-                      ).toFixed(2)}
-                    </td>
-                    <td className="p-4 text-right font-bold text-purple-400">
-                      R${" "}
-                      {(os.valorLiquido !== undefined &&
-                      os.valorLiquido !== null
-                        ? os.valorLiquido
-                        : os.orcamentoCalculado?.valorTotalOrcamento || 0
-                      ).toFixed(2)}
-                    </td>
-                    <td className="p-4 text-center">
-                      <div className="flex items-center justify-center space-x-2">
-                        <button
-                          onClick={() => {
-                            setOsSelecionada(os);
-                            setAbaModal("detalhes");
-                          }}
-                          className="px-3 py-1.5 bg-blue-600/25 hover:bg-blue-600/40 text-blue-400 border border-blue-500/30 rounded-lg text-xs font-semibold transition"
-                        >
-                          👁️ Detalhes
-                        </button>
-
-                        {/* Sempre visível: sem a permissão, a exclusão pede autorização de um administrador */}
-                        <button
-                          onClick={() => setOsParaExcluir(os)}
-                          className="px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 rounded-lg text-xs font-semibold transition"
-                          title={pode("excluir_os") ? "Excluir Ordem de Serviço" : "Excluir (requer autorização de um administrador)"}
-                        >
-                          {pode("excluir_os") ? "🗑️" : "🔒"} Excluir
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                {ordensFiltradas.map((os) => {
+                  const valorCobrado = Number(os.orcamentoCalculado?.valorTotalOrcamento || 0);
+                  const valorLiquido = Number(os.valorLiquido ?? valorCobrado);
+                  const abrirDetalhes = () => {
+                    setOsSelecionada(os);
+                    setAbaModal("detalhes");
+                  };
+                  return (
+                    <tr key={os.id_os} onClick={abrirDetalhes} className="group cursor-pointer hover:bg-zinc-800/25 transition">
+                      <td className="py-3.5 px-5">
+                        <p className="font-mono font-bold text-blue-400">{os.numero_os}</p>
+                        <p className="text-[11px] text-zinc-500 mt-0.5">{dataCurta(os)}</p>
+                      </td>
+                      <td className="py-3.5 px-5">
+                        <p className="font-semibold text-white">{os.cliente?.nome || "Cliente balcão"}</p>
+                        <p className="text-[11px] text-zinc-500 mt-0.5">{os.cliente?.whatsapp || "Sem telefone"}</p>
+                      </td>
+                      <td className="py-3.5 px-5">
+                        <p className="font-medium text-zinc-200">{os.aparelho?.modelo}</p>
+                        <p className="text-[11px] text-zinc-500 mt-0.5 truncate max-w-[220px]">
+                          {os.servicoRealizado || os.defeitoRelatado || "—"}
+                        </p>
+                      </td>
+                      <td className="py-3.5 px-5">
+                        <StatusBadge status={os.status_os} />
+                      </td>
+                      <td className="py-3.5 px-5 text-right">
+                        <p className="font-bold text-white">R$ {formatarValor(valorCobrado)}</p>
+                        <p className="text-[11px] text-zinc-500 mt-0.5">
+                          {os.formaPagamento || "—"}
+                          {Math.abs(valorLiquido - valorCobrado) >= 0.01 && ` · líq. R$ ${formatarValor(valorLiquido)}`}
+                        </p>
+                      </td>
+                      <td className="py-3.5 px-5" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            type="button"
+                            onClick={abrirDetalhes}
+                            title="Ver detalhes"
+                            aria-label={`Ver detalhes da ${os.numero_os}`}
+                            className="w-8 h-8 flex items-center justify-center rounded-lg text-zinc-400 hover:text-blue-400 hover:bg-blue-500/10 transition"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                            </svg>
+                          </button>
+                          {/* Sempre visível: sem a permissão, a exclusão pede autorização de um administrador */}
+                          <button
+                            type="button"
+                            onClick={() => setOsParaExcluir(os)}
+                            title={pode("excluir_os") ? "Excluir ordem de serviço" : "Excluir (requer autorização de um administrador)"}
+                            aria-label={`Excluir ${os.numero_os}`}
+                            className="w-8 h-8 flex items-center justify-center rounded-lg text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 transition"
+                          >
+                            {pode("excluir_os") ? (
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                            ) : (
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                              </svg>
+                            )}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -510,7 +636,17 @@ export const HistoricoServicos: React.FC = () => {
       {osSelecionada && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 print:hidden">
           <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-3xl overflow-hidden shadow-2xl flex flex-col max-h-[92vh]">
-            <div className="p-4 bg-zinc-950 border-b border-zinc-800 flex flex-wrap items-center justify-between gap-3">
+            <div className="relative p-4 pr-14 bg-zinc-950 border-b border-zinc-800 flex flex-wrap items-center justify-between gap-3">
+              {/* Fechar: fixo no canto superior direito do modal */}
+              <button
+                onClick={() => setOsSelecionada(null)}
+                className="absolute top-3 right-3 w-8 h-8 flex items-center justify-center rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 text-base font-bold transition"
+                title="Fechar"
+                aria-label="Fechar"
+              >
+                ✕
+              </button>
+
               <div>
                 <h3 className="text-sm font-bold text-white flex items-center space-x-2">
                   <span>Ordem de Serviço</span>
@@ -544,14 +680,6 @@ export const HistoricoServicos: React.FC = () => {
                       <span>Imprimir / Salvar PDF</span>
                     </button>
                   )}
-
-                <button
-                  onClick={() => setOsSelecionada(null)}
-                  className="text-zinc-400 hover:text-white text-base font-bold pl-2"
-                  title="Fechar"
-                >
-                  ✕
-                </button>
               </div>
             </div>
 
@@ -581,17 +709,32 @@ export const HistoricoServicos: React.FC = () => {
                 <div className="space-y-4 text-xs">
                   {/* Mensagens automáticas: abre o WhatsApp do cliente com o texto pronto */}
                   <div className="p-3 bg-emerald-500/5 border border-emerald-500/20 rounded-xl space-y-2">
-                    <span className="text-emerald-400 block uppercase text-[10px] font-bold">
-                      Enviar mensagem pelo WhatsApp
-                    </span>
+                    <div>
+                      <span className="text-emerald-400 block uppercase text-[10px] font-bold">
+                        Avisar o cliente pelo WhatsApp
+                      </span>
+                      <span className="text-[11px] text-zinc-500">
+                        {!podeEnviarMensagem(osSelecionada)
+                          ? "OS entregue: as mensagens só podem ser enviadas antes da entrega."
+                          : osSelecionada.cliente?.whatsapp
+                          ? `Abre a conversa com ${osSelecionada.cliente.whatsapp} com o texto pronto. Você revisa e toca em Enviar.`
+                          : "Cadastre o WhatsApp do cliente (Editar OS) para usar as mensagens."}
+                      </span>
+                    </div>
                     <div className="flex flex-wrap gap-2">
                       {MODELOS_WHATSAPP.map((m) => (
                         <button
                           key={m.chave}
                           type="button"
-                          onClick={() => enviarWhatsapp(osSelecionada, m.chave)}
-                          disabled={!osSelecionada.cliente?.whatsapp}
-                          title={osSelecionada.cliente?.whatsapp ? undefined : "Cliente sem WhatsApp cadastrado"}
+                          onClick={() => enviarMensagemWhatsapp(osSelecionada, m.chave)}
+                          disabled={!osSelecionada.cliente?.whatsapp || !podeEnviarMensagem(osSelecionada)}
+                          title={
+                            !podeEnviarMensagem(osSelecionada)
+                              ? "OS já entregue"
+                              : osSelecionada.cliente?.whatsapp
+                              ? undefined
+                              : "Cliente sem WhatsApp cadastrado"
+                          }
                           className="px-3 py-1.5 bg-emerald-600/15 hover:bg-emerald-600/25 disabled:opacity-40 disabled:cursor-not-allowed text-emerald-300 border border-emerald-500/30 rounded-lg text-[11px] font-semibold transition"
                         >
                           {m.rotulo}
