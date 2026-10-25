@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   buscarOrdensServico,
   calcularResumoMetaFinanceira,
@@ -59,6 +59,154 @@ const somar = (ordens: OrdemServico[], fn: (os: OrdemServico) => number) => orde
 
 /** Quantas linhas a listagem de auditoria mostra antes de "Mostrar mais". */
 const LINHAS_POR_PAGINA = 50;
+
+type Detalhamento = 'NENHUM' | 'PAGAMENTO' | 'ORDENS' | 'FLUXO';
+const ROTULOS_DETALHAMENTO: Record<Detalhamento, string> = {
+  NENHUM: 'Ocultar detalhamento',
+  PAGAMENTO: 'Por forma de pagamento',
+  ORDENS: 'Ordens do período',
+  FLUXO: 'Taxas e descontos (fluxo de caixa)',
+};
+
+// Menu "Listagens": categorias com submenu, no estilo dos menus de sistemas de gestão
+const GRUPOS_LISTAGEM: { id: string; rotulo: string; icone: string; itens: Exclude<Detalhamento, 'NENHUM'>[] }[] = [
+  {
+    id: 'financeiro',
+    rotulo: 'Financeiro',
+    icone: 'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
+    itens: ['FLUXO', 'PAGAMENTO'],
+  },
+  {
+    id: 'ordens',
+    rotulo: 'Ordens de serviço',
+    icone: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4',
+    itens: ['ORDENS'],
+  },
+];
+
+const MenuListagens: React.FC<{ atual: Detalhamento; onEscolher: (d: Detalhamento) => void }> = ({ atual, onEscolher }) => {
+  const [aberto, setAberto] = useState(false);
+  const [grupoAberto, setGrupoAberto] = useState<string | null>(null);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!aberto) return;
+    const fecharFora = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setAberto(false);
+    };
+    const fecharEsc = (e: KeyboardEvent) => e.key === 'Escape' && setAberto(false);
+    document.addEventListener('mousedown', fecharFora);
+    document.addEventListener('keydown', fecharEsc);
+    return () => {
+      document.removeEventListener('mousedown', fecharFora);
+      document.removeEventListener('keydown', fecharEsc);
+    };
+  }, [aberto]);
+
+  const escolher = (d: Detalhamento) => {
+    onEscolher(d);
+    setAberto(false);
+  };
+
+  return (
+    <div ref={ref} className="relative shrink-0">
+      <button
+        type="button"
+        onClick={() => {
+          setAberto((v) => !v);
+          setGrupoAberto(null);
+        }}
+        aria-haspopup="menu"
+        aria-expanded={aberto}
+        className={`flex items-center gap-2 px-3.5 py-2 rounded-xl border text-xs font-semibold transition ${
+          aberto || atual !== 'NENHUM'
+            ? 'bg-blue-600/15 border-blue-500/40 text-blue-300'
+            : 'bg-[#080c14] border-zinc-800 text-zinc-300 hover:text-white hover:border-zinc-700'
+        }`}
+      >
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h10" />
+        </svg>
+        Listagens
+        <svg className={`w-3.5 h-3.5 transition-transform ${aberto ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {aberto && (
+        <div role="menu" className="absolute right-0 top-full mt-2 w-64 z-30 py-1.5 bg-[#0c101a] border border-zinc-700/80 rounded-xl shadow-2xl shadow-black/50">
+          {GRUPOS_LISTAGEM.map((grupo, i) => {
+            const expandido = grupoAberto === grupo.id;
+            return (
+              <div key={grupo.id} className="relative" onMouseEnter={() => setGrupoAberto(grupo.id)}>
+                <button
+                  type="button"
+                  onClick={() => setGrupoAberto(expandido ? null : grupo.id)}
+                  aria-expanded={expandido}
+                  className={`w-full flex items-center gap-3 px-3.5 py-2.5 text-left text-[13px] transition ${
+                    expandido ? 'bg-blue-600/15 text-white' : 'text-zinc-300 hover:bg-zinc-800/50'
+                  }`}
+                >
+                  <svg className="w-4 h-4 shrink-0 text-zinc-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d={grupo.icone} />
+                  </svg>
+                  <span className="flex-1 truncate">
+                    <span className="text-zinc-500 font-mono mr-1.5">{i}</span>
+                    {grupo.rotulo}
+                  </span>
+                  <svg className={`w-3 h-3 shrink-0 text-zinc-400 transition-transform ${expandido ? 'rotate-90 sm:rotate-0' : ''}`} fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M8 5l8 7-8 7z" />
+                  </svg>
+                </button>
+
+                {/* Submenu: ao lado no desktop (abre para a esquerda, o botão fica na borda direita); embaixo no celular */}
+                {expandido && (
+                  <div
+                    role="menu"
+                    className="py-1 bg-[#080c14] border-y border-zinc-800/80 sm:absolute sm:right-full sm:top-0 sm:mr-1.5 sm:w-64 sm:py-1.5 sm:bg-[#0c101a] sm:border sm:border-zinc-700/80 sm:rounded-xl sm:shadow-2xl sm:shadow-black/50"
+                  >
+                    {grupo.itens.map((item) => (
+                      <button
+                        key={item}
+                        type="button"
+                        role="menuitem"
+                        onClick={() => escolher(item)}
+                        className={`w-full flex items-center gap-2 pl-10 sm:pl-3.5 pr-3.5 py-2.5 text-left text-[13px] transition ${
+                          atual === item ? 'text-blue-300 font-semibold' : 'text-zinc-300 hover:bg-zinc-800/50'
+                        }`}
+                      >
+                        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${atual === item ? 'bg-blue-400' : 'bg-zinc-600'}`} />
+                        <span className="truncate">{ROTULOS_DETALHAMENTO[item]}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+          {atual !== 'NENHUM' && (
+            <>
+              <div className="my-1.5 border-t border-zinc-800/80" />
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => escolher('NENHUM')}
+                onMouseEnter={() => setGrupoAberto(null)}
+                className="w-full flex items-center gap-3 px-3.5 py-2.5 text-left text-[13px] text-zinc-400 hover:text-white hover:bg-zinc-800/50 transition"
+              >
+                <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+                Ocultar listagem
+              </button>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
 
 /**
  * Ordens do período escolhido no filtro. Com deslocamento = -1 devolve o período anterior equivalente
@@ -282,17 +430,28 @@ export const Relatorios: React.FC = () => {
   }, [ordensFiltradas]);
 
   // Auditoria: ordens que compõem os totais do período, da mais recente para a mais antiga
-  const [auditoriaAberta, setAuditoriaAberta] = useState(false);
+  const [detalhamento, setDetalhamento] = useState<Detalhamento>('NENHUM');
+  const [buscaOrdens, setBuscaOrdens] = useState('');
   const [linhasVisiveis, setLinhasVisiveis] = useState(LINHAS_POR_PAGINA);
-  const ordensAuditoria = useMemo(
-    () =>
-      [...ordensFiltradas].sort(
+  const ordensAuditoria = useMemo(() => {
+    const termo = buscaOrdens.trim().toLowerCase();
+    return [...ordensFiltradas]
+      .filter(
+        (os) =>
+          !termo ||
+          [os.numero_os, os.cliente?.nome, os.aparelho?.modelo, os.servicoRealizado, os.defeitoRelatado, ROTULOS_MODALIDADE[modalidadeOS(os)]]
+            .some((campo) => String(campo || '').toLowerCase().includes(termo))
+      )
+      .sort(
         (a, b) =>
           (b.data_abertura ? new Date(b.data_abertura).getTime() : 0) -
           (a.data_abertura ? new Date(a.data_abertura).getTime() : 0)
-      ),
-    [ordensFiltradas]
-  );
+      );
+  }, [ordensFiltradas, buscaOrdens]);
+
+  useEffect(() => {
+    setLinhasVisiveis(LINHAS_POR_PAGINA);
+  }, [buscaOrdens]);
 
   const custosTotais = custoPecas + custoFretes + custoGarantias;
 
@@ -548,180 +707,205 @@ export const Relatorios: React.FC = () => {
         </div>
       </div>
 
-      {/* ================= DO FATURAMENTO BRUTO AO LUCRO LÍQUIDO REAL ================= */}
-      <div className="bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-4 sm:p-6 shadow-sm min-w-0 space-y-5">
-        <div>
-          <h3 className="text-sm font-bold text-white">Do faturamento bruto ao lucro líquido real</h3>
-          <p className="text-xs text-zinc-400 mt-0.5">
-            O que o cliente pagou, quanto a maquininha reteve, o que entrou na conta e o que sobrou depois dos custos.
-          </p>
-        </div>
-
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-2.5 sm:gap-3">
-          {[
-            { rotulo: 'Faturamento bruto', valor: faturamentoBruto, sinal: '', cor: 'text-white', dica: 'Cobrado dos clientes' },
-            { rotulo: 'Taxas de maquininha', valor: totalTaxas, sinal: '−', cor: 'text-rose-400', dica: 'Retido pelas operadoras' },
-            { rotulo: 'Líquido recebido', valor: faturamentoLiquido, sinal: '=', cor: 'text-blue-400', dica: 'O que entrou na conta' },
-            { rotulo: 'Custos', valor: custosTotais, sinal: '−', cor: 'text-amber-400', dica: 'Peças, fretes e garantias' },
-            { rotulo: 'Lucro líquido real', valor: lucroLiquido, sinal: '=', cor: lucroLiquido >= 0 ? 'text-emerald-400' : 'text-rose-400', dica: 'O que sobrou' },
-          ].map((etapa) => (
-            <div key={etapa.rotulo} className="p-3 sm:p-4 bg-[#080c14] border border-zinc-800/80 rounded-xl min-w-0">
-              <span className="text-[10px] sm:text-[11px] font-bold text-zinc-400 uppercase tracking-wider block truncate">
-                {etapa.sinal && <span className="text-zinc-500 mr-1">{etapa.sinal}</span>}
-                {etapa.rotulo}
-              </span>
-              <p className={`text-sm sm:text-lg font-extrabold mt-1 truncate ${etapa.cor}`}>R$ {formatarValor(etapa.valor)}</p>
-              <p className="text-[10px] text-zinc-500 mt-0.5 truncate">{etapa.dica}</p>
-            </div>
-          ))}
-        </div>
-
-        {porModalidade.length > 0 && (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs min-w-[560px]">
-              <thead className="text-[10px] text-zinc-500 uppercase tracking-wider border-b border-zinc-800/80">
-                <tr>
-                  <th className="py-2 px-3 font-semibold">Forma de pagamento</th>
-                  <th className="py-2 px-3 font-semibold text-right">Ordens</th>
-                  <th className="py-2 px-3 font-semibold text-right">Bruto</th>
-                  <th className="py-2 px-3 font-semibold text-right">Taxas</th>
-                  <th className="py-2 px-3 font-semibold text-right">Taxa média</th>
-                  <th className="py-2 px-3 font-semibold text-right">Líquido</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-800/40">
-                {porModalidade.map(([modalidade, g]) => (
-                  <tr key={modalidade}>
-                    <td className="py-2 px-3 text-zinc-200 font-medium">{ROTULOS_MODALIDADE[modalidade]}</td>
-                    <td className="py-2 px-3 text-right text-zinc-400">{g.quantidade}</td>
-                    <td className="py-2 px-3 text-right text-white font-semibold">R$ {formatarValor(g.bruto)}</td>
-                    <td className="py-2 px-3 text-right text-rose-400">{g.taxas > 0 ? `− R$ ${formatarValor(g.taxas)}` : '—'}</td>
-                    <td className="py-2 px-3 text-right text-zinc-400">
-                      {g.bruto > 0 ? `${((g.taxas / g.bruto) * 100).toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%` : '—'}
-                    </td>
-                    <td className="py-2 px-3 text-right text-blue-400 font-semibold">R$ {formatarValor(g.liquido)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      {/* ================= AUDITORIA: ORDENS QUE COMPÕEM OS TOTAIS ================= */}
-      <div className="bg-[#0c101a] border border-zinc-800/80 rounded-2xl shadow-sm min-w-0 overflow-hidden">
-        <button
-          type="button"
-          onClick={() => setAuditoriaAberta((v) => !v)}
-          aria-expanded={auditoriaAberta}
-          className="w-full flex flex-wrap items-center justify-between gap-3 p-4 sm:p-5 text-left hover:bg-zinc-800/20 transition"
-        >
+      {/* ================= DETALHAMENTO SOB DEMANDA ================= */}
+      {/* Sem overflow-hidden: o menu de listagens precisa sair por cima do card */}
+      <div className="bg-[#0c101a] border border-zinc-800/80 rounded-2xl shadow-sm min-w-0">
+        <div className="p-4 sm:p-5 flex items-center justify-between gap-3">
           <div className="min-w-0">
-            <h3 className="text-sm font-bold text-white">
-              Ordens que compõem este relatório{' '}
-              <span className="text-zinc-500 font-semibold">({ordensAuditoria.length})</span>
-            </h3>
+            <h3 className="text-sm font-bold text-white">O que você deseja visualizar?</h3>
             <p className="text-xs text-zinc-400 mt-0.5">
-              Confira de onde vêm o faturamento, os custos e o lucro do período selecionado.
+              Abra uma listagem do período selecionado quando precisar conferir os números.
               {foraDoFaturamento > 0 && ' Rascunhos e ordens canceladas não entram nos totais.'}
             </p>
           </div>
-          <div className="flex items-center gap-2 text-xs font-semibold text-blue-400 shrink-0">
-            {auditoriaAberta ? 'Ocultar ordens' : 'Ver ordens'}
-            <svg
-              className={`w-4 h-4 transition-transform duration-200 ${auditoriaAberta ? 'rotate-180' : ''}`}
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              viewBox="0 0 24 24"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-            </svg>
-          </div>
-        </button>
+          <MenuListagens atual={detalhamento} onEscolher={setDetalhamento} />
+        </div>
 
-        {auditoriaAberta && (
+        {detalhamento !== 'NENHUM' && (
           <div className="border-t border-zinc-800/80">
-            {ordensAuditoria.length === 0 ? (
-              <p className="p-8 text-center text-xs text-zinc-500">Nenhuma ordem no período selecionado.</p>
-            ) : (
-              <>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs min-w-[860px]">
+            <div className="flex items-center justify-between gap-3 px-4 sm:px-5 pt-4">
+              <p className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider truncate">
+                {ROTULOS_DETALHAMENTO[detalhamento]}
+              </p>
+              <button
+                type="button"
+                onClick={() => setDetalhamento('NENHUM')}
+                className="text-xs font-semibold text-zinc-400 hover:text-white shrink-0"
+              >
+                Ocultar listagem ▲
+              </button>
+            </div>
+
+            {/* ---------- Por forma de pagamento ---------- */}
+            {detalhamento === 'PAGAMENTO' &&
+              (porModalidade.length === 0 ? (
+                <p className="p-8 text-center text-xs text-zinc-500">Nenhuma ordem no período selecionado.</p>
+              ) : (
+                <div className="overflow-x-auto p-4 sm:px-5 pt-3">
+                  <table className="w-full text-left text-xs min-w-[560px]">
                     <thead className="text-[10px] text-zinc-500 uppercase tracking-wider border-b border-zinc-800/80">
                       <tr>
-                        <th className="py-2.5 px-4 font-semibold">Ordem</th>
-                        <th className="py-2.5 px-4 font-semibold">Data</th>
-                        <th className="py-2.5 px-4 font-semibold">Cliente</th>
-                        <th className="py-2.5 px-4 font-semibold text-right">Cobrado</th>
-                        <th className="py-2.5 px-4 font-semibold text-right">Taxas</th>
-                        <th className="py-2.5 px-4 font-semibold text-right">Líquido</th>
-                        <th className="py-2.5 px-4 font-semibold text-right">Custos</th>
-                        <th className="py-2.5 px-4 font-semibold text-right">Lucro</th>
+                        <th className="py-2 px-3 font-semibold">Forma de pagamento</th>
+                        <th className="py-2 px-3 font-semibold text-right">Ordens</th>
+                        <th className="py-2 px-3 font-semibold text-right">Bruto</th>
+                        <th className="py-2 px-3 font-semibold text-right">Taxas</th>
+                        <th className="py-2 px-3 font-semibold text-right">Taxa média</th>
+                        <th className="py-2 px-3 font-semibold text-right">Líquido</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-zinc-800/40">
-                      {ordensAuditoria.slice(0, linhasVisiveis).map((os) => {
-                        const lucroOS = valorLiquidoOS(os) - custosOS(os);
-                        return (
-                          <tr key={os.id_os} className="hover:bg-zinc-800/20">
-                            <td className="py-2.5 px-4">
-                              <div className="flex items-center gap-2">
-                                <span className="font-mono font-bold text-blue-400">{os.numero_os}</span>
-                                {/* Status ajuda a auditar: rascunhos e canceladas também entram no período */}
-                                {(os.status_os === 'RASCUNHO' || os.status_os === 'CANCELADO') && <StatusBadge status={os.status_os} />}
-                              </div>
-                            </td>
-                            <td className="py-2.5 px-4 text-zinc-400">
-                              {os.data_abertura ? new Date(os.data_abertura).toLocaleDateString('pt-BR') : '—'}
-                            </td>
-                            <td className="py-2.5 px-4 text-zinc-200 font-medium truncate max-w-[220px]">{os.cliente?.nome || 'Cliente balcão'}</td>
-                            <td className="py-2.5 px-4 text-right text-white font-semibold">R$ {formatarValor(valorBrutoOS(os))}</td>
-                            <td className="py-2.5 px-4 text-right text-rose-400/90">
-                              {valorTaxasOS(os) > 0 ? `- R$ ${formatarValor(valorTaxasOS(os))}` : '—'}
-                            </td>
-                            <td className="py-2.5 px-4 text-right text-zinc-300">R$ {formatarValor(valorLiquidoOS(os))}</td>
-                            <td className="py-2.5 px-4 text-right text-amber-400/90">
-                              {custosOS(os) > 0 ? `- R$ ${formatarValor(custosOS(os))}` : '—'}
-                            </td>
-                            <td className={`py-2.5 px-4 text-right font-semibold ${lucroOS >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                              R$ {formatarValor(lucroOS)}
-                            </td>
-                          </tr>
-                        );
-                      })}
+                      {porModalidade.map(([modalidade, g]) => (
+                        <tr key={modalidade}>
+                          <td className="py-2 px-3 text-zinc-200 font-medium">{ROTULOS_MODALIDADE[modalidade]}</td>
+                          <td className="py-2 px-3 text-right text-zinc-400">{g.quantidade}</td>
+                          <td className="py-2 px-3 text-right text-white font-semibold">R$ {formatarValor(g.bruto)}</td>
+                          <td className="py-2 px-3 text-right text-rose-400">{g.taxas > 0 ? `− R$ ${formatarValor(g.taxas)}` : '—'}</td>
+                          <td className="py-2 px-3 text-right text-zinc-400">
+                            {g.bruto > 0 ? `${((g.taxas / g.bruto) * 100).toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%` : '—'}
+                          </td>
+                          <td className="py-2 px-3 text-right text-blue-400 font-semibold">R$ {formatarValor(g.liquido)}</td>
+                        </tr>
+                      ))}
                     </tbody>
-                    <tfoot className="border-t border-zinc-700/80 bg-[#090d15] font-bold">
-                      <tr>
-                        <td className="py-3 px-4 text-zinc-300" colSpan={3}>
-                          Total do período ({ordensAuditoria.length} {ordensAuditoria.length === 1 ? 'ordem' : 'ordens'})
-                        </td>
-                        <td className="py-3 px-4 text-right text-white">R$ {formatarValor(faturamentoBruto)}</td>
-                        <td className="py-3 px-4 text-right text-rose-400">- R$ {formatarValor(totalTaxas)}</td>
-                        <td className="py-3 px-4 text-right text-zinc-200">R$ {formatarValor(faturamentoLiquido)}</td>
-                        <td className="py-3 px-4 text-right text-amber-400">- R$ {formatarValor(custosTotais)}</td>
-                        <td className={`py-3 px-4 text-right ${lucroLiquido >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                          R$ {formatarValor(lucroLiquido)}
-                        </td>
-                      </tr>
-                    </tfoot>
                   </table>
                 </div>
-                <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-t border-zinc-800/60 text-[11px] text-zinc-500">
-                  <span>
-                    Cobrado = card Faturamento · Taxas = retido pela maquininha · Líquido = cobrado − taxas · Lucro = líquido − custos (peças, fretes e garantias).
-                  </span>
-                  {linhasVisiveis < ordensAuditoria.length && (
-                    <button
-                      type="button"
-                      onClick={() => setLinhasVisiveis((n) => n + LINHAS_POR_PAGINA)}
-                      className="font-semibold text-blue-400 hover:text-blue-300"
-                    >
-                      Mostrar mais ({ordensAuditoria.length - linhasVisiveis} restantes)
-                    </button>
-                  )}
+              ))}
+
+            {/* ---------- Ordens do período ---------- */}
+            {detalhamento === 'ORDENS' && (
+              <>
+                <div className="px-4 sm:px-5 pt-3">
+                  <input
+                    type="search"
+                    value={buscaOrdens}
+                    onChange={(e) => setBuscaOrdens(e.target.value)}
+                    placeholder="Buscar por OS, cliente, aparelho, serviço ou pagamento..."
+                    className="w-full sm:max-w-md px-3.5 py-2 rounded-xl bg-[#080c14] border border-zinc-800 text-xs text-white placeholder-zinc-500 outline-none focus:border-blue-500/60"
+                  />
                 </div>
+                {ordensAuditoria.length === 0 ? (
+                  <p className="p-8 text-center text-xs text-zinc-500">
+                    {buscaOrdens.trim() ? 'Nenhuma ordem corresponde à busca.' : 'Nenhuma ordem no período selecionado.'}
+                  </p>
+                ) : (
+                  <>
+                    <div className="overflow-x-auto mt-3">
+                      <table className="w-full text-left text-xs min-w-[960px]">
+                        <thead className="text-[10px] text-zinc-500 uppercase tracking-wider border-y border-zinc-800/80">
+                          <tr>
+                            <th className="py-2.5 px-4 font-semibold">Ordem</th>
+                            <th className="py-2.5 px-4 font-semibold">Cliente</th>
+                            <th className="py-2.5 px-4 font-semibold">Aparelho / serviço</th>
+                            <th className="py-2.5 px-4 font-semibold">Pagamento</th>
+                            <th className="py-2.5 px-4 font-semibold text-right">Bruto</th>
+                            <th className="py-2.5 px-4 font-semibold text-right">Taxas</th>
+                            <th className="py-2.5 px-4 font-semibold text-right">Custos</th>
+                            <th className="py-2.5 px-4 font-semibold text-right">Lucro</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-zinc-800/40">
+                          {ordensAuditoria.slice(0, linhasVisiveis).map((os) => {
+                            const lucroOS = valorLiquidoOS(os) - custosOS(os);
+                            return (
+                              <tr key={os.id_os} className="hover:bg-zinc-800/20">
+                                <td className="py-2.5 px-4">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-mono font-bold text-blue-400 whitespace-nowrap">{os.numero_os}</span>
+                                    {/* Status ajuda a auditar: rascunhos e canceladas também entram no período */}
+                                    {(os.status_os === 'RASCUNHO' || os.status_os === 'CANCELADO') && <StatusBadge status={os.status_os} />}
+                                  </div>
+                                  <p className="text-[11px] text-zinc-500 mt-0.5">
+                                    {os.data_abertura ? new Date(os.data_abertura).toLocaleDateString('pt-BR') : '—'}
+                                  </p>
+                                </td>
+                                <td className="py-2.5 px-4 text-zinc-200 font-medium truncate max-w-[180px]">{os.cliente?.nome || 'Cliente balcão'}</td>
+                                <td className="py-2.5 px-4 max-w-[220px]">
+                                  <p className="text-zinc-200 truncate">{os.aparelho?.modelo || '—'}</p>
+                                  <p className="text-[11px] text-zinc-500 mt-0.5 truncate">{os.servicoRealizado || os.defeitoRelatado || '—'}</p>
+                                </td>
+                                <td className="py-2.5 px-4 text-zinc-400 whitespace-nowrap">{ROTULOS_MODALIDADE[modalidadeOS(os)]}</td>
+                                <td className="py-2.5 px-4 text-right text-white font-semibold">R$ {formatarValor(valorBrutoOS(os))}</td>
+                                <td className="py-2.5 px-4 text-right text-rose-400/90">
+                                  {valorTaxasOS(os) > 0 ? `- R$ ${formatarValor(valorTaxasOS(os))}` : '—'}
+                                </td>
+                                <td className="py-2.5 px-4 text-right text-amber-400/90">
+                                  {custosOS(os) > 0 ? `- R$ ${formatarValor(custosOS(os))}` : '—'}
+                                </td>
+                                <td className={`py-2.5 px-4 text-right font-semibold ${lucroOS >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                  R$ {formatarValor(lucroOS)}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                        <tfoot className="border-t border-zinc-700/80 bg-[#090d15] font-bold">
+                          {(() => {
+                            // Com busca, soma só as ordens encontradas; sem busca, são os mesmos totais dos cards
+                            const filtrando = buscaOrdens.trim() !== '';
+                            const bruto = filtrando ? somar(ordensAuditoria, valorBrutoOS) : faturamentoBruto;
+                            const taxas = filtrando ? somar(ordensAuditoria, valorTaxasOS) : totalTaxas;
+                            const custos = filtrando ? somar(ordensAuditoria, custosOS) : custosTotais;
+                            const lucro = filtrando ? somar(ordensAuditoria, valorLiquidoOS) - custos : lucroLiquido;
+                            return (
+                              <tr>
+                                <td className="py-3 px-4 text-zinc-300" colSpan={4}>
+                                  {filtrando ? 'Total da busca' : 'Total do período'} ({ordensAuditoria.length}{' '}
+                                  {ordensAuditoria.length === 1 ? 'ordem' : 'ordens'})
+                                </td>
+                                <td className="py-3 px-4 text-right text-white">R$ {formatarValor(bruto)}</td>
+                                <td className="py-3 px-4 text-right text-rose-400">- R$ {formatarValor(taxas)}</td>
+                                <td className="py-3 px-4 text-right text-amber-400">- R$ {formatarValor(custos)}</td>
+                                <td className={`py-3 px-4 text-right ${lucro >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                  R$ {formatarValor(lucro)}
+                                </td>
+                              </tr>
+                            );
+                          })()}
+                        </tfoot>
+                      </table>
+                    </div>
+                    <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-t border-zinc-800/60 text-[11px] text-zinc-500">
+                      <span>Bruto = cobrado do cliente · Taxas = retido pela maquininha · Lucro = bruto − taxas − custos (peças, fretes e garantias).</span>
+                      {linhasVisiveis < ordensAuditoria.length && (
+                        <button
+                          type="button"
+                          onClick={() => setLinhasVisiveis((n) => n + LINHAS_POR_PAGINA)}
+                          className="font-semibold text-blue-400 hover:text-blue-300"
+                        >
+                          Mostrar mais ({ordensAuditoria.length - linhasVisiveis} restantes)
+                        </button>
+                      )}
+                    </div>
+                  </>
+                )}
               </>
+            )}
+
+            {/* ---------- Taxas e descontos (fluxo de caixa) ---------- */}
+            {detalhamento === 'FLUXO' && (
+              <div className="p-4 sm:px-5 pt-3 space-y-3">
+                <p className="text-xs text-zinc-400">
+                  O que o cliente pagou, quanto a maquininha reteve, o que entrou na conta e o que sobrou depois dos custos.
+                </p>
+                <div className="grid grid-cols-2 lg:grid-cols-5 gap-2.5 sm:gap-3">
+                  {[
+                    { rotulo: 'Faturamento bruto', valor: faturamentoBruto, sinal: '', cor: 'text-white', dica: 'Cobrado dos clientes' },
+                    { rotulo: 'Taxas de maquininha', valor: totalTaxas, sinal: '−', cor: 'text-rose-400', dica: 'Retido pelas operadoras' },
+                    { rotulo: 'Líquido recebido', valor: faturamentoLiquido, sinal: '=', cor: 'text-blue-400', dica: 'O que entrou na conta' },
+                    { rotulo: 'Custos', valor: custosTotais, sinal: '−', cor: 'text-amber-400', dica: 'Peças, fretes e garantias' },
+                    { rotulo: 'Lucro líquido real', valor: lucroLiquido, sinal: '=', cor: lucroLiquido >= 0 ? 'text-emerald-400' : 'text-rose-400', dica: 'O que sobrou' },
+                  ].map((etapa) => (
+                    <div key={etapa.rotulo} className="p-3 sm:p-4 bg-[#080c14] border border-zinc-800/80 rounded-xl min-w-0">
+                      <span className="text-[10px] sm:text-[11px] font-bold text-zinc-400 uppercase tracking-wider block truncate">
+                        {etapa.sinal && <span className="text-zinc-500 mr-1">{etapa.sinal}</span>}
+                        {etapa.rotulo}
+                      </span>
+                      <p className={`text-sm sm:text-lg font-extrabold mt-1 truncate ${etapa.cor}`}>R$ {formatarValor(etapa.valor)}</p>
+                      <p className="text-[10px] text-zinc-500 mt-0.5 truncate">{etapa.dica}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
             )}
           </div>
         )}
