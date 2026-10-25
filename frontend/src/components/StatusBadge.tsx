@@ -7,6 +7,7 @@ interface Props {
 }
 
 const statusMap: Record<string, { label: string; color: string }> = {
+  RASCUNHO: { label: 'Rascunho', color: 'bg-amber-500/10 text-amber-300 border-amber-500/30 border-dashed' },
   AGUARDANDO_AVALIACAO: { label: 'Aguardando Avaliação', color: 'bg-amber-500/10 text-amber-400 border-amber-500/20' },
   EM_ANALISE: { label: 'Em Análise', color: 'bg-blue-500/10 text-blue-400 border-blue-500/20' },
   AGUARDANDO_PECA: { label: 'Aguardando Peça', color: 'bg-purple-500/10 text-purple-400 border-purple-500/20' },
@@ -21,7 +22,7 @@ export const StatusBadge: React.FC<Props> = ({ status, onChangeStatus }) => {
 
   if (!onChangeStatus) {
     return (
-      <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${config.color}`}>
+      <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-medium border whitespace-nowrap ${config.color}`}>
         {config.label}
       </span>
     );
