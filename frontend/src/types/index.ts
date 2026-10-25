@@ -8,18 +8,6 @@ export type StatusOS =
   | 'ENTREGUE'
   | 'CANCELADO';
 
-export interface ServicoCadastrado {
-  id_servico: string;
-  nome: string;
-  preco_sugerido: number;
-}
-
-export interface FornecedorCadastrado {
-  id_fornecedor: string;
-  nome: string;
-  contato?: string;
-}
-
 export interface Cliente {
   idCliente?: string;
   nome: string;
@@ -34,6 +22,17 @@ export interface Aparelho {
   senhaDesbloqueio?: string;
 }
 
+/** Forma de pagamento registrada na OS (pagamento único ou dividido em duas formas). */
+export interface PagamentoOS {
+  id: string;
+  forma: string;
+  valor: number;
+  parcelas: number;
+  taxaPercentual: number;
+  valorTaxa: number;
+  valorLiquido: number;
+}
+
 export interface OrcamentoCalculado {
   subtotalServicos: number;
   descontoGeralAplicado: number;
@@ -43,6 +42,10 @@ export interface OrcamentoCalculado {
   freteReal?: number;
   fornecedorPeca?: string;
   tipoDesconto?: 'VALOR' | 'PERCENTUAL';
+  descontoInput?: number; // valor digitado (R$ ou %), conforme tipoDesconto
+  custoPecaGarantia?: number;
+  pagamentos?: PagamentoOS[];
+  prazoGarantiaDias?: number;
 }
 
 export interface HistoricoItem {
@@ -52,10 +55,24 @@ export interface HistoricoItem {
   autor?: string;
 }
 
-export interface RegistroGarantia {
-  houveGarantia?: boolean;
+/** Um retorno em garantia registrado na tela Garantias e retornos. */
+export interface RetornoGarantia {
+  dataRetorno?: string;
+  defeitoConstatadoGarantia?: string;
+  pecaSubstituidaGarantia?: string;
   custoPecaGarantia?: number;
+  freteGarantia?: number;
   prejuizoTotalGarantia?: number;
+  [key: string]: any;
+}
+
+/** Resumo dos retornos em garantia de uma OS, montado em buscarOrdensServico. */
+export interface RegistroGarantia {
+  listaRetornos?: RetornoGarantia[];
+  custoTotalGarantia?: number;
+  custoPecaGarantia?: number;
+  totalVoltas?: number;
+  prazoGarantiaDias?: number;
   [key: string]: any;
 }
 
@@ -69,24 +86,40 @@ export interface OrdemServico {
   pecasUtilizadas?: string;
   observacoes?: string;
   possuiGarantia: boolean; // Flag estrita para controlar elegibilidade de garantia
-  checklistEntrada?: Record<string, string>;
+  prazoGarantiaDias?: number;
+  /** Itens do checklist ("OK", "DEFEITO"...) e metadados internos com prefixo "__". */
+  checklistEntrada?: Record<string, any>;
   data_abertura?: string;
+  dataAbertura?: string;
   data_prevista_entrega?: string;
   data_conclusao?: string;
   cliente: Cliente;
   aparelho: Aparelho;
   orcamentoCalculado: OrcamentoCalculado;
-  garantia?: RegistroGarantia;
+  formaPagamento?: string;
+  parcelas?: number;
+  valorLiquido?: number;
+  pagamentos?: PagamentoOS[];
+  garantia?: RegistroGarantia | null;
   historico?: HistoricoItem[];
+
+  // Colunas originais da tabela ordens_servico (repassadas por buscarOrdensServico)
+  valor_total?: number;
+  valor_liquido?: number;
+  custo_peca?: number;
+  frete_real?: number;
+  custo_peca_garantia?: number;
+  forma_pagamento?: string;
 }
 
-// Adicione ao final de frontend/src/types/index.ts:
+// Submódulos do menu "Cadastros" (navegação em árvore na barra lateral)
+export type SecaoCadastro =
+  | 'clientes'
+  | 'servicos'
+  | 'fornecedores'
+  | 'lojas'
+  | 'funcionarios'
+  | 'formas-pagamento';
 
-export interface UsuarioAutenticado {
-  id: string;
-  email: string;
-  nomeResponsavel?: string;
-  nomeAssistencia?: string;
-  whatsapp?: string;
-  cpfCnpj?: string;
-}
+// Submódulos do menu "Configurações" (navegação em árvore na barra lateral)
+export type SecaoConfiguracao = 'loja' | 'financeiro' | 'operacional' | 'whatsapp' | 'equipe' | 'conta';

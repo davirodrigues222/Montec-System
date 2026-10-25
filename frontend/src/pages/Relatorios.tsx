@@ -1,17 +1,129 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { buscarOrdensServico } from '../services/api';
+import {
+  buscarOrdensServico,
+  calcularResumoMetaFinanceira,
+  obterMetaFinanceiraConta,
+  parsearValorMonetarioBR,
+  salvarMetaFinanceiraConta,
+} from '../services/api';
 import type { OrdemServico } from '../types';
+import { formatarValor } from '../utils/formatadores';
+import { StatusBadge } from '../components/StatusBadge';
+
+type FiltroPeriodo = 'HOJE' | 'ATUAL' | 'ANTERIOR' | 'ANO_ATUAL' | 'TODOS' | 'PERSONALIZADO';
+
+const chaveDia = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+const somarDias = (chave: string, dias: number) => {
+  const d = new Date(`${chave}T12:00:00`);
+  d.setDate(d.getDate() + dias);
+  return chaveDia(d);
+};
+
+// Valores de cada OS usados nos cards. A listagem de auditoria usa exatamente as mesmas funções,
+// então a soma das linhas sempre bate com os totais exibidos.
+const valorBrutoOS = (os: OrdemServico) => Number(os.orcamentoCalculado?.valorTotalOrcamento || os.valor_total || 0);
+const valorLiquidoOS = (os: OrdemServico) =>
+  os.valorLiquido !== undefined && os.valorLiquido !== null ? Number(os.valorLiquido) : valorBrutoOS(os);
+const custoPecaOS = (os: OrdemServico) => Number(os.orcamentoCalculado?.custoPeca || os.custo_peca || 0);
+const custoFreteOS = (os: OrdemServico) => Number(os.orcamentoCalculado?.freteReal || os.frete_real || 0);
+const custoGarantiaOS = (os: OrdemServico) =>
+  Number(
+    os.orcamentoCalculado?.custoPecaGarantia ||
+      os.garantia?.custoPecaGarantia ||
+      os.garantia?.custoTotalGarantia ||
+      os.custo_peca_garantia ||
+      0
+  );
+const custosOS = (os: OrdemServico) => custoPecaOS(os) + custoFreteOS(os) + custoGarantiaOS(os);
+const somar = (ordens: OrdemServico[], fn: (os: OrdemServico) => number) => ordens.reduce((acc, os) => acc + fn(os), 0);
+
+/** Quantas linhas a listagem de auditoria mostra antes de "Mostrar mais". */
+const LINHAS_POR_PAGINA = 50;
+
+/**
+ * Ordens do período escolhido no filtro. Com deslocamento = -1 devolve o período anterior equivalente
+ * (ontem, mês anterior, ano anterior ou intervalo de mesmo tamanho imediatamente antes do personalizado).
+ * Retorna null quando não existe período anterior para comparar ("Todo o histórico" ou intervalo incompleto).
+ */
+function filtrarOrdensPorPeriodo(
+  ordens: OrdemServico[],
+  filtro: FiltroPeriodo,
+  inicioPersonalizado: string,
+  fimPersonalizado: string,
+  deslocamento: 0 | -1 = 0,
+): OrdemServico[] | null {
+  if (filtro === 'TODOS') return deslocamento === 0 ? ordens : null;
+
+  const hoje = new Date();
+  // Mês/ano de referência (ATUAL = mês corrente; ANTERIOR = mês passado), já com o deslocamento aplicado
+  const refMes = new Date(hoje.getFullYear(), hoje.getMonth() + (filtro === 'ANTERIOR' ? -1 : 0) + deslocamento, 1);
+  const anoRef = hoje.getFullYear() + deslocamento;
+  const diaRef = somarDias(chaveDia(hoje), deslocamento);
+
+  let inicio = inicioPersonalizado;
+  let fim = fimPersonalizado;
+  if (filtro === 'PERSONALIZADO' && deslocamento === -1) {
+    if (!inicio || !fim || fim < inicio) return null;
+    const dias = Math.round((new Date(`${fim}T12:00:00`).getTime() - new Date(`${inicio}T12:00:00`).getTime()) / 86400000) + 1;
+    fim = somarDias(inicio, -1);
+    inicio = somarDias(fim, -(dias - 1));
+  }
+
+  return ordens.filter((os) => {
+    if (!os.data_abertura) return false;
+    const dataOs = new Date(os.data_abertura);
+    const matchIso = String(os.data_abertura).match(/^(\d{4}-\d{2}-\d{2})/);
+    const dataOsStr = matchIso ? matchIso[1] : chaveDia(dataOs);
+
+    switch (filtro) {
+      case 'HOJE':
+        return dataOsStr === diaRef;
+      case 'ATUAL':
+      case 'ANTERIOR':
+        return dataOs.getMonth() === refMes.getMonth() && dataOs.getFullYear() === refMes.getFullYear();
+      case 'ANO_ATUAL':
+        return dataOs.getFullYear() === anoRef;
+      case 'PERSONALIZADO':
+        return (!inicio || dataOsStr >= inicio) && (!fim || dataOsStr <= fim);
+    }
+  });
+}
+
+const ROTULO_PERIODO_ANTERIOR: Record<FiltroPeriodo, string> = {
+  HOJE: 'ontem',
+  ATUAL: 'mês anterior',
+  ANTERIOR: 'mês anterior',
+  ANO_ATUAL: 'ano anterior',
+  PERSONALIZADO: 'período anterior',
+  TODOS: '',
+};
 
 export const Relatorios: React.FC = () => {
   const [ordens, setOrdens] = useState<OrdemServico[]>([]);
   const [loading, setLoading] = useState(true);
-  const [mesSelecionado, setMesSelecionado] = useState<string>('ATUAL');
+  const [metaFinanceira, setMetaFinanceira] = useState<number>(() => obterMetaFinanceiraConta());
+  const [metaInput, setMetaInput] = useState<string>(() => formatarValor(obterMetaFinanceiraConta()));
+  const [editandoMeta, setEditandoMeta] = useState(false);
+  const [salvandoMeta, setSalvandoMeta] = useState(false);
+  const [erroMeta, setErroMeta] = useState<string | null>(null);
+  const [metaSalvaFeedback, setMetaSalvaFeedback] = useState(false);
+  const [mesSelecionado, setMesSelecionado] = useState<FiltroPeriodo>('ATUAL');
+  const [dataInicioPersonalizada, setDataInicioPersonalizada] = useState<string>(() => {
+    const hoje = new Date();
+    return `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-01`;
+  });
+  const [dataFimPersonalizada, setDataFimPersonalizada] = useState<string>(() => {
+    const hoje = new Date();
+    return `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-${String(hoje.getDate()).padStart(2, '0')}`;
+  });
 
   const carregarRelatorios = async () => {
     setLoading(true);
     try {
       const data = await buscarOrdensServico();
-      setOrdens(Array.isArray(data) ? data : []);
+      setOrdens(data);
     } catch (err) {
       console.error('Erro ao buscar relatórios:', err);
     } finally {
@@ -23,78 +135,122 @@ export const Relatorios: React.FC = () => {
     carregarRelatorios();
   }, []);
 
-  // Filtro de Ordens por Mês / Período
-  const ordensFiltradas = useMemo(() => {
-    const hoje = new Date();
-    return ordens.filter((os) => {
-      if (!os.data_abertura) return true;
-      const dataOs = new Date(os.data_abertura);
+  // Mantém a meta sincronizada com a conta ativa (troca de conta ou alteração em outra tela)
+  useEffect(() => {
+    const atualizarMeta = () => setMetaFinanceira(obterMetaFinanceiraConta());
+    window.addEventListener('storage_configs_updated', atualizarMeta);
+    return () => window.removeEventListener('storage_configs_updated', atualizarMeta);
+  }, []);
 
-      if (mesSelecionado === 'ATUAL') {
-        return (
-          dataOs.getMonth() === hoje.getMonth() &&
-          dataOs.getFullYear() === hoje.getFullYear()
-        );
-      }
-      if (mesSelecionado === 'ANTERIOR') {
-        const mesAnt = hoje.getMonth() === 0 ? 11 : hoje.getMonth() - 1;
-        const anoAnt = hoje.getMonth() === 0 ? hoje.getFullYear() - 1 : hoje.getFullYear();
-        return dataOs.getMonth() === mesAnt && dataOs.getFullYear() === anoAnt;
-      }
-      if (mesSelecionado === 'TODOS') {
-        return true;
-      }
-      return true;
-    });
-  }, [ordens, mesSelecionado]);
+  // Meta mensal: considera apenas as OS abertas no mês atual (reinicia quando o mês vira)
+  const resumoMeta = useMemo(
+    () => calcularResumoMetaFinanceira(ordens, { metaOverride: metaFinanceira }),
+    [ordens, metaFinanceira]
+  );
+  const valorAlcancadoMeta = resumoMeta.valorAlcancado;
+  const percentualMetaReal = resumoMeta.percentualAtingido;
+  const larguraBarraMeta = resumoMeta.percentualBarraVisual;
+  const valorRestanteMeta = Math.max(0, metaFinanceira - valorAlcancadoMeta);
+
+  const iniciarEdicaoMeta = () => {
+    setMetaInput(formatarValor(metaFinanceira));
+    setErroMeta(null);
+    setEditandoMeta(true);
+  };
+
+  const handleSalvarMeta = async () => {
+    // Rejeita vazio, negativo, zero ou formato inválido antes de gravar
+    const validacao = parsearValorMonetarioBR(metaInput);
+    if (!validacao.valido) {
+      setErroMeta(validacao.erro || 'Valor de meta inválido.');
+      return;
+    }
+
+    setSalvandoMeta(true);
+    setErroMeta(null);
+    try {
+      const { valorSalvo } = await salvarMetaFinanceiraConta(validacao.valor);
+      setMetaFinanceira(valorSalvo);
+      setMetaInput(formatarValor(valorSalvo));
+      setEditandoMeta(false);
+      // Avisa o Dashboard para atualizar o card "Meta de faturamento"
+      window.dispatchEvent(new Event('storage_configs_updated'));
+      setMetaSalvaFeedback(true);
+      setTimeout(() => setMetaSalvaFeedback(false), 3000);
+    } catch (err: any) {
+      console.error('Erro ao salvar meta financeira:', err);
+      setErroMeta(err?.message || 'Não foi possível salvar a meta.');
+    } finally {
+      setSalvandoMeta(false);
+    }
+  };
+
+  // Filtro de Ordens por Dia / Mês / Ano / Intervalo Personalizado
+  const ordensFiltradas = useMemo(
+    () => filtrarOrdensPorPeriodo(ordens, mesSelecionado, dataInicioPersonalizada, dataFimPersonalizada) ?? [],
+    [ordens, mesSelecionado, dataInicioPersonalizada, dataFimPersonalizada]
+  );
 
   // CÁLCULOS FINANCEIROS BLINDADOS
   // 1. Faturamento Bruto
-  const faturamentoBruto = useMemo(() => {
-    return ordensFiltradas.reduce((acc, os) => {
-      const valor = Number(
-        os.orcamentoCalculado?.valorTotalOrcamento || (os as any).valor_total || 0
-      );
-      return acc + valor;
-    }, 0);
-  }, [ordensFiltradas]);
+  const faturamentoBruto = useMemo(
+    () => ordensFiltradas.reduce((acc, os) => acc + valorBrutoOS(os), 0),
+    [ordensFiltradas]
+  );
+
+  // Variação real do faturamento bruto em relação ao período anterior equivalente (nada inventado)
+  const variacaoFaturamento = useMemo(() => {
+    const ordensAnteriores = filtrarOrdensPorPeriodo(
+      ordens,
+      mesSelecionado,
+      dataInicioPersonalizada,
+      dataFimPersonalizada,
+      -1
+    );
+    if (!ordensAnteriores) {
+      return { texto: 'Todo o histórico', badge: '—', cor: 'neutra' as const };
+    }
+    const anterior = ordensAnteriores.reduce((acc, os) => acc + valorBrutoOS(os), 0);
+    const rotulo = ROTULO_PERIODO_ANTERIOR[mesSelecionado];
+    if (faturamentoBruto === 0 && anterior === 0) {
+      return { texto: 'Sem movimentação no período', badge: '0,0%', cor: 'neutra' as const };
+    }
+    if (anterior === 0) {
+      return { texto: `Sem faturamento no ${rotulo}`, badge: 'Novo', cor: 'neutra' as const };
+    }
+    const pct = ((faturamentoBruto - anterior) / anterior) * 100;
+    const pctTexto = `${pct > 0 ? '+' : ''}${pct.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`;
+    const cor = pct > 0 ? ('alta' as const) : pct < 0 ? ('queda' as const) : ('neutra' as const);
+    return { texto: `${pctTexto} vs. ${rotulo}`, badge: pctTexto, cor };
+  }, [ordens, mesSelecionado, dataInicioPersonalizada, dataFimPersonalizada, faturamentoBruto]);
+
+  const corTextoVariacao = { alta: 'text-emerald-400', queda: 'text-rose-400', neutra: 'text-zinc-400' }[variacaoFaturamento.cor];
+  const corBadgeVariacao = {
+    alta: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20',
+    queda: 'text-rose-400 bg-rose-500/10 border-rose-500/20',
+    neutra: 'text-zinc-400 bg-zinc-800/60 border-zinc-700/60',
+  }[variacaoFaturamento.cor];
 
   // Faturamento Líquido (se houver desconto aplicado na OS)
-  const faturamentoLiquido = useMemo(() => {
-    return ordensFiltradas.reduce((acc, os: any) => {
-      const bruto = Number(os.orcamentoCalculado?.valorTotalOrcamento || os.valor_total || 0);
-      const liq = os.valorLiquido !== undefined && os.valorLiquido !== null ? Number(os.valorLiquido) : bruto;
-      return acc + liq;
-    }, 0);
-  }, [ordensFiltradas]);
+  const faturamentoLiquido = useMemo(() => somar(ordensFiltradas, valorLiquidoOS), [ordensFiltradas]);
 
   // 2. Custos Operacionais detalhados
-  const custoPecas = useMemo(() => {
-    return ordensFiltradas.reduce((acc, os: any) => {
-      return acc + Number(os.orcamentoCalculado?.custoPeca || os.custo_peca || 0);
-    }, 0);
-  }, [ordensFiltradas]);
+  const custoPecas = useMemo(() => somar(ordensFiltradas, custoPecaOS), [ordensFiltradas]);
+  const custoFretes = useMemo(() => somar(ordensFiltradas, custoFreteOS), [ordensFiltradas]);
+  const custoGarantias = useMemo(() => somar(ordensFiltradas, custoGarantiaOS), [ordensFiltradas]);
 
-  const custoFretes = useMemo(() => {
-    return ordensFiltradas.reduce((acc, os: any) => {
-      return acc + Number(os.orcamentoCalculado?.freteReal || os.frete_real || 0);
-    }, 0);
-  }, [ordensFiltradas]);
-
-  const custoGarantias = useMemo(() => {
-    return ordensFiltradas.reduce((acc, os: any) => {
-      return (
-        acc +
-        Number(
-          os.orcamentoCalculado?.custoPecaGarantia ||
-            os.garantia?.custoPecaGarantia ||
-            os.garantia?.custoTotalGarantia ||
-            os.custo_peca_garantia ||
-            0
-        )
-      );
-    }, 0);
-  }, [ordensFiltradas]);
+  // Auditoria: ordens que compõem os totais do período, da mais recente para a mais antiga
+  const [auditoriaAberta, setAuditoriaAberta] = useState(false);
+  const [linhasVisiveis, setLinhasVisiveis] = useState(LINHAS_POR_PAGINA);
+  const ordensAuditoria = useMemo(
+    () =>
+      [...ordensFiltradas].sort(
+        (a, b) =>
+          (b.data_abertura ? new Date(b.data_abertura).getTime() : 0) -
+          (a.data_abertura ? new Date(a.data_abertura).getTime() : 0)
+      ),
+    [ordensFiltradas]
+  );
 
   const custosTotais = custoPecas + custoFretes + custoGarantias;
 
@@ -114,10 +270,10 @@ export const Relatorios: React.FC = () => {
   // CÁLCULO DE RECEITA POR SEMANA (Dividido em 5 semanas do mês)
   const dadosSemanas = useMemo(() => {
     const semanas = [0, 0, 0, 0, 0];
-    ordensFiltradas.forEach((os: any) => {
+    ordensFiltradas.forEach((os) => {
       if (!os.data_abertura) return;
       const dia = new Date(os.data_abertura).getDate();
-      const valor = Number(os.orcamentoCalculado?.valorTotalOrcamento || os.valor_total || 0);
+      const valor = valorBrutoOS(os);
 
       if (dia <= 7) semanas[0] += valor;
       else if (dia <= 14) semanas[1] += valor;
@@ -128,7 +284,24 @@ export const Relatorios: React.FC = () => {
     return semanas;
   }, [ordensFiltradas]);
 
-  const maxSemana = Math.max(...dadosSemanas, 100);
+  const maxSemana = Math.max(...dadosSemanas);
+
+  // Rótulos do eixo X: com um único mês no filtro mostra o mês real; nos demais, as faixas de dias
+  const mesDoGrafico =
+    mesSelecionado === 'ATUAL' || mesSelecionado === 'HOJE'
+      ? new Date()
+      : mesSelecionado === 'ANTERIOR'
+      ? new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1)
+      : null;
+  const abreviacaoMes = mesDoGrafico
+    ? mesDoGrafico.toLocaleDateString('pt-BR', { month: 'short' }).replace('.', '')
+    : '';
+  const rotulosSemanas = mesDoGrafico
+    ? ['01', '08', '15', '22', '29'].map((dia) => `${dia} ${abreviacaoMes}`)
+    : ['Dias 1-7', '8-14', '15-21', '22-28', '29-31'];
+  const subtituloGrafico = mesDoGrafico
+    ? `Faturamento bruto em ${mesDoGrafico.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}`
+    : 'Faturamento bruto do período, agrupado pelo dia do mês';
 
   // Exportar dados para CSV
   const exportarRelatorioCSV = () => {
@@ -138,7 +311,7 @@ export const Relatorios: React.FC = () => {
     }
 
     const cabecalho = 'Numero OS,Cliente,Aparelho,Servico,Data Abertura,Status,Valor Total,Custo Peca,Frete,Garantia,Lucro Estimado\n';
-    const linhas = ordensFiltradas.map((os: any) => {
+    const linhas = ordensFiltradas.map((os) => {
       const numOs = os.numero_os || '';
       const cli = `"${(os.cliente?.nome || '').replace(/"/g, '""')}"`;
       const apr = `"${(os.aparelho?.modelo || '').replace(/"/g, '""')}"`;
@@ -191,17 +364,43 @@ export const Relatorios: React.FC = () => {
           </p>
         </div>
 
-        {/* Controles: Seletor de Mês e Botão de Exportação */}
-        <div className="flex items-center space-x-2 shrink-0">
+        {/* Controles: Seletor de Período, Intervalo Personalizado e Botão de Exportação */}
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
           <select
             value={mesSelecionado}
-            onChange={(e) => setMesSelecionado(e.target.value)}
+            onChange={(e) => setMesSelecionado(e.target.value as FiltroPeriodo)}
             className="bg-[#0c101a] border border-zinc-800 text-white rounded-xl px-3 py-2 sm:px-4 sm:py-2.5 text-xs font-semibold outline-none cursor-pointer focus:border-blue-500 transition shadow-sm"
           >
+            <option value="HOJE">Hoje (Do dia)</option>
             <option value="ATUAL">Mês atual</option>
             <option value="ANTERIOR">Mês anterior</option>
+            <option value="ANO_ATUAL">Este ano (Do ano)</option>
             <option value="TODOS">Todo o histórico</option>
+            <option value="PERSONALIZADO">Personalizado (Calendário)</option>
           </select>
+
+          {mesSelecionado === 'PERSONALIZADO' && (
+            <div className="flex flex-wrap items-center gap-2 bg-[#0c101a] border border-zinc-800 rounded-xl px-3 py-1.5 shadow-sm">
+              <div className="flex items-center space-x-1.5">
+                <span className="text-[10px] font-bold text-zinc-400 uppercase">De:</span>
+                <input
+                  type="date"
+                  value={dataInicioPersonalizada}
+                  onChange={(e) => setDataInicioPersonalizada(e.target.value)}
+                  className="bg-[#080c14] border border-zinc-800 rounded-lg px-2 py-1 text-xs text-white outline-none focus:border-blue-500 cursor-pointer [color-scheme:dark]"
+                />
+              </div>
+              <div className="flex items-center space-x-1.5">
+                <span className="text-[10px] font-bold text-zinc-400 uppercase">Até:</span>
+                <input
+                  type="date"
+                  value={dataFimPersonalizada}
+                  onChange={(e) => setDataFimPersonalizada(e.target.value)}
+                  className="bg-[#080c14] border border-zinc-800 rounded-lg px-2 py-1 text-xs text-white outline-none focus:border-blue-500 cursor-pointer [color-scheme:dark]"
+                />
+              </div>
+            </div>
+          )}
 
           <button
             onClick={exportarRelatorioCSV}
@@ -230,10 +429,10 @@ export const Relatorios: React.FC = () => {
             </div>
           </div>
           <h3 className="text-base sm:text-2xl lg:text-3xl font-extrabold text-white mt-1 sm:mt-3 tracking-tight truncate">
-            R$ {faturamentoBruto.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            R$ {formatarValor(faturamentoBruto)}
           </h3>
-          <p className="text-[10px] sm:text-[11px] text-emerald-400 mt-1 sm:mt-2 font-semibold flex items-center truncate">
-            <span>+8,4% no período</span>
+          <p className={`text-[10px] sm:text-[11px] mt-1 sm:mt-2 font-semibold flex items-center truncate ${corTextoVariacao}`}>
+            <span className="truncate" title={variacaoFaturamento.texto}>{variacaoFaturamento.texto}</span>
           </p>
         </div>
 
@@ -251,7 +450,7 @@ export const Relatorios: React.FC = () => {
             </div>
           </div>
           <h3 className="text-base sm:text-2xl lg:text-3xl font-extrabold text-white mt-1 sm:mt-3 tracking-tight truncate">
-            R$ {custosTotais.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            R$ {formatarValor(custosTotais)}
           </h3>
           <p className="text-[10px] sm:text-[11px] text-zinc-400 mt-1 sm:mt-2 font-medium truncate">
             Peças, fretes e garantias
@@ -271,7 +470,7 @@ export const Relatorios: React.FC = () => {
             </div>
           </div>
           <h3 className="text-base sm:text-2xl lg:text-3xl font-extrabold text-white mt-1 sm:mt-3 tracking-tight truncate">
-            R$ {lucroLiquido.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            R$ {formatarValor(lucroLiquido)}
           </h3>
           <p className="text-[10px] sm:text-[11px] text-zinc-400 mt-1 sm:mt-2 font-medium truncate">
             {margemLucro}% de margem
@@ -291,11 +490,216 @@ export const Relatorios: React.FC = () => {
             </div>
           </div>
           <h3 className="text-base sm:text-2xl lg:text-3xl font-extrabold text-white mt-1 sm:mt-3 tracking-tight truncate">
-            R$ {ticketMedio.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            R$ {formatarValor(ticketMedio)}
           </h3>
           <p className="text-[10px] sm:text-[11px] text-zinc-400 mt-1 sm:mt-2 font-medium truncate">
             {totalAtendimentos} {totalAtendimentos === 1 ? 'atendimento' : 'atendimentos'}
           </p>
+        </div>
+      </div>
+
+      {/* ================= AUDITORIA: ORDENS QUE COMPÕEM OS TOTAIS ================= */}
+      <div className="bg-[#0c101a] border border-zinc-800/80 rounded-2xl shadow-sm min-w-0 overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setAuditoriaAberta((v) => !v)}
+          aria-expanded={auditoriaAberta}
+          className="w-full flex flex-wrap items-center justify-between gap-3 p-4 sm:p-5 text-left hover:bg-zinc-800/20 transition"
+        >
+          <div className="min-w-0">
+            <h3 className="text-sm font-bold text-white">
+              Ordens que compõem este relatório{' '}
+              <span className="text-zinc-500 font-semibold">({ordensAuditoria.length})</span>
+            </h3>
+            <p className="text-xs text-zinc-400 mt-0.5">
+              Confira de onde vêm o faturamento, os custos e o lucro do período selecionado.
+            </p>
+          </div>
+          <div className="flex items-center gap-2 text-xs font-semibold text-blue-400 shrink-0">
+            {auditoriaAberta ? 'Ocultar ordens' : 'Ver ordens'}
+            <svg
+              className={`w-4 h-4 transition-transform duration-200 ${auditoriaAberta ? 'rotate-180' : ''}`}
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+            </svg>
+          </div>
+        </button>
+
+        {auditoriaAberta && (
+          <div className="border-t border-zinc-800/80">
+            {ordensAuditoria.length === 0 ? (
+              <p className="p-8 text-center text-xs text-zinc-500">Nenhuma ordem no período selecionado.</p>
+            ) : (
+              <>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs min-w-[760px]">
+                    <thead className="text-[10px] text-zinc-500 uppercase tracking-wider border-b border-zinc-800/80">
+                      <tr>
+                        <th className="py-2.5 px-4 font-semibold">Ordem</th>
+                        <th className="py-2.5 px-4 font-semibold">Data</th>
+                        <th className="py-2.5 px-4 font-semibold">Cliente</th>
+                        <th className="py-2.5 px-4 font-semibold text-right">Cobrado</th>
+                        <th className="py-2.5 px-4 font-semibold text-right">Líquido</th>
+                        <th className="py-2.5 px-4 font-semibold text-right">Custos</th>
+                        <th className="py-2.5 px-4 font-semibold text-right">Lucro</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-800/40">
+                      {ordensAuditoria.slice(0, linhasVisiveis).map((os) => {
+                        const lucroOS = valorLiquidoOS(os) - custosOS(os);
+                        return (
+                          <tr key={os.id_os} className="hover:bg-zinc-800/20">
+                            <td className="py-2.5 px-4">
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono font-bold text-blue-400">{os.numero_os}</span>
+                                {/* Status ajuda a auditar: rascunhos e canceladas também entram no período */}
+                                {(os.status_os === 'RASCUNHO' || os.status_os === 'CANCELADO') && <StatusBadge status={os.status_os} />}
+                              </div>
+                            </td>
+                            <td className="py-2.5 px-4 text-zinc-400">
+                              {os.data_abertura ? new Date(os.data_abertura).toLocaleDateString('pt-BR') : '—'}
+                            </td>
+                            <td className="py-2.5 px-4 text-zinc-200 font-medium truncate max-w-[220px]">{os.cliente?.nome || 'Cliente balcão'}</td>
+                            <td className="py-2.5 px-4 text-right text-white font-semibold">R$ {formatarValor(valorBrutoOS(os))}</td>
+                            <td className="py-2.5 px-4 text-right text-zinc-300">R$ {formatarValor(valorLiquidoOS(os))}</td>
+                            <td className="py-2.5 px-4 text-right text-amber-400/90">
+                              {custosOS(os) > 0 ? `- R$ ${formatarValor(custosOS(os))}` : '—'}
+                            </td>
+                            <td className={`py-2.5 px-4 text-right font-semibold ${lucroOS >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                              R$ {formatarValor(lucroOS)}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                    <tfoot className="border-t border-zinc-700/80 bg-[#090d15] font-bold">
+                      <tr>
+                        <td className="py-3 px-4 text-zinc-300" colSpan={3}>
+                          Total do período ({ordensAuditoria.length} {ordensAuditoria.length === 1 ? 'ordem' : 'ordens'})
+                        </td>
+                        <td className="py-3 px-4 text-right text-white">R$ {formatarValor(faturamentoBruto)}</td>
+                        <td className="py-3 px-4 text-right text-zinc-200">R$ {formatarValor(faturamentoLiquido)}</td>
+                        <td className="py-3 px-4 text-right text-amber-400">- R$ {formatarValor(custosTotais)}</td>
+                        <td className={`py-3 px-4 text-right ${lucroLiquido >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                          R$ {formatarValor(lucroLiquido)}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-t border-zinc-800/60 text-[11px] text-zinc-500">
+                  <span>
+                    Cobrado = card Faturamento · Custos = peças, fretes e garantias · Lucro = líquido (após taxas e descontos) menos custos.
+                  </span>
+                  {linhasVisiveis < ordensAuditoria.length && (
+                    <button
+                      type="button"
+                      onClick={() => setLinhasVisiveis((n) => n + LINHAS_POR_PAGINA)}
+                      className="font-semibold text-blue-400 hover:text-blue-300"
+                    >
+                      Mostrar mais ({ordensAuditoria.length - linhasVisiveis} restantes)
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* ================= CARD: META FINANCEIRA ================= */}
+      <div className="bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-4 sm:p-6 shadow-sm min-w-0">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+          <div className="min-w-0">
+            <h3 className="text-sm font-bold text-white">Meta Financeira — {resumoMeta.rotuloCompetencia}</h3>
+            <p className="text-xs text-zinc-400 mt-0.5">
+              Meta mensal exibida no Painel. O progresso reinicia a cada novo mês.
+            </p>
+          </div>
+
+          {editandoMeta ? (
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              <div className="flex items-center bg-[#080c14] border border-zinc-800 rounded-xl px-3 py-2 focus-within:border-blue-500">
+                <span className="text-xs font-bold text-zinc-400 mr-1.5">R$</span>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={metaInput}
+                  onChange={(e) => {
+                    setMetaInput(e.target.value);
+                    setErroMeta(null);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleSalvarMeta();
+                    if (e.key === 'Escape') setEditandoMeta(false);
+                  }}
+                  placeholder="8.000,00"
+                  autoFocus
+                  className="w-28 bg-transparent text-xs text-white font-bold outline-none"
+                />
+              </div>
+              <button
+                onClick={handleSalvarMeta}
+                disabled={salvandoMeta}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white font-bold rounded-xl text-xs transition shadow-md shadow-blue-600/20"
+              >
+                {salvandoMeta ? 'Salvando...' : 'Salvar meta'}
+              </button>
+              <button
+                onClick={() => {
+                  setEditandoMeta(false);
+                  setErroMeta(null);
+                }}
+                className="px-3 py-2 text-xs font-semibold text-zinc-400 hover:text-white transition"
+              >
+                Cancelar
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={iniciarEdicaoMeta}
+              className="px-4 py-2 bg-[#080c14] hover:bg-zinc-800 border border-zinc-700/80 text-white rounded-xl text-xs font-semibold transition shadow-sm shrink-0"
+            >
+              Editar meta
+            </button>
+          )}
+        </div>
+
+        {erroMeta && <p className="text-xs font-bold text-red-400 mt-2">{erroMeta}</p>}
+        {metaSalvaFeedback && (
+          <p className="text-xs font-bold text-emerald-400 mt-2">✓ Meta salva e aplicada no Painel!</p>
+        )}
+
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4 mt-5">
+          <div className="p-3 sm:p-4 bg-[#080c14] border border-zinc-800/80 rounded-xl min-w-0">
+            <span className="text-[10px] sm:text-[11px] font-bold text-zinc-400 uppercase tracking-wider">Meta definida</span>
+            <p className="text-sm sm:text-lg font-extrabold text-white mt-1 truncate">R$ {formatarValor(metaFinanceira)}</p>
+          </div>
+          <div className="p-3 sm:p-4 bg-[#080c14] border border-zinc-800/80 rounded-xl min-w-0">
+            <span className="text-[10px] sm:text-[11px] font-bold text-zinc-400 uppercase tracking-wider">Valor alcançado</span>
+            <p className="text-sm sm:text-lg font-extrabold text-emerald-400 mt-1 truncate">R$ {formatarValor(valorAlcancadoMeta)}</p>
+          </div>
+          <div className="p-3 sm:p-4 bg-[#080c14] border border-zinc-800/80 rounded-xl min-w-0">
+            <span className="text-[10px] sm:text-[11px] font-bold text-zinc-400 uppercase tracking-wider">Progresso</span>
+            <p className="text-sm sm:text-lg font-extrabold text-blue-400 mt-1 truncate">
+              {percentualMetaReal.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 1 })}%
+            </p>
+          </div>
+          <div className="p-3 sm:p-4 bg-[#080c14] border border-zinc-800/80 rounded-xl min-w-0">
+            <span className="text-[10px] sm:text-[11px] font-bold text-zinc-400 uppercase tracking-wider">Valor restante</span>
+            <p className="text-sm sm:text-lg font-extrabold text-amber-400 mt-1 truncate">R$ {formatarValor(valorRestanteMeta)}</p>
+          </div>
+        </div>
+
+        <div className="w-full bg-zinc-800/80 rounded-full h-2.5 mt-5 overflow-hidden">
+          <div
+            className={`h-full rounded-full transition-all duration-500 ${percentualMetaReal >= 100 ? 'bg-emerald-600' : 'bg-blue-600'}`}
+            style={{ width: `${larguraBarraMeta}%` }}
+          />
         </div>
       </div>
 
@@ -307,10 +711,13 @@ export const Relatorios: React.FC = () => {
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-sm font-bold text-white">Receita por semana</h3>
-                <p className="text-xs text-zinc-400 mt-0.5">Faturamento bruto no mês atual</p>
+                <p className="text-xs text-zinc-400 mt-0.5">{subtituloGrafico}</p>
               </div>
-              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20">
-                +8,4%
+              <span
+                title={variacaoFaturamento.texto}
+                className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold border shrink-0 ${corBadgeVariacao}`}
+              >
+                {variacaoFaturamento.badge}
               </span>
             </div>
 
@@ -318,7 +725,8 @@ export const Relatorios: React.FC = () => {
             <div className="mt-8 pt-4">
               <div className="h-44 flex items-end justify-between gap-3 px-2">
                 {dadosSemanas.map((valor, idx) => {
-                  const alturaPercent = maxSemana > 0 ? Math.max(12, Math.round((valor / maxSemana) * 100)) : 15;
+                  // Semana sem faturamento = barra zerada (sem altura artificial)
+                  const alturaPercent = valor > 0 && maxSemana > 0 ? Math.max(8, Math.round((valor / maxSemana) * 100)) : 0;
                   return (
                     <div key={idx} className="flex-1 flex flex-col items-center h-full justify-end group">
                       {/* Tooltip com valor real */}
@@ -337,13 +745,13 @@ export const Relatorios: React.FC = () => {
                 })}
               </div>
 
-              {/* Rótulos do Eixo X do Figma */}
-              <div className="flex justify-between text-[11px] text-zinc-400 mt-4 px-2 font-medium">
-                <span>01 out</span>
-                <span>08 out</span>
-                <span>15 out</span>
-                <span>22 out</span>
-                <span>31 out</span>
+              {/* Rótulos do eixo X: início de cada faixa de 7 dias */}
+              <div className="flex justify-between gap-3 text-[11px] text-zinc-400 mt-4 px-2 font-medium">
+                {rotulosSemanas.map((rotulo) => (
+                  <span key={rotulo} className="flex-1 text-center">
+                    {rotulo}
+                  </span>
+                ))}
               </div>
             </div>
           </div>
@@ -355,7 +763,7 @@ export const Relatorios: React.FC = () => {
             <div className="pb-5 border-b border-zinc-800/60 mb-6">
               <h3 className="text-sm font-bold text-white">Composição dos custos</h3>
               <p className="text-xs text-zinc-400 mt-0.5">
-                Total de R$ {custosTotais.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} no período
+                Total de R$ {formatarValor(custosTotais)} no período
               </p>
             </div>
 
@@ -366,7 +774,7 @@ export const Relatorios: React.FC = () => {
                   <span className="font-medium text-zinc-300">Peças e componentes</span>
                   <div className="space-x-2">
                     <span className="font-bold text-white">
-                      R$ {custoPecas.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      R$ {formatarValor(custoPecas)}
                     </span>
                     <span className="text-zinc-400 font-semibold">{percentPecas}%</span>
                   </div>
@@ -385,7 +793,7 @@ export const Relatorios: React.FC = () => {
                   <span className="font-medium text-zinc-300">Fretes</span>
                   <div className="space-x-2">
                     <span className="font-bold text-white">
-                      R$ {custoFretes.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      R$ {formatarValor(custoFretes)}
                     </span>
                     <span className="text-zinc-400 font-semibold">{percentFretes}%</span>
                   </div>
@@ -404,7 +812,7 @@ export const Relatorios: React.FC = () => {
                   <span className="font-medium text-zinc-300">Garantias e retornos</span>
                   <div className="space-x-2">
                     <span className="font-bold text-white">
-                      R$ {custoGarantias.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      R$ {formatarValor(custoGarantias)}
                     </span>
                     <span className="text-zinc-400 font-semibold">{percentGarantias}%</span>
                   </div>

@@ -1,141 +1,148 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import type { OrdemServico } from '../types';
+import { obterConfiguracoesLojaSincrono } from '../services/api';
+import { itensVisiveisChecklist, rotuloItemChecklist } from '../utils/checklist';
+import { formatarValor } from '../utils/formatadores';
+import {
+  CabecalhoLojaImpressao,
+  DocumentoParaImpressao,
+  RodapeLojaImpressao,
+  TermosImpressos,
+  ViasImpressao,
+  classeFormato,
+} from './impressao';
 
 interface Props {
   os: OrdemServico;
   onClose: () => void;
 }
 
+const NOMES_FORMATO = {
+  A4: 'Folha A4',
+  A4_DUAS_VIAS: 'Folha A4 com 2 vias',
+  TERMICA_80: 'Bobina térmica 80 mm',
+};
+
+/** Comprovante de entrada / certidão de garantia da OS recém-criada, no formato configurado pela loja. */
 export const CertidaoGarantia: React.FC<Props> = ({ os, onClose }) => {
-  const [nomeLoja, setNomeLoja] = useState<string>('Sampaio Cell');
-
-  useEffect(() => {
-    const savedName = localStorage.getItem('sig_apple_nome_loja');
-    if (savedName) {
-      setNomeLoja(savedName);
-    }
-  }, []);
-
-  const handlePrint = () => {
-    window.print();
-  };
+  // Identidade, termos, contatos e formato de papel da conta ativa (Configurações)
+  const cfg = obterConfiguracoesLojaSincrono();
+  const formato = cfg.formatoImpressao;
+  const termica = formato === 'TERMICA_80';
 
   const valorTotal = os.orcamentoCalculado?.valorTotalOrcamento || 0;
+  const itensChecklist = itensVisiveisChecklist(os.checklistEntrada);
+  const prazoGarantia = os.possuiGarantia === false ? 0 : Number(os.prazoGarantiaDias) || cfg.prazoGarantiaDias;
+  const dataAbertura = os.data_abertura ? new Date(`${os.data_abertura.substring(0, 10)}T12:00:00`) : new Date();
 
-  return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto print:static print:bg-white print:p-0 print:block">
-      <div className="bg-white text-zinc-900 w-full max-w-3xl rounded-xl shadow-2xl p-8 print:shadow-none print:w-full print:max-w-none print:p-0">
-        
-        {/* Ações Visíveis na Tela */}
-        <div className="flex justify-between items-center pb-6 mb-6 border-b border-zinc-200 print:hidden">
-          <h2 className="text-lg font-bold text-zinc-800">Comprovante de Entrada / Certidão de Garantia</h2>
-          <div className="space-x-3">
-            <button
-              onClick={handlePrint}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition"
-            >
-              Imprimir / Salvar PDF
-            </button>
-            <button
-              onClick={onClose}
-              className="px-4 py-2 bg-zinc-200 hover:bg-zinc-300 text-zinc-800 rounded-lg text-sm font-medium transition"
-            >
-              Fechar
-            </button>
-          </div>
-        </div>
-
-        {/* --- CONTEÚDO PARA IMPRESSÃO --- */}
-        <div className="space-y-6 text-sm leading-relaxed">
-          {/* Cabeçalho */}
-          <div className="flex justify-between items-start border-b border-zinc-300 pb-4">
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight text-zinc-900 uppercase">{nomeLoja}</h1>
-              <p className="text-xs text-zinc-600">Assistência Técnica & Manutenção Especializada</p>
-            </div>
-            <div className="text-right">
-              <div className="text-lg font-bold text-blue-700">OS #{os.numero_os}</div>
-              <p className="text-xs text-zinc-500">
-                Data: {os.data_abertura ? new Date(os.data_abertura).toLocaleDateString('pt-BR') : new Date().toLocaleDateString('pt-BR')}
-              </p>
-            </div>
-          </div>
-
-          {/* Dados do Cliente e Aparelho */}
-          <div className="grid grid-cols-2 gap-4 bg-zinc-50 p-4 rounded-lg border border-zinc-200">
-            <div>
-              <h3 className="font-semibold text-xs text-zinc-500 uppercase tracking-wider mb-2">Dados do Cliente</h3>
-              <p><strong>Nome:</strong> {os.cliente?.nome}</p>
-              <p><strong>CPF/CNPJ:</strong> {os.cliente?.cpfCnpj || 'Não informado'}</p>
-              <p><strong>WhatsApp:</strong> {os.cliente?.whatsapp || 'Não informado'}</p>
-              <p><strong>E-mail:</strong> {os.cliente?.email || 'Não informado'}</p>
-            </div>
-            <div>
-              <h3 className="font-semibold text-xs text-zinc-500 uppercase tracking-wider mb-2">Dados do Aparelho</h3>
-              <p><strong>Modelo:</strong> {os.aparelho?.modelo}</p>
-              <p><strong>IMEI / Nº Série:</strong> {os.aparelho?.imei1 || 'Não informado'}</p>
-              <p><strong>Senha:</strong> {os.aparelho?.senhaDesbloqueio || 'Sem senha'}</p>
-            </div>
-          </div>
-
-          {/* Checklist de Entrada */}
-          {os.checklistEntrada && (
-            <div>
-              <h3 className="font-bold text-zinc-800 mb-2">Checklist de Entrada do Dispositivo</h3>
-              <div className="grid grid-cols-4 gap-2 text-xs">
-                {Object.entries(os.checklistEntrada).map(([item, status]) => (
-                  <div key={item} className="p-2 border rounded bg-zinc-50 flex justify-between items-center">
-                    <span className="capitalize">{item.replace(/([A-Z])/g, ' $1')}:</span>
-                    <span className={`font-semibold ${status === 'OK' ? 'text-emerald-700' : status === 'DEFEITO' ? 'text-rose-700' : 'text-amber-700'}`}>
-                      {status}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Discriminativo dos Serviços e Peças */}
-          <div className="border-t border-zinc-200 pt-4">
-            <h3 className="font-bold text-zinc-800 mb-2">Discriminativo dos Serviços e Peças</h3>
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="border-b text-xs text-zinc-500 uppercase tracking-wider">
-                  <th className="py-2">Descrição</th>
-                  <th className="py-2 text-right">Valor Total</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-200">
-                <tr>
-                  <td className="py-3 font-medium text-zinc-800">
-                    {os.defeitoRelatado || 'Manutenção geral do aparelho'}
-                  </td>
-                  <td className="py-3 text-right font-extrabold text-base text-zinc-900">
-                    R$ {valorTotal.toFixed(2)}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          {/* Termos de Garantia */}
-          <div className="border-t border-zinc-200 pt-4 text-xs text-zinc-600 space-y-2">
-            <h4 className="font-bold text-zinc-800 uppercase">Termos e Condições de Garantia</h4>
-            <p>1. A garantia cobre exclusivamente os componentes substituídos e serviços executados pelo período de 90 (noventa) dias a contar da data de entrega.</p>
-            <p>2. A garantia será nula em caso de danos físicos, contato com líquidos, queda, violação do selo de segurança ou intervenção por terceiros não autorizados.</p>
-          </div>
-
-          {/* Assinaturas */}
-          <div className="grid grid-cols-2 gap-12 pt-12 text-center text-xs">
-            <div className="border-t border-zinc-400 pt-2">
-              Assinatura do Técnico Responsável
-            </div>
-            <div className="border-t border-zinc-400 pt-2">
-              Assinatura do Cliente
-            </div>
-          </div>
+  const documento = (via: string | null) => (
+    <div className={`${classeFormato(formato)} mx-auto space-y-3 text-slate-800`}>
+      {/* Cabeçalho */}
+      <div className={`flex ${termica ? 'flex-col gap-2' : 'justify-between items-start'} border-b border-slate-300 pb-3`}>
+        <CabecalhoLojaImpressao cfg={cfg} formato={formato} />
+        <div className={termica ? 'text-center' : 'text-right shrink-0'}>
+          {via && <p className="text-[9px] font-bold uppercase text-slate-500">{via}</p>}
+          <p className={`${termica ? 'text-xs' : 'text-base'} font-black text-blue-800`}>OS #{os.numero_os}</p>
+          <p className="text-slate-500">Data: {dataAbertura.toLocaleDateString('pt-BR')}</p>
         </div>
       </div>
+
+      {/* Cliente e aparelho */}
+      <div className={`grid ${termica ? 'grid-cols-1' : 'grid-cols-2'} gap-3 rounded border border-slate-200 p-2.5`}>
+        <div>
+          <h3 className="font-bold uppercase text-slate-500 mb-1">Dados do cliente</h3>
+          <p><strong>Nome:</strong> {os.cliente?.nome}</p>
+          <p><strong>CPF/CNPJ:</strong> {os.cliente?.cpfCnpj || 'Não informado'}</p>
+          <p><strong>WhatsApp:</strong> {os.cliente?.whatsapp || 'Não informado'}</p>
+        </div>
+        <div>
+          <h3 className="font-bold uppercase text-slate-500 mb-1">Dados do aparelho</h3>
+          <p><strong>Modelo:</strong> {os.aparelho?.modelo}</p>
+          <p><strong>IMEI / Nº série:</strong> {os.aparelho?.imei1 || 'Não informado'}</p>
+          <p><strong>Senha:</strong> {os.aparelho?.senhaDesbloqueio || 'Sem senha'}</p>
+        </div>
+      </div>
+
+      {/* Checklist de entrada */}
+      {itensChecklist.length > 0 && (
+        <div>
+          <h3 className="font-bold text-slate-800 mb-1">Checklist de entrada</h3>
+          <div className={`grid ${termica ? 'grid-cols-2' : 'grid-cols-4'} gap-1`}>
+            {itensChecklist.map(([item, status]) => (
+              <div key={item} className="flex justify-between gap-1 border border-slate-200 rounded px-1.5 py-0.5">
+                <span className="truncate">{rotuloItemChecklist(item)}</span>
+                <span
+                  className={`font-semibold ${
+                    status === 'OK' ? 'text-emerald-700' : status === 'DEFEITO' ? 'text-rose-700' : 'text-amber-700'
+                  }`}
+                >
+                  {status}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Serviço e valor */}
+      <div className="flex justify-between items-center gap-2 border-y border-slate-200 py-2">
+        <span className="font-medium">{os.servicoRealizado || os.defeitoRelatado || 'Manutenção geral do aparelho'}</span>
+        <span className={`${termica ? 'text-xs' : 'text-sm'} font-black text-slate-900 shrink-0`}>R$ {formatarValor(valorTotal)}</span>
+      </div>
+
+      {/* Garantia e termos configurados */}
+      <div className="space-y-1 text-slate-600">
+        <h4 className="font-bold uppercase text-slate-800">
+          {prazoGarantia > 0 ? `Garantia de ${prazoGarantia} dias — termos e condições` : 'Serviço sem garantia — condições'}
+        </h4>
+        <TermosImpressos texto={cfg.termosGarantiaTexto} />
+      </div>
+
+      {/* Assinaturas */}
+      <div className={`grid ${termica ? 'grid-cols-1 gap-6' : 'grid-cols-2 gap-10'} pt-6 text-center`}>
+        <div className="border-t border-slate-400 pt-1">Assinatura do técnico responsável</div>
+        <div className="border-t border-slate-400 pt-1">Assinatura do cliente</div>
+      </div>
+
+      <div className="border-t border-slate-200 pt-2">
+        <RodapeLojaImpressao cfg={cfg} />
+      </div>
     </div>
+  );
+
+  return (
+    <>
+      {/* Pré-visualização na tela */}
+      <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-start sm:items-center justify-center p-4 overflow-y-auto">
+        <div className="bg-white text-zinc-900 w-full max-w-3xl rounded-xl shadow-2xl p-5 sm:p-8 my-auto">
+          <div className="flex flex-wrap justify-between items-center gap-3 pb-4 mb-5 border-b border-zinc-200">
+            <div>
+              <h2 className="text-lg font-bold text-zinc-800">Comprovante de entrada / Certidão de garantia</h2>
+              <p className="text-xs text-zinc-500">Formato: {NOMES_FORMATO[formato]} (altere em Configurações › Impressão)</p>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => window.print()}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition"
+              >
+                Imprimir / Salvar PDF
+              </button>
+              <button
+                onClick={onClose}
+                className="px-4 py-2 bg-zinc-200 hover:bg-zinc-300 text-zinc-800 rounded-lg text-sm font-medium transition"
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+          <div className="bg-white">{documento(null)}</div>
+        </div>
+      </div>
+
+      {/* Cópia enviada à impressora (só ela sai no papel) */}
+      <DocumentoParaImpressao formato={formato}>
+        <ViasImpressao formato={formato}>{documento}</ViasImpressao>
+      </DocumentoParaImpressao>
+    </>
   );
 };

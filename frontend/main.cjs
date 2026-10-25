@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, shell } = require('electron');
 const path = require('path');
 
 function createWindow() {
@@ -18,6 +18,12 @@ function createWindow() {
 
   mainWindow.loadFile(path.join(__dirname, 'dist', 'index.html'));
 
+  // Links externos (ex.: WhatsApp das mensagens automáticas) abrem no navegador do sistema, nunca dentro do app
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//i.test(url)) shell.openExternal(url);
+    return { action: 'deny' };
+  });
+
   // Intercepta o evento de atalho Ctrl+P ou chamadas de impressão
   mainWindow.webContents.on('before-input-event', (event, input) => {
     if (input.control && input.key.toLowerCase() === 'p') {
@@ -29,7 +35,7 @@ function createWindow() {
   });
 
   // Listener IPC caso queiras disparar impressão diretamente de botões no React
-  ipcMain.handle('print-to-pdf-or-printer', async (event) => {
+  ipcMain.handle('print-to-pdf-or-printer', async () => {
     mainWindow.webContents.print({ silent: false, printBackground: true }, (success, failureReason) => {
       if (!success) console.log('Falha ao imprimir: ', failureReason);
     });
