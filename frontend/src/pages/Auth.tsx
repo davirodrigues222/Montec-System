@@ -3,10 +3,14 @@ import { fazerLogin, cadastrarUsuario, recuperarSenha } from '../services/api';
 
 interface Props {
   onLoginSuccess?: () => void;
+  /** Abre direto no formulário de criar conta (botões "Criar conta" da página inicial). */
+  modoInicial?: 'login' | 'cadastro';
+  /** Volta para a página inicial pública. */
+  onVoltar?: () => void;
 }
 
-export const Auth: React.FC<Props> = ({ onLoginSuccess }) => {
-  const [modo, setModo] = useState<'login' | 'cadastro'>('login');
+export const Auth: React.FC<Props> = ({ onLoginSuccess, modoInicial = 'login', onVoltar }) => {
+  const [modo, setModo] = useState<'login' | 'cadastro'>(modoInicial);
   const [loading, setLoading] = useState(false);
   const [mensagem, setMensagem] = useState<{ tipo: 'sucesso' | 'erro'; texto: string } | null>(null);
 
@@ -35,17 +39,9 @@ export const Auth: React.FC<Props> = ({ onLoginSuccess }) => {
 
     setLoading(true);
     try {
+      // fazerLogin já sincroniza as configurações da conta e avisa as telas (storage_configs_updated)
       const data = await fazerLogin(loginEmail, loginSenha);
-      if (data.user) {
-        const savedConfigs = localStorage.getItem('sig_apple_configs');
-        const configs = savedConfigs ? JSON.parse(savedConfigs) : {};
-        if (data.user.user_metadata?.nome_assistencia) {
-          configs.nomeLoja = data.user.user_metadata.nome_assistencia;
-          localStorage.setItem('sig_apple_configs', JSON.stringify(configs));
-          window.dispatchEvent(new Event('storage_configs_updated'));
-        }
-        if (onLoginSuccess) onLoginSuccess();
-      }
+      if (data.user) onLoginSuccess?.();
     } catch (err: any) {
       console.error('Erro de autenticação:', err);
       let erroTexto = 'E-mail ou senha inválidos.';
@@ -175,7 +171,7 @@ export const Auth: React.FC<Props> = ({ onLoginSuccess }) => {
           </div>
         </div>
 
-        {/* Chamada Principal (Frase Institucional) */}
+        
         <div className="relative z-10 max-w-xl my-10 lg:my-auto">
           {modo === 'login' ? (
             <div className="space-y-6">
@@ -227,6 +223,19 @@ export const Auth: React.FC<Props> = ({ onLoginSuccess }) => {
       {/* ================= PAINEL DE FORMULÁRIO (PRIMEIRO NO MOBILE / DIREITA NO DESKTOP) ================= */}
       <div className="w-full lg:w-[480px] xl:w-[540px] flex flex-col justify-between p-6 sm:p-8 lg:p-14 bg-[#0a0e17] overflow-y-auto order-1 lg:order-2">
         <div className="my-auto max-w-md w-full mx-auto">
+          {onVoltar && (
+            <button
+              type="button"
+              onClick={onVoltar}
+              className="mb-6 inline-flex items-center gap-1.5 text-xs font-semibold text-zinc-400 hover:text-white transition"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+              </svg>
+              Voltar para a página inicial
+            </button>
+          )}
+
           {/* Topo Mobile: Logo Oficial Montec System */}
           <div className="flex lg:hidden items-center space-x-3.5 mb-8">
             <div className="relative w-11 h-11 rounded-xl overflow-hidden shadow-lg shadow-blue-500/25 shrink-0 border border-blue-500/30 bg-[#0d131f] flex items-center justify-center">

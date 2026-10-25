@@ -1,42 +1,143 @@
-import React, { useState, useEffect } from 'react';
-import { fazerLogout } from '../services/api';
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  fazerLogout,
+  obterConfiguracoesLojaSincrono,
+  sincronizarSessaoConfiguracoesLoja,
+  aplicarTemaVisualNoDOM,
+} from '../services/api';
+import type { SecaoCadastro, SecaoConfiguracao } from '../types';
+import { SECOES_CONFIGURACAO } from '../pages/configuracoes/secoes';
+import { useOperador } from '../contexts/OperadorContext';
+import { type AbaSistema, PERMISSAO_POR_SECAO, podeAcessar, podeAcessarAba } from '../services/acesso';
+import { CARGOS, EVENTO_LOJAS_ATUALIZADAS, type Loja, listarLojas } from '../services/cadastros';
 
 interface Props {
   children: React.ReactNode;
-  activeTab: 'dashboard' | 'relatorios' | 'historico' | 'configuracoes' | 'nova-os' | 'garantia-retorno' | 'cadastros';
-  setActiveTab: (tab: 'dashboard' | 'relatorios' | 'historico' | 'configuracoes' | 'nova-os' | 'garantia-retorno' | 'cadastros') => void;
+  activeTab: AbaSistema;
+  setActiveTab: (tab: AbaSistema) => void;
   session?: any;
+  secaoCadastro?: SecaoCadastro;
+  setSecaoCadastro?: (secao: SecaoCadastro) => void;
+  secaoConfiguracao?: SecaoConfiguracao;
+  setSecaoConfiguracao?: (secao: SecaoConfiguracao) => void;
 }
 
-export const Layout: React.FC<Props> = ({ children, activeTab, setActiveTab, session }) => {
+interface ItemMenu {
+  id: AbaSistema;
+  label: string;
+  icone: string[]; // caminhos "d" do ícone SVG
+}
+
+const ITENS_OPERACAO: ItemMenu[] = [
+  { id: 'dashboard', label: 'Painel', icone: ['M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6'] },
+  { id: 'relatorios', label: 'Análises e relatórios', icone: ['M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z'] },
+  { id: 'historico', label: 'Ordens de serviço', icone: ['M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z'] },
+  { id: 'nova-os', label: 'Nova ordem', icone: ['M12 4v16m8-8H4'] },
+  { id: 'garantia-retorno', label: 'Garantias e retornos', icone: ['M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z'] },
+];
+
+const ITEM_CONFIGURACOES: ItemMenu = {
+  id: 'configuracoes',
+  label: 'Configurações',
+  icone: [
+    'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z',
+    'M15 12a3 3 0 11-6 0 3 3 0 016 0z',
+  ],
+};
+
+/** Cadeado discreto nas telas que o perfil do funcionário não permite. */
+const IconeCadeado = ({ className = '' }: { className?: string }) => (
+  <svg className={`w-3.5 h-3.5 shrink-0 ${className}`} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" aria-label="Requer autorização">
+    <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+  </svg>
+);
+
+// Árvore do menu Cadastros: dois grupos para não virar uma lista longa e sem hierarquia
+const GRUPOS_CADASTRO: { titulo: string; itens: { id: SecaoCadastro; label: string; novo?: boolean }[] }[] = [
+  {
+    titulo: 'Atendimento',
+    itens: [
+      { id: 'clientes', label: 'Clientes' },
+      { id: 'servicos', label: 'Serviços' },
+      { id: 'fornecedores', label: 'Fornecedores' },
+    ],
+  },
+  {
+    titulo: 'Empresa',
+    itens: [
+      { id: 'lojas', label: 'Lojas', novo: true },
+      { id: 'funcionarios', label: 'Funcionários', novo: true },
+      { id: 'formas-pagamento', label: 'Formas de pagamento', novo: true },
+    ],
+  },
+];
+
+export const Layout: React.FC<Props> = ({
+  children,
+  activeTab,
+  setActiveTab,
+  session,
+  secaoCadastro,
+  setSecaoCadastro,
+  secaoConfiguracao,
+  setSecaoConfiguracao,
+}) => {
   // Controle de abertura do menu lateral no Mobile/Tablet
   const [menuAberto, setMenuAberto] = useState(false);
 
-  // Dados da Assistência Técnica do Cliente (ex: Sampaio Cell)
-  const [nomeLoja, setNomeLoja] = useState<string>('Sampaio Cell');
+  // Submenu Cadastros: abre sozinho quando a tela ativa é um cadastro
+  const [cadastrosExpandido, setCadastrosExpandido] = useState(activeTab === 'cadastros');
+  useEffect(() => {
+    if (activeTab === 'cadastros') setCadastrosExpandido(true);
+  }, [activeTab]);
+
+  const abrirSecaoCadastro = (secao: SecaoCadastro) => {
+    setSecaoCadastro?.(secao);
+    setActiveTab('cadastros');
+    setMenuAberto(false);
+  };
+
+  // Submenu Configurações: mesma árvore de Cadastros, abre sozinho quando a tela ativa é uma configuração
+  const [configuracoesExpandido, setConfiguracoesExpandido] = useState(activeTab === 'configuracoes');
+  useEffect(() => {
+    if (activeTab === 'configuracoes') setConfiguracoesExpandido(true);
+  }, [activeTab]);
+
+  const abrirSecaoConfiguracao = (secao: SecaoConfiguracao) => {
+    setSecaoConfiguracao?.(secao);
+    setActiveTab('configuracoes');
+    setMenuAberto(false);
+  };
+
+  // Identidade da assistência técnica da conta (preenchida por carregarConfigs)
+  const [nomeLoja, setNomeLoja] = useState<string>('Minha Assistência');
   const [subtitulo, setSubtitulo] = useState<string>('Assistência Técnica');
   const [logoUrl, setLogoUrl] = useState<string>('');
 
-  const carregarConfigs = () => {
-    const saved = localStorage.getItem('sig_apple_configs');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (parsed.nomeLoja) setNomeLoja(parsed.nomeLoja);
-        if (parsed.subtitulo) setSubtitulo(parsed.subtitulo);
-        if (parsed.logoUrl) setLogoUrl(parsed.logoUrl);
-      } catch (e) {
-        console.error('Erro ao ler configs salvas:', e);
-      }
-    }
+  const userId: string | undefined = session?.user?.id;
 
-    if (session?.user?.user_metadata?.nome_assistencia) {
-      setNomeLoja(session.user.user_metadata.nome_assistencia);
-    }
+  // Lê apenas a configuração da conta ativa (cofre `sig_apple_configs_user_<id>`).
+  // Nunca dispara o evento storage_configs_updated, para não entrar em loop com o listener abaixo.
+  const carregarConfigs = () => {
+    const cfg = obterConfiguracoesLojaSincrono(session?.user);
+    setNomeLoja(cfg.nomeLoja || session?.user?.user_metadata?.nome_assistencia || 'Minha Assistência');
+    setSubtitulo(cfg.subtitulo || 'Assistência Técnica');
+    // Conta sem logo (ou troca de conta): limpa a imagem da sessão anterior
+    setLogoUrl(cfg.logoUrl || '');
+    aplicarTemaVisualNoDOM(cfg.temaVisual);
   };
 
+  // Ao trocar de conta: zera a identidade visual anterior e sincroniza a configuração da nova conta
   useEffect(() => {
+    setLogoUrl('');
+    if (userId) {
+      sincronizarSessaoConfiguracoesLoja(session.user);
+    }
     carregarConfigs();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
+
+  useEffect(() => {
     window.addEventListener('storage_configs_updated', carregarConfigs);
     return () => window.removeEventListener('storage_configs_updated', carregarConfigs);
   }, [session]);
@@ -54,13 +155,83 @@ export const Layout: React.FC<Props> = ({ children, activeTab, setActiveTab, ses
     setMenuAberto(false);
   };
 
-  const userName = session?.user?.user_metadata?.nome_responsavel || 'Davi Sampaio';
+  // Menu mostra todas as telas; as que o perfil não permite ganham um cadeado e pedem autorização ao abrir
+  const { operador, trocarFuncionario } = useOperador();
+  const podeAba = (aba: AbaSistema) => podeAcessarAba(operador, aba);
+  const podeSecao = (secao: SecaoCadastro) => podeAcessar(operador, PERMISSAO_POR_SECAO[secao]);
+
+  const renderItemMenu = (item: ItemMenu) => {
+    const ativo = activeTab === item.id;
+    const bloqueado = !podeAba(item.id);
+    return (
+      <button
+        key={item.id}
+        onClick={() => mudarAba(item.id)}
+        aria-current={ativo ? 'page' : undefined}
+        title={bloqueado ? 'Requer autorização de um administrador' : undefined}
+        className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-bold transition-all ${
+          ativo ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20' : 'text-zinc-300 hover:text-white hover:bg-zinc-800/50'
+        }`}
+      >
+        <div className="flex items-center space-x-3.5">
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+            {item.icone.map((d) => (
+              <path key={d} strokeLinecap="round" strokeLinejoin="round" d={d} />
+            ))}
+          </svg>
+          <span>{item.label}</span>
+        </div>
+        {bloqueado ? (
+          <IconeCadeado className={ativo ? 'text-white' : 'text-zinc-500'} />
+        ) : (
+          ativo && <span className="w-2 h-2 rounded-full bg-white" />
+        )}
+      </button>
+    );
+  };
+
+  // Loja exibida no cabeçalho: a primeira loja ativa do funcionário; sem vínculo, a loja principal
+  const [lojas, setLojas] = useState<Loja[]>([]);
+  const [menuPerfilAberto, setMenuPerfilAberto] = useState(false);
+  const menuPerfilRef = useRef<HTMLDivElement>(null);
+  // Fecha o menu do perfil ao clicar fora dele (em qualquer lugar da página) ou com Esc
+  useEffect(() => {
+    if (!menuPerfilAberto) return;
+    const aoClicar = (e: MouseEvent) => {
+      if (!menuPerfilRef.current?.contains(e.target as Node)) setMenuPerfilAberto(false);
+    };
+    const aoTeclar = (e: KeyboardEvent) => e.key === 'Escape' && setMenuPerfilAberto(false);
+    document.addEventListener('mousedown', aoClicar);
+    document.addEventListener('keydown', aoTeclar);
+    return () => {
+      document.removeEventListener('mousedown', aoClicar);
+      document.removeEventListener('keydown', aoTeclar);
+    };
+  }, [menuPerfilAberto]);
+  useEffect(() => {
+    const carregarLojas = () => listarLojas().then(setLojas).catch(() => setLojas([]));
+    carregarLojas();
+    window.addEventListener(EVENTO_LOJAS_ATUALIZADAS, carregarLojas);
+    return () => window.removeEventListener(EVENTO_LOJAS_ATUALIZADAS, carregarLojas);
+  }, [session?.user?.id]);
+
+  const lojasAtivas = lojas.filter((l) => l.ativo);
+  const lojasDoOperador = lojasAtivas.filter((l) => operador?.lojas.includes(l.id_loja));
+  const lojaAtual = lojasDoOperador[0] || lojasAtivas.find((l) => l.principal) || lojasAtivas[0] || null;
+  const nomeLojaCabecalho = lojaAtual?.nome || nomeLoja;
+  const detalheLojaCabecalho = lojaAtual
+    ? [lojaAtual.cidade, lojaAtual.uf].filter(Boolean).join(' - ') || (lojaAtual.principal ? 'Loja principal' : 'Loja')
+    : subtitulo;
+  const outrasLojas = Math.max(0, lojasDoOperador.length - 1);
+
+  const userName = operador?.nome || session?.user?.user_metadata?.nome_responsavel || 'Usuário';
+  const userCargo = operador?.proprietario ? 'Proprietário da conta' : operador ? CARGOS[operador.cargo]?.label : '';
   const userInitials = userName
     .split(' ')
     .filter(Boolean)
     .slice(0, 2)
     .map((n: string) => n[0].toUpperCase())
-    .join('') || 'DS';
+    .join('') || '?';
 
   const titulosAbas: Record<string, string> = {
     dashboard: 'Painel',
@@ -134,102 +305,7 @@ export const Layout: React.FC<Props> = ({ children, activeTab, setActiveTab, ses
               <span className="block px-3 text-xs font-bold text-zinc-400 tracking-wider uppercase mb-2.5">
                 OPERAÇÃO
               </span>
-              <div className="space-y-1.5">
-                <button
-                  onClick={() => mudarAba('dashboard')}
-                  className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-bold transition-all ${
-                    activeTab === 'dashboard'
-                      ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
-                      : 'text-zinc-300 hover:text-white hover:bg-zinc-800/50'
-                  }`}
-                >
-                  <div className="flex items-center space-x-3.5">
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-                    </svg>
-                    <span>Painel</span>
-                  </div>
-                  {activeTab === 'dashboard' && (
-                    <span className="w-2 h-2 rounded-full bg-white" />
-                  )}
-                </button>
-
-                <button
-                  onClick={() => mudarAba('relatorios')}
-                  className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-bold transition-all ${
-                    activeTab === 'relatorios'
-                      ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
-                      : 'text-zinc-300 hover:text-white hover:bg-zinc-800/50'
-                  }`}
-                >
-                  <div className="flex items-center space-x-3.5">
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                    </svg>
-                    <span>Análises e relatórios</span>
-                  </div>
-                  {activeTab === 'relatorios' && (
-                    <span className="w-2 h-2 rounded-full bg-white" />
-                  )}
-                </button>
-
-                <button
-                  onClick={() => mudarAba('historico')}
-                  className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-bold transition-all ${
-                    activeTab === 'historico'
-                      ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
-                      : 'text-zinc-300 hover:text-white hover:bg-zinc-800/50'
-                  }`}
-                >
-                  <div className="flex items-center space-x-3.5">
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
-                    <span>Ordens de serviço</span>
-                  </div>
-                  {activeTab === 'historico' && (
-                    <span className="w-2 h-2 rounded-full bg-white" />
-                  )}
-                </button>
-
-                <button
-                  onClick={() => mudarAba('nova-os')}
-                  className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-bold transition-all ${
-                    activeTab === 'nova-os'
-                      ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
-                      : 'text-zinc-300 hover:text-white hover:bg-zinc-800/50'
-                  }`}
-                >
-                  <div className="flex items-center space-x-3.5">
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-                    </svg>
-                    <span>Nova ordem</span>
-                  </div>
-                  {activeTab === 'nova-os' && (
-                    <span className="w-2 h-2 rounded-full bg-white" />
-                  )}
-                </button>
-
-                <button
-                  onClick={() => mudarAba('garantia-retorno')}
-                  className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-bold transition-all ${
-                    activeTab === 'garantia-retorno'
-                      ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
-                      : 'text-zinc-300 hover:text-white hover:bg-zinc-800/50'
-                  }`}
-                >
-                  <div className="flex items-center space-x-3.5">
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                    </svg>
-                    <span>Garantias e retornos</span>
-                  </div>
-                  {activeTab === 'garantia-retorno' && (
-                    <span className="w-2 h-2 rounded-full bg-white" />
-                  )}
-                </button>
-              </div>
+              <div className="space-y-1.5">{ITENS_OPERACAO.map(renderItemMenu)}</div>
             </div>
 
             <div>
@@ -237,11 +313,14 @@ export const Layout: React.FC<Props> = ({ children, activeTab, setActiveTab, ses
                 ADMINISTRAÇÃO
               </span>
               <div className="space-y-1.5">
+                {/* Cadastros: item pai expansível (não navega, só abre/fecha a árvore) */}
                 <button
-                  onClick={() => mudarAba('cadastros')}
+                  onClick={() => setCadastrosExpandido((v) => !v)}
+                  aria-expanded={cadastrosExpandido}
+                  aria-controls="submenu-cadastros"
                   className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-bold transition-all ${
                     activeTab === 'cadastros'
-                      ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
+                      ? 'text-white bg-zinc-800/50'
                       : 'text-zinc-300 hover:text-white hover:bg-zinc-800/50'
                   }`}
                 >
@@ -251,30 +330,112 @@ export const Layout: React.FC<Props> = ({ children, activeTab, setActiveTab, ses
                     </svg>
                     <span>Cadastros</span>
                   </div>
-                  {activeTab === 'cadastros' && (
-                    <span className="w-2 h-2 rounded-full bg-white" />
-                  )}
+                  <svg
+                    className={`w-4 h-4 text-zinc-400 transition-transform duration-200 ${cadastrosExpandido ? 'rotate-90' : ''}`}
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                  </svg>
                 </button>
 
+                {cadastrosExpandido && (
+                  <div id="submenu-cadastros" className="ml-6 pl-3 border-l border-zinc-800/80 space-y-3 py-1">
+                    {GRUPOS_CADASTRO.map((grupo) => (
+                      <div key={grupo.titulo} className="space-y-0.5">
+                        <span className="block px-3 pt-1 pb-1 text-[10px] font-bold text-zinc-500 tracking-wider uppercase">
+                          {grupo.titulo}
+                        </span>
+                        {grupo.itens.map((item) => {
+                          const ativo = activeTab === 'cadastros' && secaoCadastro === item.id;
+                          const bloqueado = !podeSecao(item.id);
+                          return (
+                            <button
+                              key={item.id}
+                              onClick={() => abrirSecaoCadastro(item.id)}
+                              aria-current={ativo ? 'page' : undefined}
+                              title={bloqueado ? 'Requer autorização de um administrador' : undefined}
+                              className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-[13px] font-semibold transition-all ${
+                                ativo
+                                  ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
+                                  : 'text-zinc-400 hover:text-white hover:bg-zinc-800/50'
+                              }`}
+                            >
+                              <span>{item.label}</span>
+                              {bloqueado ? (
+                                <IconeCadeado className={ativo ? 'text-white' : 'text-zinc-500'} />
+                              ) : (
+                                item.novo &&
+                                !ativo && (
+                                  <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                                    Novo
+                                  </span>
+                                )
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Configurações: item pai expansível com as seções como subitens */}
                 <button
-                  onClick={() => mudarAba('configuracoes')}
+                  onClick={() => setConfiguracoesExpandido((v) => !v)}
+                  aria-expanded={configuracoesExpandido}
+                  aria-controls="submenu-configuracoes"
                   className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-bold transition-all ${
                     activeTab === 'configuracoes'
-                      ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
+                      ? 'text-white bg-zinc-800/50'
                       : 'text-zinc-300 hover:text-white hover:bg-zinc-800/50'
                   }`}
                 >
                   <div className="flex items-center space-x-3.5">
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      {ITEM_CONFIGURACOES.icone.map((d) => (
+                        <path key={d} strokeLinecap="round" strokeLinejoin="round" d={d} />
+                      ))}
                     </svg>
-                    <span>Configurações</span>
+                    <span>{ITEM_CONFIGURACOES.label}</span>
                   </div>
-                  {activeTab === 'configuracoes' && (
-                    <span className="w-2 h-2 rounded-full bg-white" />
-                  )}
+                  <svg
+                    className={`w-4 h-4 text-zinc-400 transition-transform duration-200 ${configuracoesExpandido ? 'rotate-90' : ''}`}
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                  </svg>
                 </button>
+
+                {configuracoesExpandido && (
+                  <div id="submenu-configuracoes" className="ml-6 pl-3 border-l border-zinc-800/80 space-y-0.5 py-1">
+                    {SECOES_CONFIGURACAO.map((item) => {
+                      const ativo = activeTab === 'configuracoes' && secaoConfiguracao === item.id;
+                      const bloqueado = !podeAba('configuracoes');
+                      return (
+                        <button
+                          key={item.id}
+                          onClick={() => abrirSecaoConfiguracao(item.id)}
+                          aria-current={ativo ? 'page' : undefined}
+                          title={bloqueado ? 'Requer autorização de um administrador' : item.descricao}
+                          className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-[13px] font-semibold text-left transition-all ${
+                            ativo
+                              ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
+                              : 'text-zinc-400 hover:text-white hover:bg-zinc-800/50'
+                          }`}
+                        >
+                          <span>{item.rotulo}</span>
+                          {bloqueado && <IconeCadeado className={ativo ? 'text-white' : 'text-zinc-500'} />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </div>
           </nav>
@@ -289,12 +450,23 @@ export const Layout: React.FC<Props> = ({ children, activeTab, setActiveTab, ses
               </div>
               <div className="truncate min-w-0">
                 <p className="text-xs font-bold text-white truncate">{userName}</p>
-                <p className="text-[11px] text-zinc-400 truncate">Administrador</p>
+                <p className="text-[11px] text-zinc-400 truncate">{userCargo}</p>
               </div>
             </div>
             <button
+              onClick={trocarFuncionario}
+              title="Trocar funcionário (bloquear tela)"
+              aria-label="Trocar funcionário"
+              className="p-2 text-zinc-400 hover:text-blue-400 hover:bg-blue-500/10 rounded-xl transition shrink-0 ml-auto"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+              </svg>
+            </button>
+            <button
               onClick={handleLogout}
-              title="Desconectar do sistema"
+              title="Sair da conta (desconectar do sistema)"
+              aria-label="Sair da conta"
               className="p-2 text-zinc-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-xl transition shrink-0 ml-2"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
@@ -328,32 +500,103 @@ export const Layout: React.FC<Props> = ({ children, activeTab, setActiveTab, ses
               <span className="font-bold text-white text-xs sm:text-sm truncate">
                 {titulosAbas[activeTab] || 'Painel'}
               </span>
+              {activeTab === 'cadastros' && secaoCadastro && (
+                <>
+                  <span className="text-zinc-600">/</span>
+                  <span className="font-bold text-blue-400 text-xs sm:text-sm truncate">
+                    {GRUPOS_CADASTRO.flatMap((g) => g.itens).find((i) => i.id === secaoCadastro)?.label}
+                  </span>
+                </>
+              )}
+              {activeTab === 'configuracoes' && secaoConfiguracao && (
+                <>
+                  <span className="text-zinc-600">/</span>
+                  <span className="font-bold text-blue-400 text-xs sm:text-sm truncate">
+                    {SECOES_CONFIGURACAO.find((s) => s.id === secaoConfiguracao)?.rotulo}
+                  </span>
+                </>
+              )}
             </div>
           </div>
 
-          {/* Topo Direito: Identidade da Assistência Técnica do Cliente */}
-          <div className="flex items-center space-x-2 sm:space-x-3 bg-[#0d121c] border border-zinc-800/80 rounded-xl px-2.5 sm:px-3.5 py-1.5 shadow-sm max-w-[170px] sm:max-w-xs shrink-0">
-            {logoUrl ? (
-              <img
-                src={logoUrl}
-                alt={nomeLoja}
-                className="w-7 h-7 sm:w-8 sm:h-8 object-contain rounded-lg bg-zinc-950 p-0.5 sm:p-1 border border-zinc-800 shrink-0"
-              />
-            ) : (
-              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-blue-600/15 border border-blue-500/30 flex items-center justify-center text-blue-400 font-extrabold text-xs shrink-0">
-                {nomeLoja.charAt(0).toUpperCase()}
+          {/* Topo Direito: loja cadastrada + perfil do funcionário identificado */}
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+            {/* Loja */}
+            <div
+              className="flex items-center space-x-2 sm:space-x-3 bg-[#0d121c] border border-zinc-800/80 rounded-xl px-2 sm:px-3.5 py-1.5 shadow-sm max-w-[150px] sm:max-w-[220px]"
+              title={lojaAtual ? `Loja: ${lojaAtual.nome}` : nomeLojaCabecalho}
+            >
+              {logoUrl ? (
+                <img
+                  src={logoUrl}
+                  alt={nomeLojaCabecalho}
+                  className="w-7 h-7 sm:w-8 sm:h-8 object-contain rounded-lg bg-zinc-950 p-0.5 sm:p-1 border border-zinc-800 shrink-0"
+                />
+              ) : (
+                <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-blue-600/15 border border-blue-500/30 flex items-center justify-center text-blue-400 font-extrabold text-xs shrink-0">
+                  {nomeLojaCabecalho.charAt(0).toUpperCase()}
+                </div>
+              )}
+              <div className="text-left pr-1 min-w-0 hidden sm:block">
+                <div className="flex items-center space-x-1.5">
+                  <h4 className="text-xs font-bold text-white truncate leading-tight">{nomeLojaCabecalho}</h4>
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0 animate-pulse" title="Loja conectada" />
+                </div>
+                <p className="text-[10px] text-zinc-400 truncate mt-0.5 font-medium">
+                  {detalheLojaCabecalho}
+                  {outrasLojas > 0 && <span className="text-blue-400"> +{outrasLojas}</span>}
+                </p>
               </div>
-            )}
-            <div className="text-left pr-1 min-w-0">
-              <div className="flex items-center space-x-1.5">
-                <h4 className="text-[11px] sm:text-xs font-bold text-white truncate leading-tight">
-                  {nomeLoja}
-                </h4>
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0 animate-pulse" title="Assistência Conectada" />
-              </div>
-              <p className="text-[9px] sm:text-[10px] text-zinc-400 truncate mt-0.5 font-medium hidden sm:block">
-                {subtitulo}
-              </p>
+            </div>
+
+            {/* Perfil do funcionário */}
+            <div className="relative" ref={menuPerfilRef}>
+              <button
+                type="button"
+                onClick={() => setMenuPerfilAberto((v) => !v)}
+                aria-haspopup="menu"
+                aria-expanded={menuPerfilAberto}
+                className="flex items-center space-x-2 sm:space-x-3 bg-[#0d121c] border border-zinc-800/80 hover:border-zinc-700 rounded-xl px-2 sm:px-3 py-1.5 shadow-sm max-w-[150px] sm:max-w-[220px] transition"
+              >
+                <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-slate-800 border border-slate-700/60 flex items-center justify-center text-[11px] font-extrabold text-white shrink-0">
+                  {userInitials}
+                </div>
+                <div className="text-left min-w-0 hidden sm:block">
+                  <h4 className="text-xs font-bold text-white truncate leading-tight">{userName}</h4>
+                  <p className="text-[10px] text-zinc-400 truncate mt-0.5 font-medium">{userCargo}</p>
+                </div>
+                <svg className="w-3.5 h-3.5 text-zinc-500 shrink-0 hidden sm:block" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+
+              {menuPerfilAberto && (
+                <>
+                  <div role="menu" className="absolute right-0 mt-2 w-60 z-50 bg-[#0c101a] border border-zinc-800 rounded-xl shadow-2xl overflow-hidden">
+                    <div className="px-4 py-3 border-b border-zinc-800/60">
+                      <p className="text-xs font-bold text-white truncate">{userName}</p>
+                      <p className="text-[11px] text-zinc-400 truncate">{userCargo}</p>
+                      {lojaAtual && <p className="text-[11px] text-zinc-500 truncate mt-1">Loja: {lojaAtual.nome}</p>}
+                    </div>
+                    {/* Sai só do funcionário: a conta continua conectada e volta a tela de código e senha.
+                        Desconectar a conta fica apenas no botão do rodapé da barra lateral. */}
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setMenuPerfilAberto(false);
+                        trocarFuncionario();
+                      }}
+                      className="w-full text-left px-4 py-2.5 text-xs font-semibold text-rose-400 hover:bg-rose-500/10 transition"
+                    >
+                      Sair do funcionário
+                      <span className="block text-[10px] font-medium text-zinc-500 mt-0.5">
+                        Pede o código e a senha de novo
+                      </span>
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </header>

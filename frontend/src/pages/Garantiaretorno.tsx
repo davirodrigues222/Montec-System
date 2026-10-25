@@ -1,9 +1,16 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { buscarOrdensServico, registrarGarantiaOS } from '../services/api';
+import {
+  buscarOrdensServico,
+  buscarServicosCadastrados,
+  registrarGarantiaOS,
+  validarElegibilidadeGarantiaOS,
+  type ResultadoElegibilidadeGarantia,
+} from '../services/api';
 import type { OrdemServico } from '../types';
 
 export const GarantiaRetorno: React.FC = () => {
   const [ordens, setOrdens] = useState<OrdemServico[]>([]);
+  const [servicosCadastrados, setServicosCadastrados] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [termoBusca, setTermoBusca] = useState('');
   const [osSelecionada, setOsSelecionada] = useState<OrdemServico | null>(null);
@@ -15,16 +22,28 @@ export const GarantiaRetorno: React.FC = () => {
   const [fretePeca, setFretePeca] = useState<number | ''>('');
   const [salvando, setSalvando] = useState(false);
 
+  // Regra de Elegibilidade da Garantia (Sem limite fixo de 90 dias, respeita prazo individual e flag Sem Garantia)
+  const checarElegibilidade = (os: OrdemServico, listaServicos = servicosCadastrados): ResultadoElegibilidadeGarantia => {
+    return validarElegibilidadeGarantiaOS(os, { servicosCadastrados: listaServicos });
+  };
+
   const carregarOrdens = async () => {
     setLoading(true);
     try {
-      const data = await buscarOrdensServico();
-      setOrdens(Array.isArray(data) ? data : []);
-      // Seleciona a primeira ordem elegível como padrão ao abrir
-      if (Array.isArray(data) && data.length > 0 && !osSelecionada) {
-        const primeiraElegivel = data.find((os) => os.status_os === 'ENTREGUE' || os.status_os === 'PRONTO');
-        if (primeiraElegivel) setOsSelecionada(primeiraElegivel);
-      }
+      const [listaOrdens, listaServicos] = await Promise.all([
+        buscarOrdensServico(),
+        buscarServicosCadastrados(),
+      ]);
+
+      setOrdens(listaOrdens);
+      setServicosCadastrados(listaServicos);
+
+      // Mantém a OS já selecionada (se continuar elegível); senão, seleciona a primeira elegível
+      const elegivel = (os: OrdemServico) => checarElegibilidade(os, listaServicos).elegivel;
+      const osAtualizada = osSelecionada && listaOrdens.find((o) => o.id_os === osSelecionada.id_os);
+      setOsSelecionada(
+        osAtualizada && elegivel(osAtualizada) ? osAtualizada : listaOrdens.find(elegivel) || null
+      );
     } catch (err) {
       console.error('Erro ao carregar ordens para garantia:', err);
       setOrdens([]);
@@ -36,22 +55,6 @@ export const GarantiaRetorno: React.FC = () => {
   useEffect(() => {
     carregarOrdens();
   }, []);
-
-  // Regra de Elegibilidade da Garantia (Cobertura ativa e até 90 dias)
-  const checarElegibilidade = (os: OrdemServico): { elegivel: boolean; motivo?: string } => {
-    if (os.possuiGarantia === false) {
-      return { elegivel: false, motivo: 'Serviço cadastrado sem cobertura de garantia.' };
-    }
-    if (os.data_abertura) {
-      const dias = Math.floor(
-        (new Date().getTime() - new Date(os.data_abertura).getTime()) / (1000 * 60 * 60 * 24)
-      );
-      if (dias > 90) {
-        return { elegivel: false, motivo: `Garantia expirada há ${dias} dias (limite de 90 dias).` };
-      }
-    }
-    return { elegivel: true };
-  };
 
   // Filtragem da Lista de Ordens
   const ordensFiltradas = useMemo(() => {
@@ -65,10 +68,33 @@ export const GarantiaRetorno: React.FC = () => {
     });
   }, [ordens, termoBusca]);
 
+  // Elegibilidade da OS atualmente selecionada
+  const validacaoSelecionada = useMemo(() => {
+    if (!osSelecionada) return null;
+    return checarElegibilidade(osSelecionada);
+  }, [osSelecionada, servicosCadastrados]);
+
+  // Clique em uma OS da listagem lateral
+  const handleSelecionarOS = (os: OrdemServico) => {
+    const validacao = checarElegibilidade(os);
+    if (!validacao.elegivel) {
+      alert(validacao.motivo || 'Esta Ordem de Serviço não é elegível para retorno em garantia.');
+      return;
+    }
+    setOsSelecionada(os);
+  };
+
   // Submissão do Retorno de Garantia
   const handleRegistrarRetorno = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!osSelecionada) return;
+
+    // Validação rigorosa antes de confirmar o retorno
+    const validacao = checarElegibilidade(osSelecionada);
+    if (!validacao.elegivel) {
+      alert(validacao.motivo || 'Esta Ordem de Serviço não é elegível para retorno em garantia.');
+      return;
+    }
 
     if (!defeitoApresentado.trim()) {
       alert('Por favor, informe o defeito apresentado no retorno.');
@@ -91,6 +117,8 @@ export const GarantiaRetorno: React.FC = () => {
           custoPecaGarantia: numCustoPeca,
           freteGarantia: numFretePeca,
           prejuizoTotalGarantia: prejuizoTotal,
+          prazoGarantiaDias: validacao.prazoDias,
+          diasDecorridos: validacao.diasDecorridos,
         },
         `Retorno em Garantia: ${defeitoApresentado} (Peça: ${pecaSubstituida || 'N/A'} | Custo: R$ ${numCustoPeca.toFixed(2)} | Frete: R$ ${numFretePeca.toFixed(2)})`
       );
@@ -103,7 +131,7 @@ export const GarantiaRetorno: React.FC = () => {
       await carregarOrdens();
     } catch (err: any) {
       console.error('Erro ao registrar garantia:', err);
-      alert(`Falha ao registrar garantia: ${err.message || 'Erro inesperado.'}`);
+      alert(err.message || 'Falha ao registrar garantia.');
     } finally {
       setSalvando(false);
     }
@@ -128,16 +156,16 @@ export const GarantiaRetorno: React.FC = () => {
           Garantias e retornos
         </h2>
         <p className="text-xs text-zinc-400 mt-1">
-          Registre retornos dentro do prazo e acompanhe o impacto financeiro.
+          Registre retornos dentro do prazo de garantia configurado em cada OS e acompanhe o impacto financeiro.
         </p>
       </div>
 
       {/* ================= GRADE PRINCIPAL (2 COLUNAS DO FIGMA) ================= */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* COLUNA ESQUERDA: SELECIONAR ORDEM CONCLUÍDA */}
+        {/* COLUNA ESQUERDA (Lg: 4/12): SELECIONAR ORDEM CONCLUÍDA */}
         <div className="lg:col-span-4 bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-5 space-y-4 shadow-sm">
           <span className="block text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
-            SELECIONAR ORDEM CONCLUÍDA
+            SELECIONAR ORDEM DE SERVIÇO
           </span>
 
           {/* Campo de Busca com Lupa */}
@@ -160,23 +188,35 @@ export const GarantiaRetorno: React.FC = () => {
             />
           </div>
 
-          {/* Lista de Ordens Elegíveis */}
+          {/* Lista de Ordens */}
           <div className="space-y-2.5 max-h-[560px] overflow-y-auto pr-1">
             {ordensFiltradas.length === 0 ? (
               <p className="text-xs text-zinc-400 text-center py-8">Nenhuma ordem encontrada.</p>
             ) : (
               ordensFiltradas.map((os) => {
-                const { elegivel } = checarElegibilidade(os);
+                const validacao = checarElegibilidade(os);
                 const isSelected = osSelecionada?.id_os === os.id_os;
+
+                let labelStatusGarantia = 'Inelegível';
+                if (validacao.elegivel) {
+                  labelStatusGarantia = `Elegível (${validacao.diasRestantes}d restantes)`;
+                } else if (validacao.codigo === 'SEM_GARANTIA') {
+                  labelStatusGarantia = 'Sem garantia';
+                } else if (validacao.codigo === 'PRAZO_EXPIRADO') {
+                  labelStatusGarantia = `Expirada (${validacao.prazoDias}d)`;
+                }
 
                 return (
                   <div
                     key={os.id_os}
-                    onClick={() => setOsSelecionada(os)}
-                    className={`p-3.5 rounded-xl border cursor-pointer transition-all ${
-                      isSelected
-                        ? 'border-blue-500 bg-blue-600/10 shadow-sm'
-                        : 'border-zinc-800/80 bg-[#080c14] hover:border-zinc-700'
+                    onClick={() => handleSelecionarOS(os)}
+                    title={validacao.elegivel ? `Garantia de ${validacao.prazoDias} dias vigente` : validacao.motivo}
+                    className={`p-3.5 rounded-xl border transition-all ${
+                      !validacao.elegivel
+                        ? 'opacity-45 border-zinc-900 bg-[#080c14]/60 cursor-not-allowed'
+                        : isSelected
+                        ? 'border-blue-500 bg-blue-600/10 shadow-sm cursor-pointer'
+                        : 'border-zinc-800/80 bg-[#080c14] hover:border-zinc-700 cursor-pointer'
                     }`}
                   >
                     <div className="flex items-center justify-between mb-1">
@@ -185,10 +225,14 @@ export const GarantiaRetorno: React.FC = () => {
                       </span>
                       <span
                         className={`text-[11px] font-semibold ${
-                          elegivel ? 'text-emerald-400' : 'text-zinc-400'
+                          validacao.elegivel
+                            ? 'text-emerald-400'
+                            : validacao.codigo === 'SEM_GARANTIA'
+                            ? 'text-rose-400'
+                            : 'text-amber-400'
                         }`}
                       >
-                        {elegivel ? 'Elegível' : 'Inelegível'}
+                        {labelStatusGarantia}
                       </span>
                     </div>
 
@@ -196,9 +240,14 @@ export const GarantiaRetorno: React.FC = () => {
                       {os.cliente?.nome || 'Cliente Balcão'}
                     </p>
 
-                    <p className="text-[11px] text-zinc-400 truncate mt-0.5">
-                      {os.aparelho?.modelo || 'Smartphone'}
-                    </p>
+                    <div className="flex items-center justify-between mt-0.5">
+                      <p className="text-[11px] text-zinc-400 truncate">
+                        {os.aparelho?.modelo || 'Smartphone'}
+                      </p>
+                      <span className="text-[10px] text-zinc-500 font-medium">
+                        {validacao.prazoDias > 0 ? `Prazo: ${validacao.prazoDias}d` : 'Sem cobertura'}
+                      </span>
+                    </div>
                   </div>
                 );
               })
@@ -206,12 +255,12 @@ export const GarantiaRetorno: React.FC = () => {
           </div>
         </div>
 
-        {/* COLUNA DIREITA: FORMULÁRIO DO FIGMA */}
+        {/* COLUNA DIREITA (Lg: 8/12): FORMULÁRIO DO FIGMA */}
         <div className="lg:col-span-8 bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-6 shadow-sm">
-          {osSelecionada ? (
+          {osSelecionada && validacaoSelecionada ? (
             <form onSubmit={handleRegistrarRetorno} className="space-y-5">
               {/* Linha Topo: Ordem Selecionada e Status */}
-              <div className="flex items-center justify-between pb-3 border-b border-zinc-800/60">
+              <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-zinc-800/60">
                 <div>
                   <span className="block text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
                     ORDEM SELECIONADA
@@ -221,12 +270,31 @@ export const GarantiaRetorno: React.FC = () => {
                   </h3>
                 </div>
 
-                <div>
+                <div className="flex items-center space-x-2">
+                  <span className={`inline-flex items-center px-3 py-1 rounded-full text-[11px] font-semibold border ${
+                    validacaoSelecionada.elegivel
+                      ? 'bg-blue-500/10 text-blue-400 border-blue-500/20'
+                      : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                  }`}>
+                    {validacaoSelecionada.elegivel
+                      ? `Garantia: ${validacaoSelecionada.prazoDias} dias (Restam ${validacaoSelecionada.diasRestantes}d)`
+                      : validacaoSelecionada.codigo === 'SEM_GARANTIA'
+                      ? 'Sem Garantia'
+                      : 'Garantia Expirada'}
+                  </span>
+
                   <span className="inline-flex items-center px-3 py-1 rounded-full text-[11px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                     {osSelecionada.status_os === 'ENTREGUE' ? 'Entregue' : osSelecionada.status_os}
                   </span>
                 </div>
               </div>
+
+              {/* Banner caso a OS selecionada seja inelegível */}
+              {!validacaoSelecionada.elegivel && (
+                <div className="p-4 bg-rose-500/10 border border-rose-500/30 rounded-xl text-xs text-rose-300 font-semibold">
+                  ⚠️ {validacaoSelecionada.motivo}
+                </div>
+              )}
 
               {/* Card Resumo do Atendimento */}
               <div className="p-4 bg-[#080c14] border border-zinc-800/80 rounded-xl space-y-1">
@@ -236,65 +304,80 @@ export const GarantiaRetorno: React.FC = () => {
                 <p className="text-xs text-zinc-400">
                   Serviço original: <span className="text-zinc-300 font-medium">{osSelecionada.servicoRealizado || osSelecionada.defeitoRelatado || 'Manutenção geral'}</span>
                 </p>
+                <p className="text-[11px] text-zinc-500">
+                  Data de abertura: {osSelecionada.data_abertura ? new Date(osSelecionada.data_abertura).toLocaleDateString('pt-BR') : '—'} ·{' '}
+                  {validacaoSelecionada.prazoDias > 0
+                    ? `${validacaoSelecionada.diasDecorridos} dia(s) decorrido(s) de ${validacaoSelecionada.prazoDias} dias`
+                    : 'Sem cobertura de garantia'}
+                </p>
               </div>
 
-              {/* Defeito Apresentado no Retorno */}
-              <div>
-                <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
-                  DEFEITO APRESENTADO NO RETORNO *
-                </label>
-                <textarea
-                  rows={4}
-                  required
-                  value={defeitoApresentado}
-                  onChange={(e) => setDefeitoApresentado(e.target.value)}
-                  placeholder="Descreva o problema relatado nesta volta..."
-                  className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs text-white placeholder-zinc-400 outline-none focus:border-blue-500 transition"
-                />
-              </div>
-
-              {/* Peça Substituída na Garantia */}
-              <div>
-                <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
-                  PEÇA SUBSTITUÍDA NA GARANTIA
-                </label>
-                <input
-                  type="text"
-                  value={pecaSubstituida}
-                  onChange={(e) => setPecaSubstituida(e.target.value)}
-                  placeholder="Ex.: frontal OLED, bateria, conector"
-                  className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs text-white placeholder-zinc-400 outline-none focus:border-blue-500 transition"
-                />
-              </div>
-
-              {/* Custos (Custo da Peça + Frete da Peça) */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Campos do formulário (bloqueados/translúcidos se não for elegível) */}
+              <div className={`space-y-5 transition-all duration-200 ${
+                validacaoSelecionada.elegivel ? 'opacity-100' : 'opacity-30 pointer-events-none select-none'
+              }`}>
+                {/* Defeito Apresentado no Retorno */}
                 <div>
                   <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
-                    CUSTO DA PEÇA
+                    DEFEITO APRESENTADO NO RETORNO *
                   </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={custoPeca}
-                    onChange={(e) => setCustoPeca(e.target.value === '' ? '' : Number(e.target.value))}
-                    placeholder="R$ 0,00"
-                    className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs text-white font-medium outline-none focus:border-blue-500 transition"
+                  <textarea
+                    rows={4}
+                    required
+                    disabled={!validacaoSelecionada.elegivel}
+                    value={defeitoApresentado}
+                    onChange={(e) => setDefeitoApresentado(e.target.value)}
+                    placeholder="Descreva o problema relatado nesta volta..."
+                    className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs text-white placeholder-zinc-400 outline-none focus:border-blue-500 transition"
                   />
                 </div>
 
+                {/* Peça Substituída na Garantia */}
                 <div>
                   <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
-                    FRETE DA PEÇA
+                    PEÇA SUBSTITUÍDA NA GARANTIA
                   </label>
                   <input
-                    type="number"
-                    step="0.01"
-                    value={fretePeca}
-                    onChange={(e) => setFretePeca(e.target.value === '' ? '' : Number(e.target.value))}
-                    placeholder="R$ 0,00"
-                    className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs text-white font-medium outline-none focus:border-blue-500 transition"
+                    type="text"
+                    disabled={!validacaoSelecionada.elegivel}
+                    value={pecaSubstituida}
+                    onChange={(e) => setPecaSubstituida(e.target.value)}
+                    placeholder="Ex.: frontal OLED, bateria, conector"
+                    className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs text-white placeholder-zinc-400 outline-none focus:border-blue-500 transition"
                   />
+                </div>
+
+                {/* Custos (Custo da Peça + Frete da Peça) */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
+                      CUSTO DA PEÇA
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      disabled={!validacaoSelecionada.elegivel}
+                      value={custoPeca}
+                      onChange={(e) => setCustoPeca(e.target.value === '' ? '' : Number(e.target.value))}
+                      placeholder="R$ 0,00"
+                      className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs text-white font-medium outline-none focus:border-blue-500 transition"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
+                      FRETE DA PEÇA
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      disabled={!validacaoSelecionada.elegivel}
+                      value={fretePeca}
+                      onChange={(e) => setFretePeca(e.target.value === '' ? '' : Number(e.target.value))}
+                      placeholder="R$ 0,00"
+                      className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs text-white font-medium outline-none focus:border-blue-500 transition"
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -302,8 +385,8 @@ export const GarantiaRetorno: React.FC = () => {
               <div className="flex justify-end pt-3">
                 <button
                   type="submit"
-                  disabled={salvando}
-                  className="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 disabled:opacity-50 text-white font-bold rounded-xl text-xs transition shadow-md shadow-blue-600/20 flex items-center space-x-2"
+                  disabled={salvando || !validacaoSelecionada.elegivel}
+                  className="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold rounded-xl text-xs transition shadow-md shadow-blue-600/20 flex items-center space-x-2"
                 >
                   {salvando ? (
                     <>
@@ -318,9 +401,9 @@ export const GarantiaRetorno: React.FC = () => {
             </form>
           ) : (
             <div className="p-16 text-center space-y-2">
-              <p className="text-sm font-bold text-zinc-300">Nenhuma ordem selecionada</p>
+              <p className="text-sm font-bold text-zinc-300">Nenhuma ordem elegível selecionada</p>
               <p className="text-xs text-zinc-400">
-                Selecione uma ordem concluída na lista ao lado para registrar o retorno em garantia.
+                Selecione uma ordem com garantia vigente na lista ao lado para registrar o retorno em garantia.
               </p>
             </div>
           )}
