@@ -1,5 +1,34 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
+  Banknote,
+  BookOpen,
+  CalendarClock,
+  CalendarDays,
+  Check,
+  ClipboardCheck,
+  CreditCard,
+  FileText,
+  Hash,
+  Lock,
+  Minus,
+  MessageSquareText,
+  Package,
+  Phone,
+  QrCode,
+  Receipt,
+  RotateCcw,
+  Save,
+  ShieldCheck,
+  Smartphone,
+  Tag,
+  Truck,
+  User,
+  Users,
+  Wallet,
+  Wrench,
+  X,
+} from 'lucide-react';
+import {
   buscarClientes,
   buscarFornecedores,
   buscarModelosAparelhos,
@@ -35,6 +64,130 @@ const ETAPAS_MOBILE: { n: EtapaMobile; titulo: string; proxima: string }[] = [
   { n: 3, titulo: 'Orçamento e pagamento', proxima: 'Continuar para checklist' },
   { n: 4, titulo: 'Checklist e confirmação', proxima: '' },
 ];
+
+// ================= PEÇAS VISUAIS DO FORMULÁRIO =================
+const inputCls =
+  'w-full h-10 px-3.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs text-white placeholder-zinc-600 outline-none hover:border-zinc-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/15 transition [color-scheme:dark] disabled:cursor-not-allowed disabled:text-zinc-500';
+/** Os campos essenciais da OS: um pouco maiores e com texto mais forte. */
+const inputEssencialCls = `${inputCls} h-11 text-sm font-medium`;
+
+const Rotulo: React.FC<{ children: React.ReactNode; obrigatorio?: boolean; opcional?: boolean; extra?: React.ReactNode }> = ({
+  children,
+  obrigatorio,
+  opcional,
+  extra,
+}) => (
+  <label className="flex items-baseline gap-1.5 mb-1.5 text-[11px] font-semibold text-zinc-400">
+    <span>{children}</span>
+    {obrigatorio && <span className="text-blue-400 font-bold">*</span>}
+    {opcional && <span className="text-[10px] text-zinc-600 font-normal">(opcional)</span>}
+    {extra}
+  </label>
+);
+
+/** Ícone fixo à esquerda do campo; o campo filho precisa de pl-9. */
+const ComIcone: React.FC<{ icone: React.ElementType; children: React.ReactNode; corIcone?: string }> = ({
+  icone: Icone,
+  children,
+  corIcone = 'text-zinc-500',
+}) => (
+  <div className="relative">
+    <Icone className={`w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none z-10 ${corIcone}`} />
+    {children}
+  </div>
+);
+
+/** Prefixo "R$" fixo à esquerda dos campos de dinheiro; o campo filho precisa de pl-9. */
+const ComReais: React.FC<{ children: React.ReactNode; cor?: string }> = ({ children, cor = 'text-zinc-500' }) => (
+  <div className="relative">
+    <span className={`absolute left-3.5 top-1/2 -translate-y-1/2 text-[11px] font-bold pointer-events-none ${cor}`}>R$</span>
+    {children}
+  </div>
+);
+
+const SubBloco: React.FC<{
+  titulo: string;
+  descricao?: string;
+  icone: React.ElementType;
+  children: React.ReactNode;
+  className?: string;
+  acao?: React.ReactNode;
+}> = ({ titulo, descricao, icone: Icone, children, className = '', acao }) => (
+  <div className={`rounded-xl border border-zinc-800/80 p-4 space-y-3.5 ${className}`}>
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 min-w-0">
+        <span className="flex items-center gap-1.5 text-xs font-bold text-white">
+          <Icone className="w-3.5 h-3.5 text-zinc-400" />
+          {titulo}
+        </span>
+        {descricao && <span className="text-[11px] text-zinc-500">{descricao}</span>}
+      </div>
+      {acao}
+    </div>
+    {children}
+  </div>
+);
+
+const CabecalhoCard: React.FC<{ numero: string; titulo: string; descricao: string; icone: React.ElementType }> = ({
+  numero,
+  titulo,
+  descricao,
+  icone: Icone,
+}) => (
+  <div className="flex items-start gap-3">
+    <span className="w-9 h-9 shrink-0 rounded-xl bg-blue-600/10 border border-blue-500/25 text-blue-400 flex items-center justify-center">
+      <Icone className="w-4 h-4" />
+    </span>
+    <div className="min-w-0">
+      <h3 className="text-sm font-bold text-white">
+        <span className="text-zinc-500 font-mono mr-1.5">{numero}</span>
+        {titulo}
+      </h3>
+      <p className="text-[11px] text-zinc-500 mt-0.5">{descricao}</p>
+    </div>
+  </div>
+);
+
+const cardCls = 'bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-5 sm:p-6 space-y-5 shadow-sm';
+
+const FORMAS_PAGAMENTO: { valor: string; rotulo: string; icone: React.ElementType; ativo: string }[] = [
+  { valor: 'PIX', rotulo: 'PIX', icone: QrCode, ativo: 'border-emerald-500/60 bg-emerald-500/10 text-emerald-300' },
+  { valor: 'Cartão de crédito', rotulo: 'Crédito', icone: CreditCard, ativo: 'border-blue-500/60 bg-blue-500/10 text-blue-300' },
+  { valor: 'Cartão de débito', rotulo: 'Débito', icone: Wallet, ativo: 'border-cyan-500/60 bg-cyan-500/10 text-cyan-300' },
+  { valor: 'Dinheiro', rotulo: 'Dinheiro', icone: Banknote, ativo: 'border-amber-500/60 bg-amber-500/10 text-amber-300' },
+];
+
+/** Forma de pagamento em botões de um toque (mesmos valores do antigo select). */
+const BotoesFormaPagamento: React.FC<{ valor: string; onChange: (forma: string) => void; compacto?: boolean }> = ({ valor, onChange, compacto }) => (
+  <div role="radiogroup" className={`grid grid-cols-2 ${compacto ? '' : 'sm:grid-cols-4'} gap-2`}>
+    {FORMAS_PAGAMENTO.map(({ valor: forma, rotulo, icone: Icone, ativo }) => {
+      const selecionado = valor === forma;
+      return (
+        <button
+          key={forma}
+          type="button"
+          role="radio"
+          aria-checked={selecionado}
+          onClick={() => onChange(forma)}
+          className={`flex items-center justify-center gap-2 rounded-xl border text-xs font-semibold transition ${compacto ? 'h-10' : 'h-12'} ${
+            selecionado ? ativo : 'border-zinc-800 bg-[#080c14] text-zinc-400 hover:text-white hover:border-zinc-700'
+          }`}
+        >
+          <Icone className="w-4 h-4" />
+          {rotulo}
+        </button>
+      );
+    })}
+  </div>
+);
+
+// Botões do checklist: um toque por item, gravando os mesmos valores de OPCOES_CHECKLIST
+const ESTILO_CHECKLIST: Record<string, { curto: string; icone: React.ElementType; ativo: string }> = {
+  OK: { curto: 'OK', icone: Check, ativo: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/50' },
+  DEFEITO: { curto: 'Defeito', icone: X, ativo: 'bg-rose-500/15 text-rose-300 border-rose-500/50' },
+  'Com observação': { curto: 'Obs.', icone: MessageSquareText, ativo: 'bg-amber-500/15 text-amber-300 border-amber-500/50' },
+  'NÃO TESTADO': { curto: 'N/T', icone: Minus, ativo: 'bg-zinc-700/50 text-zinc-200 border-zinc-600' },
+};
 
 interface Props {
   onNavigate?: (tab: AbaSistema) => void;
@@ -86,12 +239,12 @@ const SeletorMaquininha: React.FC<{ valor: string; onChange: (id: string) => voi
   maquininhas,
 }) => (
   <div>
-    <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">MAQUININHA</label>
+    <Rotulo>Maquininha</Rotulo>
     <select
       value={valor}
       onChange={(e) => onChange(e.target.value)}
       disabled={maquininhas.length <= 1}
-      className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs text-white outline-none focus:border-blue-500 transition cursor-pointer disabled:cursor-default disabled:text-zinc-300"
+      className={`${inputCls} cursor-pointer disabled:cursor-default disabled:text-zinc-300`}
     >
       {maquininhas.map((m) => (
         <option key={m.id} value={m.id}>
@@ -611,7 +764,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
         </p>
       </div>
 
-      <form onSubmit={enviarFormulario} className="space-y-6">
+      <form onSubmit={enviarFormulario} className="space-y-5">
         {/* ================= PROGRESSO DAS ETAPAS (SOMENTE CELULAR) ================= */}
         <div ref={topoEtapasRef} className="md:hidden scroll-mt-4 bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-4 space-y-3">
           <div className="flex items-baseline justify-between gap-3">
@@ -634,394 +787,390 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
           </div>
         </div>
 
-        {/* ================= BARRA DE COBERTURA (GARANTIA) ================= */}
+        {/* ================= SELO DE GARANTIA ================= */}
         <div className={classeEtapa(1)}>
-        <div className="bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
-          <div className="flex flex-wrap items-center gap-3">
-            <span className="text-sm font-bold text-white tracking-wide uppercase">Cobertura de garantia:</span>
-            <span className={`px-2.5 py-1 rounded-full text-xs font-bold border ${
-              possuiGarantia
-                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                : 'bg-zinc-800 text-zinc-400 border-zinc-700'
-            }`}>
-              {possuiGarantia ? `Garantia da loja (${prazoGarantiaDias} dias)` : `Garantia legal (${GARANTIA_LEGAL_DIAS} dias)`}
-            </span>
-
-            {/* Seletor/Input de Prazo Individual da OS (translúcido e desabilitado se Sem Garantia) */}
-            <div className={`flex items-center space-x-2 transition-all duration-200 ${
-              possuiGarantia ? 'opacity-100' : 'opacity-30 pointer-events-none select-none'
-            }`}>
-              <label className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider">
-                Prazo (dias):
-              </label>
-              <input
-                type="number"
-                min={GARANTIA_LEGAL_DIAS}
-                disabled={!possuiGarantia}
-                value={possuiGarantia ? prazoGarantiaDias : GARANTIA_LEGAL_DIAS}
-                onChange={(e) => setPrazoGarantiaDias(Number(e.target.value) || 0)}
-                // Nunca abaixo dos 90 dias da garantia legal (CDC, art. 26, II)
-                onBlur={() => setPrazoGarantiaDias((p) => Math.max(GARANTIA_LEGAL_DIAS, Number(p) || 0))}
-                className={`w-20 px-2.5 py-1 bg-[#080c14] border border-zinc-800 rounded-xl text-xs text-white font-bold text-center outline-none focus:border-blue-500 ${
-                  possuiGarantia ? '' : 'cursor-not-allowed text-zinc-500'
+          <div
+            className={`rounded-2xl border p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-3.5 transition-colors ${
+              possuiGarantia ? 'bg-emerald-500/[0.06] border-emerald-500/25' : 'bg-[#0c101a] border-zinc-800/80'
+            }`}
+          >
+            <div className="flex items-center gap-3 min-w-0">
+              <span
+                className={`w-10 h-10 shrink-0 rounded-xl flex items-center justify-center border ${
+                  possuiGarantia ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400' : 'bg-zinc-800/60 border-zinc-700 text-zinc-400'
                 }`}
-              />
+              >
+                <ShieldCheck className="w-5 h-5" />
+              </span>
+              <div className="min-w-0">
+                <p className="text-sm font-bold text-white">
+                  {possuiGarantia ? `Garantia da loja · ${prazoGarantiaDias} dias` : `Somente garantia legal · ${GARANTIA_LEGAL_DIAS} dias`}
+                </p>
+                <p className="text-[11px] text-zinc-500">
+                  {possuiGarantia ? 'Impressa na certidão de garantia da OS.' : 'Mínimo do CDC (art. 26, II), sem garantia extra da loja.'}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="inline-flex p-1 rounded-xl bg-[#080c14] border border-zinc-800">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPossuiGarantia(true);
+                    if (!prazoGarantiaDias || prazoGarantiaDias <= 0) {
+                      setPrazoGarantiaDias(obterPrazoGarantiaConfiguradoLoja());
+                    }
+                  }}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                    possuiGarantia ? 'bg-emerald-600 text-white shadow-sm' : 'text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  Garantia da loja
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPossuiGarantia(false)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                    !possuiGarantia ? 'bg-zinc-700 text-white shadow-sm' : 'text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  Só garantia legal
+                </button>
+              </div>
+
+              {/* Prazo: atalhos + valor livre (nunca abaixo dos 90 dias da garantia legal) */}
+              {possuiGarantia && (
+                <div className="flex items-center gap-1.5">
+                  {[...new Set([obterPrazoGarantiaConfiguradoLoja(), 90, 180, 365])]
+                    .filter((d) => d >= GARANTIA_LEGAL_DIAS)
+                    .sort((a, b) => a - b)
+                    .map((dias) => (
+                      <button
+                        key={dias}
+                        type="button"
+                        onClick={() => setPrazoGarantiaDias(dias)}
+                        className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold border transition ${
+                          prazoGarantiaDias === dias
+                            ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
+                            : 'bg-[#080c14] border-zinc-800 text-zinc-400 hover:text-white'
+                        }`}
+                      >
+                        {dias}d
+                      </button>
+                    ))}
+                  <input
+                    type="number"
+                    min={GARANTIA_LEGAL_DIAS}
+                    value={prazoGarantiaDias}
+                    onChange={(e) => setPrazoGarantiaDias(Number(e.target.value) || 0)}
+                    // Nunca abaixo dos 90 dias da garantia legal (CDC, art. 26, II)
+                    onBlur={() => setPrazoGarantiaDias((p) => Math.max(GARANTIA_LEGAL_DIAS, Number(p) || 0))}
+                    aria-label="Prazo de garantia em dias"
+                    title="Prazo personalizado (dias)"
+                    className="w-16 h-8 px-2 bg-[#080c14] border border-zinc-800 rounded-lg text-xs text-white font-bold text-center outline-none focus:border-emerald-500"
+                  />
+                </div>
+              )}
             </div>
           </div>
-
-          <div className="flex items-center space-x-2">
-            <button
-              type="button"
-              onClick={() => {
-                setPossuiGarantia(true);
-                if (!prazoGarantiaDias || prazoGarantiaDias <= 0) {
-                  setPrazoGarantiaDias(obterPrazoGarantiaConfiguradoLoja());
-                }
-              }}
-              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition ${
-                possuiGarantia ? 'bg-blue-600 text-white font-bold' : 'bg-zinc-900 text-zinc-400 hover:text-white'
-              }`}
-            >
-              Garantia da loja
-            </button>
-            <button
-              type="button"
-              onClick={() => setPossuiGarantia(false)}
-              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition ${
-                !possuiGarantia ? 'bg-zinc-700 text-white font-bold' : 'bg-zinc-900 text-zinc-400 hover:text-white'
-              }`}
-            >
-              Só garantia legal
-            </button>
-          </div>
-        </div>
         </div>
 
         {/* ================= CARD 01: DADOS DO CLIENTE ================= */}
-        <div className={`bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-6 space-y-4 shadow-sm ${classeEtapa(1)}`}>
-          <div className="flex items-center justify-between border-b border-zinc-800/60 pb-3">
-            <div className="flex items-center space-x-2.5">
-              <span className="w-6 h-6 rounded-lg bg-blue-600/15 border border-blue-500/30 text-blue-400 flex items-center justify-center text-xs font-bold">
-                01
-              </span>
-              <h3 className="text-sm font-bold text-white uppercase tracking-wider">
-                Dados do cliente
-              </h3>
+        <div className={`${cardCls} ${classeEtapa(1)}`}>
+          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+            <CabecalhoCard numero="01" titulo="Dados do cliente" descricao="Vincule um cadastro existente ou preencha avulso" icone={User} />
+            {/* Atalho: cliente já cadastrado preenche nome, telefone e documento */}
+            <div className="sm:w-72 shrink-0">
+              <ComIcone icone={Users}>
+                <select
+                  value={idClienteSelecionado}
+                  onChange={handleSelecionarCliente}
+                  aria-label="Cliente cadastrado"
+                  className={`${inputCls} pl-9 cursor-pointer ${idClienteSelecionado ? 'border-blue-500/40 text-blue-200' : ''}`}
+                >
+                  <option value="">Buscar cliente cadastrado...</option>
+                  {listaClientes.map((c) => (
+                    <option key={c.id_cliente || c.id} value={c.id_cliente || c.id}>
+                      {c.nome} {c.whatsapp ? `(${c.whatsapp})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </ComIcone>
             </div>
-            <span className="text-[11px] text-zinc-400">Vincule um cadastro existente ou preencha avulso</span>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-            <div>
-              <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
-                CLIENTE CADASTRADO
-              </label>
-              <select
-                value={idClienteSelecionado}
-                onChange={handleSelecionarCliente}
-                className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs text-white outline-none focus:border-blue-500 transition cursor-pointer"
-              >
-                <option value="">Cliente avulso / novo</option>
-                {listaClientes.map((c) => (
-                  <option key={c.id_cliente || c.id} value={c.id_cliente || c.id}>
-                    {c.nome} {c.whatsapp ? `(${c.whatsapp})` : ''}
-                  </option>
-                ))}
-              </select>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="sm:col-span-2">
+              <Rotulo obrigatorio>Nome completo</Rotulo>
+              <ComIcone icone={User}>
+                <input
+                  type="text"
+                  required
+                  value={nomeCliente}
+                  onChange={(e) => setNomeCliente(e.target.value)}
+                  placeholder="Ex: João Silva"
+                  className={`${inputEssencialCls} pl-9`}
+                />
+              </ComIcone>
             </div>
 
             <div>
-              <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
-                NOME COMPLETO *
-              </label>
-              <input
-                type="text"
-                required
-                value={nomeCliente}
-                onChange={(e) => setNomeCliente(e.target.value)}
-                placeholder="Ex: João Silva"
-                className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs text-white outline-none focus:border-blue-500 transition"
-              />
+              <Rotulo>WhatsApp / telefone</Rotulo>
+              <ComIcone icone={Phone} corIcone="text-emerald-500/80">
+                <input
+                  type="tel"
+                  value={whatsappCliente}
+                  onChange={(e) => setWhatsappCliente(e.target.value)}
+                  placeholder="(85) 99999-9999"
+                  className={`${inputCls} h-11 pl-9`}
+                />
+              </ComIcone>
             </div>
 
             <div>
-              <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
-                WHATSAPP / TELEFONE
-              </label>
-              <input
-                type="text"
-                value={whatsappCliente}
-                onChange={(e) => setWhatsappCliente(e.target.value)}
-                placeholder="(85) 99999-9999"
-                className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs text-white outline-none focus:border-blue-500 transition"
-              />
-            </div>
-
-            <div>
-              <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
-                CPF / CNPJ
-              </label>
-              <input
-                type="text"
-                value={cpfCnpjCliente}
-                onChange={(e) => setCpfCnpjCliente(e.target.value)}
-                placeholder="000.000.000-00"
-                className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs text-white outline-none focus:border-blue-500 transition"
-              />
+              <Rotulo opcional>CPF / CNPJ</Rotulo>
+              <ComIcone icone={FileText}>
+                <input
+                  type="text"
+                  value={cpfCnpjCliente}
+                  onChange={(e) => setCpfCnpjCliente(e.target.value)}
+                  placeholder="000.000.000-00"
+                  className={`${inputCls} h-11 pl-9`}
+                />
+              </ComIcone>
             </div>
           </div>
         </div>
 
-        {/* ================= CARD 02: APARELHO E DATAS ================= */}
-        <div className={`bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-6 space-y-4 shadow-sm ${classeEtapa(2)}`}>
-          <div className="flex items-center justify-between border-b border-zinc-800/60 pb-3">
-            <div className="flex items-center space-x-2.5">
-              <span className="w-6 h-6 rounded-lg bg-blue-600/15 border border-blue-500/30 text-blue-400 flex items-center justify-center text-xs font-bold">
-                02
-              </span>
-              <h3 className="text-sm font-bold text-white uppercase tracking-wider">
-                Aparelho, Defeito e Prazos
-              </h3>
-            </div>
-            <span className="text-[11px] text-zinc-400">Identificação do dispositivo e diagnóstico</span>
-          </div>
+        {/* ================= CARD 02: APARELHO, DEFEITO E PRAZOS ================= */}
+        <div className={`${cardCls} ${classeEtapa(2)}`}>
+          <CabecalhoCard numero="02" titulo="Aparelho, defeito e prazos" descricao="Identificação do dispositivo e diagnóstico" icone={Smartphone} />
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
-            <div>
-              <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
-                MODELO DO APARELHO *
-              </label>
-              <CampoModeloAparelho
-                valor={modeloAparelho}
-                onChange={setModeloAparelho}
-                modelosDaLoja={modelosDaLoja}
-                placeholder="Ex: iPhone 13 128GB"
-                className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs text-white outline-none focus:border-blue-500 transition"
-              />
+          {/* Linha 1: o aparelho */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="sm:col-span-2">
+              <Rotulo obrigatorio>Modelo do aparelho</Rotulo>
+              <ComIcone icone={Smartphone}>
+                <CampoModeloAparelho
+                  valor={modeloAparelho}
+                  onChange={setModeloAparelho}
+                  modelosDaLoja={modelosDaLoja}
+                  placeholder="Ex: iPhone 13 128GB"
+                  className={`${inputEssencialCls} pl-9`}
+                />
+              </ComIcone>
             </div>
 
             <div>
-              <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
-                IMEI / Nº DE SÉRIE
-              </label>
-              <input
-                type="text"
-                value={imeiAparelho}
-                onChange={(e) => setImeiAparelho(e.target.value)}
-                placeholder="Opcional"
-                className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs text-white outline-none focus:border-blue-500 transition"
-              />
-            </div>
-
-            <div>
-              <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
-                SENHA DE DESBLOQUEIO
-              </label>
-              <input
-                type="text"
-                value={senhaAparelho}
-                onChange={(e) => setSenhaAparelho(e.target.value)}
-                placeholder="Para testes"
-                className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs text-white outline-none focus:border-blue-500 transition"
-              />
-            </div>
-
-            <div>
-              <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
-                DATA DE ABERTURA
-              </label>
-              <input
-                type="date"
-                value={dataAbertura}
-                onChange={(e) => setDataAbertura(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs text-white outline-none focus:border-blue-500 transition"
-              />
-            </div>
-
-            <div>
-              <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
-                PREVISÃO DE ENTREGA
-              </label>
-              <input
-                type="date"
-                value={dataPrevista}
-                onChange={(e) => setDataPrevista(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs text-white outline-none focus:border-blue-500 transition"
-              />
+              <Rotulo opcional>IMEI / nº de série</Rotulo>
+              <ComIcone icone={Hash}>
+                <input
+                  type="text"
+                  value={imeiAparelho}
+                  onChange={(e) => setImeiAparelho(e.target.value)}
+                  placeholder="15 dígitos"
+                  className={`${inputCls} h-11 pl-9 font-mono`}
+                />
+              </ComIcone>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-3.5 pt-2">
+          {/* Linha 2: acesso e prazos */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
-              <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
-                SERVIÇO A REALIZAR (CATÁLOGO)
-              </label>
-              <select
-                value={servicoPadraoId}
-                onChange={handleSelecionarServico}
-                className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs text-white outline-none focus:border-blue-500 transition cursor-pointer"
-              >
-                <option value="">
-                  {listaServicos.length > 0 ? 'Selecione um serviço cadastrado...' : 'Nenhum serviço cadastrado'}
-                </option>
-                {listaServicos.map((s) => (
-                  <option key={s.id_servico || s.id} value={s.id_servico || s.id}>
-                    {s.nome} — R$ {Number(s.preco_sugerido || s.preco || 0).toFixed(2)}
-                  </option>
-                ))}
-              </select>
-              {servicoSelecionado && (
-                <p className="text-[11px] text-blue-400 mt-1.5">
-                  Valor e garantia do serviço aplicados em "Custos, Desconto e Pagamento".
-                </p>
-              )}
+              <Rotulo>Senha de desbloqueio</Rotulo>
+              <ComIcone icone={Lock} corIcone="text-amber-400/80">
+                <input
+                  type="text"
+                  value={senhaAparelho}
+                  onChange={(e) => setSenhaAparelho(e.target.value)}
+                  placeholder="Senha ou padrão, para os testes"
+                  className={`${inputCls} pl-9 bg-amber-500/[0.04] border-amber-500/20 focus:border-amber-500 focus:ring-amber-500/15`}
+                />
+              </ComIcone>
             </div>
 
             <div>
-              <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
-                DEFEITO RELATADO PELO CLIENTE *
-              </label>
+              <Rotulo>Data de abertura</Rotulo>
+              <ComIcone icone={CalendarDays}>
+                <input type="date" value={dataAbertura} onChange={(e) => setDataAbertura(e.target.value)} className={`${inputCls} pl-9`} />
+              </ComIcone>
+            </div>
+
+            <div>
+              <Rotulo>Previsão de entrega</Rotulo>
+              <ComIcone icone={CalendarClock}>
+                <input type="date" value={dataPrevista} onChange={(e) => setDataPrevista(e.target.value)} className={`${inputCls} pl-9`} />
+              </ComIcone>
+            </div>
+          </div>
+
+          {/* Linha 3: diagnóstico lado a lado */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <Rotulo obrigatorio>Defeito relatado pelo cliente</Rotulo>
               <input
                 type="text"
                 required
                 value={defeitoRelatado}
                 onChange={(e) => setDefeitoRelatado(e.target.value)}
-                placeholder="Ex: Não carrega e esquenta na tomada"
-                className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs text-white outline-none focus:border-blue-500 transition"
+                placeholder="O que o cliente contou? Ex: não carrega e esquenta na tomada"
+                className={inputEssencialCls}
               />
             </div>
 
             <div>
-              <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
-                DIAGNÓSTICO TÉCNICO INICIAL / LAUDO
-              </label>
+              <Rotulo opcional>Diagnóstico técnico inicial / laudo</Rotulo>
               <input
                 type="text"
                 value={diagnostico}
                 onChange={(e) => setDiagnostico(e.target.value)}
-                placeholder="Ex: Conector de carga oxidado e bateria em 68%"
-                className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs text-white outline-none focus:border-blue-500 transition"
+                placeholder="O que você viu na bancada? Ex: conector oxidado, bateria em 68%"
+                className={`${inputCls} h-11`}
               />
             </div>
           </div>
         </div>
 
-        {/* ================= CARD 03: VALORES E PAGAMENTO (FIGMA MAKE REFINADO) ================= */}
-        <div className={`bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-6 space-y-5 shadow-sm ${classeEtapa(3)}`}>
-          <div className="flex items-center justify-between border-b border-zinc-800/60 pb-3">
-            <div className="flex items-center space-x-2.5">
-              <span className="w-6 h-6 rounded-lg bg-blue-600/15 border border-blue-500/30 text-blue-400 flex items-center justify-center text-xs font-bold">
-                03
-              </span>
-              <h3 className="text-sm font-bold text-white uppercase tracking-wider">
-                Custos, Desconto e Pagamento
-              </h3>
-            </div>
-            <span className="text-[11px] text-zinc-400">Cálculo transparente de despesas, taxas e lucro líquido</span>
-          </div>
+        {/* ================= CARD 03: VALORES, CUSTOS E PAGAMENTO ================= */}
+        <div className={`${cardCls} ${classeEtapa(3)}`}>
+          <CabecalhoCard numero="03" titulo="Valores, custos e pagamento" descricao="Primeiro o que o cliente paga, depois o custo interno da loja" icone={Receipt} />
 
-          {/* Linha: Custos de Peça, Frete, Fornecedor, Desconto e Preço Base */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
-            <div>
-              <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
-                CUSTO DA PEÇA (R$)
-              </label>
-              <input
-                type="number"
-                step="0.01"
-                value={custoPeca}
-                onChange={(e) => setCustoPeca(e.target.value === '' ? '' : Number(e.target.value))}
-                placeholder="0.00"
-                className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs text-white outline-none focus:border-blue-500 transition"
-              />
-            </div>
+          {/* ---------- 3.1 Valor ao cliente ---------- */}
+          <SubBloco titulo="Valor ao cliente" descricao="Serviço do catálogo, preço e desconto" icone={Tag} className="bg-blue-500/[0.03] border-blue-500/15">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div>
+                <Rotulo opcional>Serviço do catálogo</Rotulo>
+                <ComIcone icone={BookOpen}>
+                  <select value={servicoPadraoId} onChange={handleSelecionarServico} className={`${inputCls} h-11 pl-9 cursor-pointer`}>
+                    <option value="">{listaServicos.length > 0 ? 'Selecione um serviço cadastrado...' : 'Nenhum serviço cadastrado'}</option>
+                    {listaServicos.map((s) => (
+                      <option key={s.id_servico || s.id} value={s.id_servico || s.id}>
+                        {s.nome} — R$ {Number(s.preco_sugerido || s.preco || 0).toFixed(2)}
+                      </option>
+                    ))}
+                  </select>
+                </ComIcone>
+                {servicoSelecionado && <p className="text-[11px] text-blue-400 mt-1.5">Valor e garantia do serviço aplicados.</p>}
+              </div>
 
-            <div>
-              <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
-                FRETE REAL (R$)
-              </label>
-              <input
-                type="number"
-                step="0.01"
-                value={freteReal}
-                onChange={(e) => setFreteReal(e.target.value === '' ? '' : Number(e.target.value))}
-                placeholder="0.00"
-                className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs text-white outline-none focus:border-blue-500 transition"
-              />
-            </div>
+              <div>
+                <Rotulo obrigatorio>Valor do serviço</Rotulo>
+                <ComReais cor="text-emerald-500">
+                  <input
+                    type="number"
+                    step="0.01"
+                    required
+                    value={valorServico}
+                    onChange={(e) => setValorServico(e.target.value === '' ? '' : Number(e.target.value))}
+                    placeholder="0,00"
+                    className={`${inputCls} h-11 pl-9 text-base font-bold text-emerald-400 focus:border-emerald-500 focus:ring-emerald-500/15`}
+                  />
+                </ComReais>
+              </div>
 
-            <div>
-              <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
-                FORNECEDOR
-              </label>
-              <select
-                value={fornecedorPeca}
-                onChange={(e) => setFornecedorPeca(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs text-white outline-none focus:border-blue-500 transition cursor-pointer"
-              >
-                <option value="">Selecione...</option>
-                {listaFornecedores.map((f) => (
-                  <option key={f.id_fornecedor || f.id} value={f.nome}>
-                    {f.nome}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
-                DESCONTO AO CLIENTE
-              </label>
-              <div className="flex">
-                <select
-                  value={tipoDesconto}
-                  onChange={(e) => setTipoDesconto(e.target.value as any)}
-                  className="px-2.5 py-2.5 bg-[#080c14] border border-r-0 border-zinc-800/80 rounded-l-xl text-xs text-zinc-300 outline-none focus:border-blue-500 cursor-pointer"
+              <div className="sm:col-span-2 lg:col-span-1">
+                <Rotulo
+                  opcional
+                  extra={
+                    descontoCalculado > 0 && (
+                      <span className="ml-auto text-[10px] font-semibold text-rose-400">− R$ {formatarValor(descontoCalculado)}</span>
+                    )
+                  }
                 >
-                  <option value="VALOR">R$</option>
-                  <option value="PERCENTUAL">%</option>
-                </select>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={descontoCliente}
-                  onChange={(e) => setDescontoCliente(e.target.value === '' ? '' : Number(e.target.value))}
-                  placeholder="0.00"
-                  className="w-full px-3 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-r-xl text-xs text-white outline-none focus:border-blue-500 transition"
-                />
+                  Desconto ao cliente
+                </Rotulo>
+                <div className="flex gap-2">
+                  <div className="inline-flex shrink-0 p-1 rounded-xl bg-[#080c14] border border-zinc-800">
+                    {(['VALOR', 'PERCENTUAL'] as const).map((tipo) => (
+                      <button
+                        key={tipo}
+                        type="button"
+                        onClick={() => setTipoDesconto(tipo)}
+                        aria-pressed={tipoDesconto === tipo}
+                        className={`w-9 h-8 rounded-lg text-xs font-bold transition ${
+                          tipoDesconto === tipo ? 'bg-zinc-700 text-white' : 'text-zinc-500 hover:text-white'
+                        }`}
+                      >
+                        {tipo === 'VALOR' ? 'R$' : '%'}
+                      </button>
+                    ))}
+                  </div>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={descontoCliente}
+                    onChange={(e) => setDescontoCliente(e.target.value === '' ? '' : Number(e.target.value))}
+                    placeholder={tipoDesconto === 'VALOR' ? '0,00' : '0'}
+                    aria-label="Valor do desconto"
+                    className={`${inputCls} h-11`}
+                  />
+                </div>
+                {descontoCalculado > 0 && (
+                  <p className="text-[11px] text-zinc-500 mt-1.5">
+                    Cliente paga <strong className="text-white">R$ {formatarValor(valorCobrado)}</strong>
+                  </p>
+                )}
               </div>
             </div>
+          </SubBloco>
 
-            <div>
-              <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
-                VALOR DO SERVIÇO *
-              </label>
-              <input
-                type="number"
-                step="0.01"
-                required
-                value={valorServico}
-                onChange={(e) => setValorServico(e.target.value === '' ? '' : Number(e.target.value))}
-                placeholder="0.00"
-                className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs text-white font-bold outline-none focus:border-blue-500 transition"
-              />
+          {/* ---------- 3.2 Controle interno de custos ---------- */}
+          <SubBloco titulo="Controle interno de custos" descricao="Peça, frete e fornecedor (não aparece para o cliente)" icone={Package} className="bg-[#080c14]/60">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div>
+                <Rotulo>Custo da peça</Rotulo>
+                <ComReais>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={custoPeca}
+                    onChange={(e) => setCustoPeca(e.target.value === '' ? '' : Number(e.target.value))}
+                    placeholder="0,00"
+                    className={`${inputCls} pl-9`}
+                  />
+                </ComReais>
+              </div>
+
+              <div>
+                <Rotulo>Frete real</Rotulo>
+                <ComReais>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={freteReal}
+                    onChange={(e) => setFreteReal(e.target.value === '' ? '' : Number(e.target.value))}
+                    placeholder="0,00"
+                    className={`${inputCls} pl-9`}
+                  />
+                </ComReais>
+              </div>
+
+              <div>
+                <Rotulo opcional>Fornecedor da peça</Rotulo>
+                <ComIcone icone={Truck}>
+                  <select value={fornecedorPeca} onChange={(e) => setFornecedorPeca(e.target.value)} className={`${inputCls} pl-9 cursor-pointer`}>
+                    <option value="">Selecione...</option>
+                    {listaFornecedores.map((f) => (
+                      <option key={f.id_fornecedor || f.id} value={f.nome}>
+                        {f.nome}
+                      </option>
+                    ))}
+                  </select>
+                </ComIcone>
+              </div>
             </div>
-          </div>
+          </SubBloco>
 
           <CamposLegaisOS valor={dadosLegais} onChange={setDadosLegais} valorTotal={valorCobrado} />
 
-          {/* ================= SEÇÃO DE PAGAMENTO E TAXAS DA MAQUINETA ================= */}
-          <div className="pt-3 border-t border-zinc-800/60 space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <div className="flex items-center space-x-2">
-                <span className="text-xs font-bold text-white tracking-wide uppercase">
-                  FORMA DE PAGAMENTO E TAXAS
-                </span>
-                <span className="text-[11px] text-zinc-400">
-                  {dividirPagamento ? '· Pagamento dividido em 2 formas' : '· Pagamento em forma única'}
-                </span>
-              </div>
-
+          {/* ---------- 3.3 Forma de pagamento e taxas ---------- */}
+          <SubBloco
+            titulo="Forma de pagamento"
+            descricao={dividirPagamento ? 'Dividido em 2 formas' : 'Forma única'}
+            icone={CreditCard}
+            acao={
               <button
                 type="button"
                 onClick={() => {
@@ -1038,98 +1187,66 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
                     }
                   }
                 }}
-                className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition border flex items-center space-x-1.5 self-start sm:self-auto ${
+                className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold transition border ${
                   dividirPagamento
                     ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
                     : 'bg-[#080c14] border-zinc-800 text-zinc-300 hover:text-white hover:border-zinc-700'
                 }`}
               >
-                <span>{dividirPagamento ? '✓ Dividindo em 2 formas' : '+ Dividir em 2 formas de pagamento'}</span>
+                {dividirPagamento ? '✓ Dividindo em 2 formas' : '+ Dividir em 2 formas'}
               </button>
-            </div>
+            }
+          >
 
             {/* --- MODO 1: FORMA DE PAGAMENTO ÚNICA --- */}
-            {!dividirPagamento && ehCartao(formaPagamento1) && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-                <div className="sm:col-span-2">
-                  <SeletorMaquininha valor={maquininha1} onChange={setMaquininha1} maquininhas={maquininhas} />
-                </div>
-              </div>
-            )}
-
             {!dividirPagamento && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-                <div>
-                  <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
-                    FORMA DE PAGAMENTO *
-                  </label>
-                  <select
-                    value={formaPagamento1}
-                    onChange={(e) => setFormaPagamento1(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs text-white outline-none focus:border-blue-500 transition cursor-pointer"
-                  >
-                    <option value="Cartão de crédito">Cartão de crédito</option>
-                    <option value="Cartão de débito">Cartão de débito</option>
-                    <option value="PIX">PIX</option>
-                    <option value="Dinheiro">Dinheiro</option>
-                  </select>
-                </div>
+              <div className="space-y-3.5">
+                <BotoesFormaPagamento valor={formaPagamento1} onChange={setFormaPagamento1} />
 
-                {/* Parcelas: 100% visível quando Cartão de crédito; translúcido, inselecionável e desabilitado nas demais */}
-                <div className={`transition-all duration-200 ${
-                  formaPagamento1 === 'Cartão de crédito'
-                    ? 'opacity-100'
-                    : 'opacity-30 pointer-events-none select-none'
-                }`}>
-                  <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
-                    QUANTIDADE DE PARCELAS {formaPagamento1 !== 'Cartão de crédito' && <span className="text-[10px] text-zinc-500 font-normal lowercase">(à vista)</span>}
-                  </label>
-                  <select
-                    disabled={formaPagamento1 !== 'Cartão de crédito'}
-                    value={formaPagamento1 === 'Cartão de crédito' ? parcelas1 : 1}
-                    onChange={(e) => setParcelas1(Number(e.target.value))}
-                    className={`w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs text-white outline-none focus:border-blue-500 transition ${
-                      formaPagamento1 === 'Cartão de crédito' ? 'cursor-pointer' : 'cursor-not-allowed text-zinc-500'
-                    }`}
-                  >
-                    {opcoesParcelas(maquininhas, maquininha1).map((o) => (
-                      <option key={o.parcelas} value={o.parcelas}>
-                        {o.rotulo}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                {ehCartao(formaPagamento1) ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 p-3.5 rounded-xl bg-[#080c14]/70 border border-zinc-800/80">
+                    <SeletorMaquininha valor={maquininha1} onChange={setMaquininha1} maquininhas={maquininhas} />
 
-                {/* Taxa da Maquineta: 100% visível para Cartão; translúcido, inselecionável e desabilitado para Dinheiro e PIX */}
-                <div className={`transition-all duration-200 ${
-                  formaPagamento1 === 'Cartão de crédito' || formaPagamento1 === 'Cartão de débito'
-                    ? 'opacity-100'
-                    : 'opacity-30 pointer-events-none select-none'
-                }`}>
-                  <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
-                    TAXA DA MAQUINETA (%) {formaPagamento1 !== 'Cartão de crédito' && formaPagamento1 !== 'Cartão de débito' && <span className="text-[10px] text-zinc-500 font-normal lowercase">(isento)</span>}
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    disabled={formaPagamento1 !== 'Cartão de crédito' && formaPagamento1 !== 'Cartão de débito'}
-                    value={formaPagamento1 === 'Cartão de crédito' || formaPagamento1 === 'Cartão de débito' ? taxaMaquinetaPercentual1 : 0}
-                    onChange={(e) => setTaxaMaquinetaPercentual1(e.target.value === '' ? '' : Number(e.target.value))}
-                    placeholder="0.00"
-                    className={`w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs text-white outline-none focus:border-blue-500 transition ${
-                      formaPagamento1 === 'Cartão de crédito' || formaPagamento1 === 'Cartão de débito' ? '' : 'cursor-not-allowed text-zinc-500'
-                    }`}
-                  />
-                </div>
+                    {formaPagamento1 === 'Cartão de crédito' ? (
+                      <div>
+                        <Rotulo>Parcelas</Rotulo>
+                        <select value={parcelas1} onChange={(e) => setParcelas1(Number(e.target.value))} className={`${inputCls} cursor-pointer`}>
+                          {opcoesParcelas(maquininhas, maquininha1).map((o) => (
+                            <option key={o.parcelas} value={o.parcelas}>
+                              {o.rotulo}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    ) : (
+                      <div>
+                        <Rotulo>Parcelas</Rotulo>
+                        <div className={`${inputCls} flex items-center text-zinc-500`}>Débito · à vista</div>
+                      </div>
+                    )}
 
-                <div>
-                  <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
-                    LÍQUIDO RECEBIDO (APÓS TAXA)
-                  </label>
-                  <div className="w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs font-bold text-emerald-400">
-                    R$ {formatarValor(liquidoRecebido)}
+                    <div>
+                      <Rotulo>Taxa da maquineta (%)</Rotulo>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={taxaMaquinetaPercentual1}
+                        onChange={(e) => setTaxaMaquinetaPercentual1(e.target.value === '' ? '' : Number(e.target.value))}
+                        placeholder="0,00"
+                        className={inputCls}
+                      />
+                    </div>
+
+                    <div>
+                      <Rotulo>Líquido recebido</Rotulo>
+                      <div className={`${inputCls} flex items-center font-bold text-emerald-400`}>R$ {formatarValor(liquidoRecebido)}</div>
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <p className="text-[11px] text-zinc-500">
+                    {formaPagamento1} não tem taxa de maquininha: a loja recebe <strong className="text-emerald-400">R$ {formatarValor(liquidoRecebido)}</strong>.
+                  </p>
+                )}
               </div>
             )}
 
@@ -1146,233 +1263,160 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
                       : 'bg-rose-500/10 border-rose-500/30 text-rose-300'
                   }`}
                 >
-                  <div className="flex items-center space-x-2">
-                    <span className="text-sm font-bold">
-                      {Math.abs(saldoRestante) < 0.01 && numValorPg1 > 0 && numValorPg2 > 0 ? '✓' : '⚠️'}
-                    </span>
-                    <span>
-                      Total devido: <strong className="font-bold text-white">R$ {formatarValor(valorCobrado)}</strong> |
-                      Distribuído: <strong className="font-bold text-white">R$ {formatarValor(somaPagamentos)}</strong>
-                    </span>
-                  </div>
-                  <div>
-                    {Math.abs(saldoRestante) < 0.01 && numValorPg1 > 0 && numValorPg2 > 0 ? (
-                      <span className="font-bold text-emerald-400">✓ 100% distribuído corretamente</span>
-                    ) : saldoRestante > 0 ? (
-                      <span className="font-bold text-amber-400">Falta distribuir: R$ {formatarValor(saldoRestante)}</span>
-                    ) : (
-                      <span className="font-bold text-rose-400">Excedeu o total em: R$ {formatarValor(Math.abs(saldoRestante))}</span>
-                    )}
-                  </div>
+                  <span>
+                    Total devido: <strong className="font-bold text-white">R$ {formatarValor(valorCobrado)}</strong> · Distribuído:{' '}
+                    <strong className="font-bold text-white">R$ {formatarValor(somaPagamentos)}</strong>
+                  </span>
+                  {Math.abs(saldoRestante) < 0.01 && numValorPg1 > 0 && numValorPg2 > 0 ? (
+                    <span className="font-bold text-emerald-400">✓ 100% distribuído</span>
+                  ) : saldoRestante > 0 ? (
+                    <span className="font-bold text-amber-400">Falta distribuir: R$ {formatarValor(saldoRestante)}</span>
+                  ) : (
+                    <span className="font-bold text-rose-400">Excedeu o total em: R$ {formatarValor(Math.abs(saldoRestante))}</span>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                   {/* Bloco 1: 1ª Forma de Pagamento */}
-                  <div className="bg-[#080c14] border border-zinc-800 rounded-xl p-4 space-y-3">
-                    <div className="flex items-center justify-between border-b border-zinc-800/80 pb-2">
-                      <span className="text-xs font-bold text-blue-400 uppercase tracking-wider">
-                        1ª Forma de Pagamento
-                      </span>
+                  <div className="bg-[#080c14] border border-zinc-800 rounded-xl p-4 space-y-3.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-blue-400">1ª forma de pagamento</span>
                       <span className="text-[11px] text-zinc-400">
                         Líquido: <strong className="text-emerald-400">R$ {formatarValor(liquidoPg1)}</strong>
                       </span>
                     </div>
 
+                    <BotoesFormaPagamento valor={formaPagamento1} onChange={setFormaPagamento1} compacto />
+
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
-                          MODALIDADE *
-                        </label>
-                        <select
-                          value={formaPagamento1}
-                          onChange={(e) => setFormaPagamento1(e.target.value)}
-                          className="w-full px-3 py-2 bg-[#0c101a] border border-zinc-800 rounded-xl text-xs text-white outline-none focus:border-blue-500 cursor-pointer"
-                        >
-                          <option value="Cartão de crédito">Cartão de crédito</option>
-                          <option value="Cartão de débito">Cartão de débito</option>
-                          <option value="PIX">PIX</option>
-                          <option value="Dinheiro">Dinheiro</option>
-                        </select>
+                      <div className="sm:col-span-2">
+                        <Rotulo obrigatorio>Valor destinado</Rotulo>
+                        <ComReais>
+                          <input
+                            type="number"
+                            step="0.01"
+                            required
+                            value={valorPg1}
+                            onChange={(e) => setValorPg1(e.target.value === '' ? '' : Number(e.target.value))}
+                            placeholder="0,00"
+                            className={`${inputCls} pl-9 font-bold`}
+                          />
+                        </ComReais>
                       </div>
 
-                      <div>
-                        <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
-                          VALOR DESTINADO (R$) *
-                        </label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          required
-                          value={valorPg1}
-                          onChange={(e) => setValorPg1(e.target.value === '' ? '' : Number(e.target.value))}
-                          placeholder="0.00"
-                          className="w-full px-3 py-2 bg-[#0c101a] border border-zinc-800 rounded-xl text-xs text-white font-bold outline-none focus:border-blue-500"
-                        />
-                      </div>
-
-                      {/* Parcelas: translúcido e inselecionável quando não for cartão de crédito */}
-                      <div className={`transition-all duration-200 ${
-                        formaPagamento1 === 'Cartão de crédito'
-                          ? 'opacity-100'
-                          : 'opacity-30 pointer-events-none select-none'
-                      }`}>
-                        <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
-                          PARCELAS {formaPagamento1 !== 'Cartão de crédito' && <span className="text-[10px] text-zinc-500 font-normal lowercase">(à vista)</span>}
-                        </label>
-                        <select
-                          disabled={formaPagamento1 !== 'Cartão de crédito'}
-                          value={formaPagamento1 === 'Cartão de crédito' ? parcelas1 : 1}
-                          onChange={(e) => setParcelas1(Number(e.target.value))}
-                          className={`w-full px-3 py-2 bg-[#0c101a] border border-zinc-800 rounded-xl text-xs text-white outline-none focus:border-blue-500 ${
-                            formaPagamento1 === 'Cartão de crédito' ? 'cursor-pointer' : 'cursor-not-allowed text-zinc-500'
-                          }`}
-                        >
-                          {opcoesParcelas(maquininhas, maquininha1).map((o) => (
-                            <option key={o.parcelas} value={o.parcelas}>
-                              {o.rotulo}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      {/* Taxa Maquineta: translúcida e inselecionável quando não for cartão */}
-                      <div className={`transition-all duration-200 ${
-                        formaPagamento1 === 'Cartão de crédito' || formaPagamento1 === 'Cartão de débito'
-                          ? 'opacity-100'
-                          : 'opacity-30 pointer-events-none select-none'
-                      }`}>
-                        <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
-                          TAXA MAQUINETA (%) {formaPagamento1 !== 'Cartão de crédito' && formaPagamento1 !== 'Cartão de débito' && <span className="text-[10px] text-zinc-500 font-normal lowercase">(isento)</span>}
-                        </label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          disabled={formaPagamento1 !== 'Cartão de crédito' && formaPagamento1 !== 'Cartão de débito'}
-                          value={formaPagamento1 === 'Cartão de crédito' || formaPagamento1 === 'Cartão de débito' ? taxaMaquinetaPercentual1 : 0}
-                          onChange={(e) => setTaxaMaquinetaPercentual1(e.target.value === '' ? '' : Number(e.target.value))}
-                          placeholder="0.00"
-                          className={`w-full px-3 py-2 bg-[#0c101a] border border-zinc-800 rounded-xl text-xs text-white outline-none focus:border-blue-500 ${
-                            formaPagamento1 === 'Cartão de crédito' || formaPagamento1 === 'Cartão de débito' ? '' : 'cursor-not-allowed text-zinc-500'
-                          }`}
-                        />
-                      </div>
-
-                      {/* Maquininha usada no cartão (taxas de Configurações › Taxas) */}
                       {ehCartao(formaPagamento1) && (
-                        <div className="sm:col-span-2">
-                          <SeletorMaquininha valor={maquininha1} onChange={setMaquininha1} maquininhas={maquininhas} />
-                        </div>
+                        <>
+                          <div className="sm:col-span-2">
+                            <SeletorMaquininha valor={maquininha1} onChange={setMaquininha1} maquininhas={maquininhas} />
+                          </div>
+                          <div>
+                            <Rotulo>Parcelas</Rotulo>
+                            <select
+                              disabled={formaPagamento1 !== 'Cartão de crédito'}
+                              value={formaPagamento1 === 'Cartão de crédito' ? parcelas1 : 1}
+                              onChange={(e) => setParcelas1(Number(e.target.value))}
+                              className={`${inputCls} cursor-pointer`}
+                            >
+                              {opcoesParcelas(maquininhas, maquininha1).map((o) => (
+                                <option key={o.parcelas} value={o.parcelas}>
+                                  {o.rotulo}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <Rotulo>Taxa da maquineta (%)</Rotulo>
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={taxaMaquinetaPercentual1}
+                              onChange={(e) => setTaxaMaquinetaPercentual1(e.target.value === '' ? '' : Number(e.target.value))}
+                              placeholder="0,00"
+                              className={inputCls}
+                            />
+                          </div>
+                        </>
                       )}
                     </div>
                   </div>
 
                   {/* Bloco 2: 2ª Forma de Pagamento */}
-                  <div className="bg-[#080c14] border border-zinc-800 rounded-xl p-4 space-y-3">
-                    <div className="flex items-center justify-between border-b border-zinc-800/80 pb-2">
-                      <span className="text-xs font-bold text-purple-400 uppercase tracking-wider">
-                        2ª Forma de Pagamento
-                      </span>
-                      {saldoRestante !== 0 && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const restante = Math.max(0, Math.round((valorCobrado - numValorPg1) * 100) / 100);
-                            setValorPg2(restante);
-                          }}
-                          className="text-[10px] text-blue-400 hover:text-blue-300 font-bold underline"
-                        >
-                          Usar restante (R$ {saldoRestante.toFixed(2)})
-                        </button>
-                      )}
+                  <div className="bg-[#080c14] border border-zinc-800 rounded-xl p-4 space-y-3.5">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-xs font-bold text-purple-400">2ª forma de pagamento</span>
                       <span className="text-[11px] text-zinc-400">
                         Líquido: <strong className="text-emerald-400">R$ {formatarValor(liquidoPg2)}</strong>
                       </span>
                     </div>
 
+                    <BotoesFormaPagamento valor={formaPagamento2} onChange={setFormaPagamento2} compacto />
+
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
-                          MODALIDADE *
-                        </label>
-                        <select
-                          value={formaPagamento2}
-                          onChange={(e) => setFormaPagamento2(e.target.value)}
-                          className="w-full px-3 py-2 bg-[#0c101a] border border-zinc-800 rounded-xl text-xs text-white outline-none focus:border-blue-500 cursor-pointer"
+                      <div className="sm:col-span-2">
+                        <Rotulo
+                          obrigatorio
+                          extra={
+                            saldoRestante !== 0 && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const restante = Math.max(0, Math.round((valorCobrado - numValorPg1) * 100) / 100);
+                                  setValorPg2(restante);
+                                }}
+                                className="ml-auto text-[10px] text-blue-400 hover:text-blue-300 font-bold underline"
+                              >
+                                Usar restante (R$ {saldoRestante.toFixed(2)})
+                              </button>
+                            )
+                          }
                         >
-                          <option value="Dinheiro">Dinheiro</option>
-                          <option value="PIX">PIX</option>
-                          <option value="Cartão de débito">Cartão de débito</option>
-                          <option value="Cartão de crédito">Cartão de crédito</option>
-                        </select>
+                          Valor destinado
+                        </Rotulo>
+                        <ComReais>
+                          <input
+                            type="number"
+                            step="0.01"
+                            required
+                            value={valorPg2}
+                            onChange={(e) => setValorPg2(e.target.value === '' ? '' : Number(e.target.value))}
+                            placeholder="0,00"
+                            className={`${inputCls} pl-9 font-bold`}
+                          />
+                        </ComReais>
                       </div>
 
-                      <div>
-                        <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
-                          VALOR DESTINADO (R$) *
-                        </label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          required
-                          value={valorPg2}
-                          onChange={(e) => setValorPg2(e.target.value === '' ? '' : Number(e.target.value))}
-                          placeholder="0.00"
-                          className="w-full px-3 py-2 bg-[#0c101a] border border-zinc-800 rounded-xl text-xs text-white font-bold outline-none focus:border-blue-500"
-                        />
-                      </div>
-
-                      {/* Parcelas: translúcido e inselecionável quando não for cartão de crédito */}
-                      <div className={`transition-all duration-200 ${
-                        formaPagamento2 === 'Cartão de crédito'
-                          ? 'opacity-100'
-                          : 'opacity-30 pointer-events-none select-none'
-                      }`}>
-                        <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
-                          PARCELAS {formaPagamento2 !== 'Cartão de crédito' && <span className="text-[10px] text-zinc-500 font-normal lowercase">(à vista)</span>}
-                        </label>
-                        <select
-                          disabled={formaPagamento2 !== 'Cartão de crédito'}
-                          value={formaPagamento2 === 'Cartão de crédito' ? parcelas2 : 1}
-                          onChange={(e) => setParcelas2(Number(e.target.value))}
-                          className={`w-full px-3 py-2 bg-[#0c101a] border border-zinc-800 rounded-xl text-xs text-white outline-none focus:border-blue-500 ${
-                            formaPagamento2 === 'Cartão de crédito' ? 'cursor-pointer' : 'cursor-not-allowed text-zinc-500'
-                          }`}
-                        >
-                          {opcoesParcelas(maquininhas, maquininha2).map((o) => (
-                            <option key={o.parcelas} value={o.parcelas}>
-                              {o.rotulo}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      {/* Taxa Maquineta: translúcida e inselecionável quando não for cartão */}
-                      <div className={`transition-all duration-200 ${
-                        formaPagamento2 === 'Cartão de crédito' || formaPagamento2 === 'Cartão de débito'
-                          ? 'opacity-100'
-                          : 'opacity-30 pointer-events-none select-none'
-                      }`}>
-                        <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5">
-                          TAXA MAQUINETA (%) {formaPagamento2 !== 'Cartão de crédito' && formaPagamento2 !== 'Cartão de débito' && <span className="text-[10px] text-zinc-500 font-normal lowercase">(isento)</span>}
-                        </label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          disabled={formaPagamento2 !== 'Cartão de crédito' && formaPagamento2 !== 'Cartão de débito'}
-                          value={formaPagamento2 === 'Cartão de crédito' || formaPagamento2 === 'Cartão de débito' ? taxaMaquinetaPercentual2 : 0}
-                          onChange={(e) => setTaxaMaquinetaPercentual2(e.target.value === '' ? '' : Number(e.target.value))}
-                          placeholder="0.00"
-                          className={`w-full px-3 py-2 bg-[#0c101a] border border-zinc-800 rounded-xl text-xs text-white outline-none focus:border-blue-500 ${
-                            formaPagamento2 === 'Cartão de crédito' || formaPagamento2 === 'Cartão de débito' ? '' : 'cursor-not-allowed text-zinc-500'
-                          }`}
-                        />
-                      </div>
-
-                      {/* Maquininha usada no cartão (taxas de Configurações › Taxas) */}
                       {ehCartao(formaPagamento2) && (
-                        <div className="sm:col-span-2">
-                          <SeletorMaquininha valor={maquininha2} onChange={setMaquininha2} maquininhas={maquininhas} />
-                        </div>
+                        <>
+                          <div className="sm:col-span-2">
+                            <SeletorMaquininha valor={maquininha2} onChange={setMaquininha2} maquininhas={maquininhas} />
+                          </div>
+                          <div>
+                            <Rotulo>Parcelas</Rotulo>
+                            <select
+                              disabled={formaPagamento2 !== 'Cartão de crédito'}
+                              value={formaPagamento2 === 'Cartão de crédito' ? parcelas2 : 1}
+                              onChange={(e) => setParcelas2(Number(e.target.value))}
+                              className={`${inputCls} cursor-pointer`}
+                            >
+                              {opcoesParcelas(maquininhas, maquininha2).map((o) => (
+                                <option key={o.parcelas} value={o.parcelas}>
+                                  {o.rotulo}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <Rotulo>Taxa da maquineta (%)</Rotulo>
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={taxaMaquinetaPercentual2}
+                              onChange={(e) => setTaxaMaquinetaPercentual2(e.target.value === '' ? '' : Number(e.target.value))}
+                              placeholder="0,00"
+                              className={inputCls}
+                            />
+                          </div>
+                        </>
                       )}
                     </div>
                   </div>
@@ -1397,59 +1441,48 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
                 </button>
               </div>
             )}
-          </div>
+          </SubBloco>
 
-          {/* ================= QUADRO DE RESUMO FINANCEIRO (FIGMA) ================= */}
-          <div className="bg-[#080c14] border border-zinc-800/80 rounded-xl p-4 mt-4">
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 text-center">
-              <div>
-                <span className="block text-[10px] font-bold text-zinc-400 uppercase tracking-wider mb-1">
-                  PREÇO DO SERVIÇO
-                </span>
-                <p className="text-base font-bold text-white">
-                  R$ {formatarValor(numPrecoServico)}
-                </p>
-              </div>
+          {/* ================= TICKET DE RESUMO FINANCEIRO ================= */}
+          <div className="rounded-xl border border-blue-500/20 bg-gradient-to-br from-[#0b1424] to-[#080c14] overflow-hidden">
+            <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto]">
+              <dl className="p-4 space-y-2 text-xs">
+                {[
+                  { rotulo: 'Preço do serviço', valor: `R$ ${formatarValor(numPrecoServico)}`, cor: 'text-zinc-200' },
+                  { rotulo: 'Desconto concedido', valor: `− R$ ${formatarValor(descontoCalculado)}`, cor: 'text-rose-400' },
+                  { rotulo: 'Taxa da maquineta', valor: `− R$ ${formatarValor(totalTaxaMaquineta)}`, cor: 'text-rose-400' },
+                  { rotulo: 'Líquido recebido', valor: `R$ ${formatarValor(liquidoRecebido)}`, cor: 'text-zinc-200' },
+                  { rotulo: 'Custos (peça + frete)', valor: `− R$ ${formatarValor(numCustoPeca + numFreteReal)}`, cor: 'text-amber-400' },
+                ].map((linha) => (
+                  <div key={linha.rotulo} className="flex items-center justify-between gap-3 border-b border-dashed border-zinc-800/80 pb-2 last:border-0 last:pb-0">
+                    <dt className="text-zinc-500">{linha.rotulo}</dt>
+                    <dd className={`font-semibold tabular-nums ${linha.cor}`}>{linha.valor}</dd>
+                  </div>
+                ))}
+              </dl>
 
-              <div>
-                <span className="block text-[10px] font-bold text-zinc-400 uppercase tracking-wider mb-1">
-                  DESCONTO CONCEDIDO
-                </span>
-                <p className="text-base font-bold text-rose-400">
-                  - R$ {formatarValor(descontoCalculado)}
-                </p>
-              </div>
-
-              <div>
-                <span className="block text-[10px] font-bold text-zinc-400 uppercase tracking-wider mb-1">
-                  VALOR COBRADO
-                </span>
-                <p className="text-base font-bold text-white">
-                  R$ {formatarValor(valorCobrado)}
-                </p>
-              </div>
-
-              <div>
-                <span className="block text-[10px] font-bold text-zinc-400 uppercase tracking-wider mb-1">
-                  TAXA DA MAQUINETA
-                </span>
-                <p className="text-base font-bold text-rose-400">
-                  - R$ {formatarValor(totalTaxaMaquineta)}
-                </p>
-              </div>
-
-              <div className="col-span-2 sm:col-span-1">
-                <span className="block text-[10px] font-bold text-zinc-400 uppercase tracking-wider mb-1">
-                  LUCRO ESTIMADO
-                </span>
-                <p className={`text-base font-black ${lucroEstimado >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                  R$ {formatarValor(lucroEstimado)}
-                </p>
+              <div className="grid grid-cols-2 lg:grid-cols-1 lg:w-64 border-t lg:border-t-0 lg:border-l border-zinc-800/80">
+                <div className="p-4 bg-cyan-500/[0.05]">
+                  <span className="block text-[10px] font-bold text-cyan-400/80 uppercase tracking-wider">Total ao cliente</span>
+                  <p className="text-xl sm:text-2xl font-black text-cyan-300 tabular-nums mt-0.5">R$ {formatarValor(valorCobrado)}</p>
+                </div>
+                <div className={`p-4 border-l lg:border-l-0 lg:border-t border-zinc-800/80 ${lucroEstimado >= 0 ? 'bg-emerald-500/[0.05]' : 'bg-rose-500/[0.06]'}`}>
+                  <span className={`block text-[10px] font-bold uppercase tracking-wider ${lucroEstimado >= 0 ? 'text-emerald-400/80' : 'text-rose-400/80'}`}>
+                    Lucro estimado
+                  </span>
+                  <p className={`text-xl sm:text-2xl font-black tabular-nums mt-0.5 ${lucroEstimado >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                    R$ {formatarValor(lucroEstimado)}
+                  </p>
+                  {liquidoRecebido > 0 && (
+                    <p className="text-[10px] text-zinc-500 mt-0.5">
+                      {((lucroEstimado / liquidoRecebido) * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}% de margem
+                    </p>
+                  )}
+                </div>
               </div>
             </div>
-
-            <p className="text-[10px] text-zinc-400 text-center mt-3 pt-3 border-t border-zinc-800/60 font-medium">
-              Lucro estimado = valor líquido recebido − custo da peça − frete. O desconto ao cliente e a taxa da maquineta são registrados separadamente.
+            <p className="px-4 py-2.5 text-[10px] text-zinc-500 border-t border-zinc-800/80">
+              Lucro estimado = líquido recebido − custo da peça − frete. O desconto e a taxa da maquineta são registrados separadamente.
             </p>
           </div>
         </div>
@@ -1476,37 +1509,76 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
           </div>
         )}
 
-        {/* ================= SEÇÃO EXPANSÍVEL: CHECKLIST DE ENTRADA ================= */}
+        {/* ================= CARD 04: CHECKLIST DE ENTRADA ================= */}
         <div className={`bg-[#0c101a] border border-zinc-800/80 rounded-2xl overflow-hidden shadow-sm ${classeEtapa(4)}`}>
-          <button
-            type="button"
-            onClick={() => setMostrarChecklist(!mostrarChecklist)}
-            className="w-full p-4 flex items-center justify-between text-xs font-bold text-zinc-300 hover:text-white transition"
-          >
-            <div className="flex items-center space-x-2">
-              <span className="w-5 h-5 rounded-md bg-blue-600/20 text-blue-400 flex items-center justify-center text-[11px]">✓</span>
-              <span>Checklist de entrada do dispositivo ({Object.values(checklist).filter((v) => v === 'OK').length}/{itensChecklist.length} OK)</span>
-            </div>
-            <span className="text-zinc-400 font-mono text-sm">{mostrarChecklist ? '▲' : '▼'}</span>
-          </button>
+          <div className="flex items-center gap-2 pr-3">
+            <button
+              type="button"
+              onClick={() => setMostrarChecklist(!mostrarChecklist)}
+              aria-expanded={mostrarChecklist}
+              className="flex-1 min-w-0 p-4 flex items-center gap-3 text-left hover:bg-zinc-800/20 transition"
+            >
+              <span className="w-9 h-9 shrink-0 rounded-xl bg-blue-600/10 border border-blue-500/25 text-blue-400 flex items-center justify-center">
+                <ClipboardCheck className="w-4 h-4" />
+              </span>
+              <span className="min-w-0">
+                <span className="block text-sm font-bold text-white truncate">
+                  <span className="text-zinc-500 font-mono mr-1.5">04</span>
+                  Checklist de entrada
+                </span>
+                <span className="block text-[11px] text-zinc-500">
+                  {Object.values(checklist).filter((v) => v === 'OK').length} de {itensChecklist.length} itens OK · um toque por item
+                </span>
+              </span>
+              <span className="ml-auto text-zinc-500 text-xs shrink-0">{mostrarChecklist ? '▲' : '▼'}</span>
+            </button>
+            {(mostrarChecklist || etapa === 4) && (
+              <button
+                type="button"
+                onClick={() => setChecklist({ ...checklist, ...Object.fromEntries(itensChecklist.map((i) => [i.chave, 'OK'])) })}
+                className={`shrink-0 px-3 py-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-[11px] font-semibold text-emerald-300 hover:bg-emerald-500/20 transition ${
+                  mostrarChecklist ? '' : 'md:hidden'
+                }`}
+              >
+                Marcar todos OK
+              </button>
+            )}
+          </div>
 
           {/* Na etapa 4 do celular o checklist já abre expandido */}
           {(mostrarChecklist || etapa === 4) && (
-            <div className={`p-5 border-t border-zinc-800/60 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 text-xs ${mostrarChecklist ? '' : 'md:hidden'}`}>
-              {itensChecklist.map(({ chave, rotulo }) => (
-                <div key={chave}>
-                  <label className="block text-[11px] font-medium text-zinc-400 mb-1">{rotulo}</label>
-                  <select
-                    value={checklist[chave] || 'OK'}
-                    onChange={(e) => setChecklist({ ...checklist, [chave]: e.target.value })}
-                    className="w-full px-3 py-1.5 bg-[#080c14] border border-zinc-800 rounded-xl text-white outline-none focus:border-blue-500"
-                  >
-                    {OPCOES_CHECKLIST.map((opcao) => (
-                      <option key={opcao} value={opcao}>{opcao}</option>
-                    ))}
-                  </select>
-                </div>
-              ))}
+            <div className={`p-4 border-t border-zinc-800/60 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2.5 ${mostrarChecklist ? '' : 'md:hidden'}`}>
+              {itensChecklist.map(({ chave, rotulo }) => {
+                const atual = checklist[chave] || 'OK';
+                return (
+                  <div key={chave} className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-[#080c14] border border-zinc-800/80">
+                    <span className="text-xs font-medium text-zinc-200 truncate">{rotulo}</span>
+                    <div role="radiogroup" aria-label={rotulo} className="flex shrink-0 gap-1">
+                      {OPCOES_CHECKLIST.map((opcao) => {
+                        const estilo = ESTILO_CHECKLIST[opcao] || { curto: opcao, icone: Minus, ativo: 'bg-zinc-700/50 text-zinc-200 border-zinc-600' };
+                        const Icone = estilo.icone;
+                        const ativo = atual === opcao;
+                        return (
+                          <button
+                            key={opcao}
+                            type="button"
+                            role="radio"
+                            aria-checked={ativo}
+                            title={opcao}
+                            onClick={() => setChecklist({ ...checklist, [chave]: opcao })}
+                            className={`h-8 px-2 inline-flex items-center gap-1 rounded-lg border text-[10px] font-bold transition ${
+                              ativo ? estilo.ativo : 'border-transparent text-zinc-600 hover:text-zinc-300 hover:bg-zinc-800/60'
+                            }`}
+                          >
+                            <Icone className="w-3.5 h-3.5" />
+                            <span className={ativo ? '' : 'hidden sm:inline'}>{estilo.curto}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
@@ -1536,7 +1608,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
               <button
                 type="submit"
                 disabled={carregando}
-                className="flex-1 min-w-0 flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 active:bg-blue-700 disabled:opacity-50 text-white text-xs font-bold transition shadow-lg shadow-blue-600/25"
+                className="flex-1 min-w-0 flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 disabled:opacity-50 text-white text-xs font-bold transition shadow-lg shadow-sky-500/20"
               >
                 {carregando ? (
                   <>
@@ -1553,38 +1625,56 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
             type="button"
             onClick={handleSalvarRascunho}
             disabled={carregando}
-            className="w-full py-2 text-xs font-semibold text-amber-300/90 hover:text-amber-200 disabled:opacity-50 transition"
+            className="w-full py-2 inline-flex items-center justify-center gap-1.5 text-xs font-semibold text-amber-300/90 hover:text-amber-200 disabled:opacity-50 transition"
           >
-            📝 Salvar como rascunho
+            <Save className="w-3.5 h-3.5" />
+            Salvar como rascunho
           </button>
         </div>
 
-        {/* ================= BOTÕES DE AÇÃO INFERIORES ================= */}
-        <div className="hidden md:flex md:flex-row md:items-center md:justify-end gap-3 pt-2">
+        {/* ================= BOTÕES DE AÇÃO INFERIORES (DESKTOP) ================= */}
+        <div className="hidden md:flex items-center justify-between gap-3 p-4 rounded-2xl bg-[#0c101a] border border-zinc-800/80">
           <button
             type="button"
-            onClick={handleSalvarRascunho}
+            onClick={() => {
+              if (window.confirm('Limpar todos os campos desta nova OS?')) handleLimparFormulario();
+            }}
             disabled={carregando}
-            className="w-full sm:w-auto justify-center px-5 py-2.5 bg-amber-500/10 hover:bg-amber-500/20 active:bg-amber-500/30 text-amber-300 border border-amber-500/30 rounded-xl text-xs font-semibold transition flex items-center space-x-1.5"
+            className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-semibold text-zinc-400 hover:text-white hover:bg-zinc-800/50 transition"
           >
-            <span>📝</span>
-            <span>Salvar rascunho</span>
+            <RotateCcw className="w-3.5 h-3.5" />
+            Limpar formulário
           </button>
 
-          <button
-            type="submit"
-            disabled={carregando}
-            className="w-full sm:w-auto justify-center px-6 py-2.5 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 disabled:opacity-50 text-white font-bold rounded-xl text-xs transition shadow-lg shadow-blue-600/25 flex items-center space-x-2"
-          >
-            {carregando ? (
-              <>
-                <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                <span>Registrando ordem...</span>
-              </>
-            ) : (
-              <span>Criar ordem de serviço</span>
-            )}
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={handleSalvarRascunho}
+              disabled={carregando}
+              className="inline-flex items-center gap-1.5 px-5 py-2.5 bg-amber-500/10 hover:bg-amber-500/20 active:bg-amber-500/30 text-amber-300 border border-amber-500/30 rounded-xl text-xs font-semibold transition"
+            >
+              <Save className="w-3.5 h-3.5" />
+              Salvar rascunho
+            </button>
+
+            <button
+              type="submit"
+              disabled={carregando}
+              className="inline-flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 disabled:opacity-50 text-white font-bold rounded-xl text-xs transition shadow-lg shadow-sky-500/20"
+            >
+              {carregando ? (
+                <>
+                  <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  <span>Registrando ordem...</span>
+                </>
+              ) : (
+                <>
+                  <Wrench className="w-3.5 h-3.5" />
+                  <span>Finalizar e gerar OS</span>
+                </>
+              )}
+            </button>
+          </div>
         </div>
       </form>
 
