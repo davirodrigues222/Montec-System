@@ -27,7 +27,18 @@ const LINHAS_POR_PAGINA = 50;
 import { MODELOS_WHATSAPP, enviarMensagemWhatsapp, podeEnviarMensagem } from "../utils/whatsapp";
 import { StatusBadge } from "../components/StatusBadge";
 import { AutorizacaoAdministrativa } from "../components/AutorizacaoAdministrativa";
+import { CamposLegaisOS } from "../components/CamposLegaisOS";
 import {
+  GARANTIA_LEGAL_DIAS,
+  STATUS_EXIGEM_APROVACAO,
+  dadosLegaisParaChecklist,
+  faltaAutorizacaoPeca,
+  lerDadosLegaisOS,
+} from "../utils/conformidade";
+import {
+  AvisoPrivacidadeImpressao,
+  BlocoGarantiaLegalImpressao,
+  BlocoOrcamentoImpressao,
   CabecalhoLojaImpressao,
   DocumentoParaImpressao,
   RodapeLojaImpressao,
@@ -205,10 +216,6 @@ export const HistoricoServicos: React.FC = () => {
   }, []);
 
   const handleImprimir = (os: OrdemServico) => {
-    if (os.possuiGarantia === false || Number(os.possuiGarantia) === 0) {
-      alert("Este serviço foi cadastrado sem cobertura de garantia.");
-      return;
-    }
     setOsParaImprimir(os);
     setTimeout(() => {
       window.print();
@@ -275,6 +282,30 @@ export const HistoricoServicos: React.FC = () => {
 
   const handleSalvarEdicao = async () => {
     if (!osParaEditar) return;
+
+    const legal = lerDadosLegaisOS(editChecklist);
+    if (faltaAutorizacaoPeca(legal)) {
+      alert("Peça não original ou usada só pode ser empregada com autorização do cliente (CDC, arts. 21 e 70). Marque a autorização ou troque o tipo de peça.");
+      return;
+    }
+    // CDC, art. 39, VI: o serviço só é executado com o orçamento aprovado pelo cliente
+    let checklistParaSalvar: Record<string, any> = editChecklist;
+    if (editStatus !== osParaEditar.status_os && STATUS_EXIGEM_APROVACAO.includes(editStatus) && !legal.orcamentoAprovadoEm) {
+      const aprovou = window.confirm(
+        "O Código de Defesa do Consumidor (art. 39, VI) exige a aprovação do cliente antes de executar o serviço.\n\n" +
+          "O cliente aprovou o orçamento desta OS? Ao confirmar, a aprovação fica registrada com a data de hoje.",
+      );
+      if (!aprovou) return;
+      checklistParaSalvar = {
+        ...editChecklist,
+        ...dadosLegaisParaChecklist({
+          ...legal,
+          orcamentoAprovadoEm: new Date().toISOString(),
+          orcamentoAprovacaoForma: "Confirmada pela loja",
+        }),
+      };
+    }
+
     setSalvandoEdicao(true);
     try {
       const logs: string[] = [];
@@ -367,7 +398,7 @@ export const HistoricoServicos: React.FC = () => {
         valor_liquido: numValorLiquidoFinal,
         dataAbertura: editDataAbertura || undefined,
         data_conclusao: editDataConclusao || undefined,
-        checklistEntrada: editChecklist,
+        checklistEntrada: checklistParaSalvar,
         orcamentoCalculado: {
           subtotalServicos: numValorTotal,
           tipoDesconto: editTipoDesconto,
@@ -1224,6 +1255,18 @@ export const HistoricoServicos: React.FC = () => {
                     </div>
                   </div>
 
+                  <CamposLegaisOS
+                    valor={lerDadosLegaisOS(editChecklist)}
+                    onChange={(d) => setEditChecklist((atual) => ({ ...atual, ...dadosLegaisParaChecklist(d) }))}
+                    valorTotal={
+                      calcularDescontoEdicao(
+                        editValorTotal === "" ? 0 : Number(editValorTotal),
+                        editTipoDesconto,
+                        editDesconto === "" ? 0 : Number(editDesconto),
+                      ).valorComDesconto
+                    }
+                  />
+
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <label className="text-zinc-400 block mb-1">
@@ -1640,7 +1683,7 @@ export const HistoricoServicos: React.FC = () => {
         const formato = cfg.formatoImpressao;
         const termica = formato === "TERMICA_80";
         const os = osParaImprimir;
-        const prazoGarantia = Number(os.prazoGarantiaDias) || cfg.prazoGarantiaDias;
+        const prazoGarantia = Math.max(GARANTIA_LEGAL_DIAS, Number(os.prazoGarantiaDias) || cfg.prazoGarantiaDias);
         return (
           <DocumentoParaImpressao formato={formato}>
             <ViasImpressao formato={formato}>
@@ -1670,7 +1713,8 @@ export const HistoricoServicos: React.FC = () => {
                       <h3 className="font-bold uppercase text-slate-700 border-b border-slate-200 pb-0.5 mb-1">Dados do aparelho</h3>
                       <p><strong>Modelo:</strong> {os.aparelho?.modelo}</p>
                       <p><strong>IMEI / S/N:</strong> {os.aparelho?.imei1 || "Não informado"}</p>
-                      <p><strong>Senha:</strong> {os.aparelho?.senhaDesbloqueio || "Não informada"}</p>
+                      {/* LGPD: a senha fica só no sistema, nunca no papel */}
+                      <p><strong>Senha:</strong> {os.aparelho?.senhaDesbloqueio ? "Informada (não impressa)" : "Não informada"}</p>
                     </div>
                   </div>
 
@@ -1691,12 +1735,17 @@ export const HistoricoServicos: React.FC = () => {
                     </span>
                   </div>
 
+                  <BlocoOrcamentoImpressao os={os} />
+
                   <div className="border border-slate-400 rounded p-2 text-slate-700 space-y-1">
                     <h3 className="font-bold uppercase text-slate-900 border-b border-slate-300 pb-0.5">
                       Garantia de {prazoGarantia} dias — termos e condições
                     </h3>
+                    <BlocoGarantiaLegalImpressao prazoDias={prazoGarantia} cfg={cfg} />
                     <TermosImpressos texto={cfg.termosGarantiaTexto} />
                   </div>
+
+                  <AvisoPrivacidadeImpressao cfg={cfg} />
 
                   <div className={`grid ${termica ? "grid-cols-1 gap-6" : "grid-cols-2 gap-8"} pt-6 text-center`}>
                     <div>

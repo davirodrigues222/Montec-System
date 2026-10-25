@@ -2,6 +2,7 @@ import React from 'react';
 import { TERMOS_GARANTIA_PADRAO, calcularDataPrevistaEntrega, normalizarPrefixoOS } from '../../services/api';
 import { Campo, Secao, inputCls } from '../../components/cadastros/ui';
 import { ITENS_CHECKLIST } from '../../utils/checklist';
+import { GARANTIA_LEGAL_DIAS } from '../../utils/conformidade';
 import { type PropsAba, cardCls } from './tipos';
 
 const numeroInteiro = (valor: string, min: number, max: number) => Math.min(max, Math.max(min, Math.floor(Number(valor) || 0)));
@@ -24,12 +25,13 @@ export const AbaOperacional: React.FC<PropsAba> = ({ config, alterar }) => {
           <p className="text-xs text-zinc-400 mt-0.5">Usados automaticamente na abertura de novas ordens e na validação de retornos.</p>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <Campo label="Prazo padrão de garantia (dias)" dica="CDC, Art. 26: 90 dias.">
+          <Campo label="Prazo padrão de garantia (dias)" dica="Mínimo de 90 dias: garantia legal (CDC, art. 26, II).">
             <input
               type="number"
-              min={1}
+              min={GARANTIA_LEGAL_DIAS}
               value={config.prazoGarantiaDias}
               onChange={(e) => alterar({ prazoGarantiaDias: numeroInteiro(e.target.value, 1, 3650) })}
+              onBlur={() => alterar({ prazoGarantiaDias: Math.max(GARANTIA_LEGAL_DIAS, config.prazoGarantiaDias) })}
               className={inputCls()}
             />
           </Campo>

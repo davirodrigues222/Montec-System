@@ -3,6 +3,7 @@ import { alterarSenhaConta, gerarBackupConta, type ConfiguracoesLojaIsolada, typ
 import { Campo, inputCls } from '../../components/cadastros/ui';
 import { cardCls } from './tipos';
 import { validarSenhaForte } from '../../utils/formatadores';
+import { baixarArquivo } from '../../utils/arquivo';
 
 interface Props {
   config: ConfiguracoesLojaIsolada;
@@ -18,16 +19,6 @@ const TEMAS: { id: TemaVisual; nome: string; detalhe: string; fundo: string; bar
   { id: 'light', nome: 'Claro', detalhe: 'Fundo branco', fundo: 'bg-[#f1f5f9]', barra: 'bg-white border-slate-300', ponto: 'bg-blue-600', traco: 'bg-slate-300', corNome: 'text-slate-900', corDetalhe: 'text-slate-600' },
 ];
 
-const baixarArquivo = (conteudo: string, nome: string, tipo: string) => {
-  const url = URL.createObjectURL(new Blob([conteudo], { type: tipo }));
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = nome;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
-};
 
 /** Célula de CSV; textos que começam com = + - @ ganham apóstrofo para o Excel não executar como fórmula. */
 const celulaCsv = (v: unknown) => {

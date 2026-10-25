@@ -8,6 +8,7 @@ import {
   salvarServico,
 } from '../../services/cadastros';
 import { extrairDiasGarantia, obterPrazoGarantiaConfiguradoLoja } from '../../services/api';
+import { GARANTIA_LEGAL_DIAS } from '../../utils/conformidade';
 import {
   AcoesLinha,
   Badge,
@@ -27,7 +28,9 @@ import {
 import { formatarMoeda } from '../../utils/formatadores';
 
 // Valores gravados em garantia_padrao (texto lido por extrairDiasGarantia). '' = usa o prazo padrão da loja.
-const OPCOES_GARANTIA = ['', 'Sem garantia', '30 dias', '60 dias', '90 dias', '120 dias', '180 dias', '1 ano'];
+// "Sem garantia" significa só a garantia legal: ela não pode ser excluída nem reduzida (CDC, arts. 24 e 26, II).
+const OPCOES_GARANTIA = ['', 'Sem garantia', '90 dias', '120 dias', '180 dias', '1 ano'];
+const ROTULO_SO_LEGAL = `Só garantia legal (${GARANTIA_LEGAL_DIAS} dias)`;
 const PERSONALIZADO = '__personalizado__';
 const SUGESTOES_TEMPO = ['30 minutos', '1 hora', '2 horas', '4 horas', '1 dia', '2 dias', '3 a 5 dias'];
 
@@ -72,14 +75,20 @@ export const ServicosCadastro: React.FC = () => {
   /** Dias efetivos de garantia: null no cadastro = prazo padrão da loja. */
   const diasGarantia = (g: string | null) => (g ? extrairDiasGarantia(g) ?? prazoLoja : prazoLoja);
 
+  // Prazos abaixo de 90 dias (cadastros antigos) valem como a garantia legal
+  const soGarantiaLegal = (g: string) => {
+    const dias = extrairDiasGarantia(g);
+    return dias !== null && dias < GARANTIA_LEGAL_DIAS;
+  };
+
   const rotuloGarantia = (g: string | null) => {
     if (!g) return `Padrão da loja (${prazoLoja} dias)`;
-    return extrairDiasGarantia(g) === 0 ? 'Sem garantia' : g;
+    return soGarantiaLegal(g) ? ROTULO_SO_LEGAL : g;
   };
 
   const badgeGarantia = (g: string | null) => {
     if (!g) return <Badge cor="azul">Padrão ({prazoLoja} dias)</Badge>;
-    if (extrairDiasGarantia(g) === 0) return <Badge cor="cinza">Sem garantia</Badge>;
+    if (soGarantiaLegal(g)) return <Badge cor="cinza">{ROTULO_SO_LEGAL}</Badge>;
     return <Badge cor="verde">{g}</Badge>;
   };
 
@@ -135,7 +144,9 @@ export const ServicosCadastro: React.FC = () => {
     if (preco === null) e.preco = 'Informe um valor válido. Ex: 150,00';
     if (form.garantia === PERSONALIZADO) {
       const dias = Number(form.garantiaDias);
-      if (!Number.isInteger(dias) || dias < 1 || dias > 3650) e.garantiaDias = 'Informe de 1 a 3650 dias.';
+      if (!Number.isInteger(dias) || dias < GARANTIA_LEGAL_DIAS || dias > 3650) {
+        e.garantiaDias = `Informe de ${GARANTIA_LEGAL_DIAS} a 3650 dias (mínimo da garantia legal).`;
+      }
     }
     return e;
   };
@@ -192,8 +203,8 @@ export const ServicosCadastro: React.FC = () => {
     const q = busca.trim().toLowerCase();
     return servicos.filter((s) => {
       const dias = diasGarantia(s.garantia_padrao);
-      if (filtro === 'com-garantia' && dias === 0) return false;
-      if (filtro === 'sem-garantia' && dias !== 0) return false;
+      if (filtro === 'com-garantia' && dias < GARANTIA_LEGAL_DIAS) return false;
+      if (filtro === 'sem-garantia' && dias >= GARANTIA_LEGAL_DIAS) return false;
       if (!q) return true;
       return [s.nome, s.descricao, s.tempo_estimado].some((v) => (v || '').toLowerCase().includes(q));
     });
@@ -259,7 +270,7 @@ export const ServicosCadastro: React.FC = () => {
             label="Garantia do serviço"
             dica={
               form.garantia === 'Sem garantia'
-                ? 'A OS será aberta sem cobertura e sem certidão de garantia.'
+                ? `A OS sai só com a garantia legal de ${GARANTIA_LEGAL_DIAS} dias, que não pode ser excluída (CDC, art. 24).`
                 : 'Aplicada automaticamente ao escolher o serviço na Nova OS.'
             }
             className={form.garantia === PERSONALIZADO ? 'md:col-span-4' : 'md:col-span-6'}
@@ -267,7 +278,13 @@ export const ServicosCadastro: React.FC = () => {
             <select value={form.garantia} onChange={(e) => atualizar('garantia', e.target.value)} className={inputCls()}>
               {OPCOES_GARANTIA.map((g) => (
                 <option key={g} value={g}>
-                  {g === '' ? `Padrão da loja (${prazoLoja} dias)` : g === '90 dias' ? '90 dias (CDC)' : g}
+                  {g === ''
+                    ? `Padrão da loja (${prazoLoja} dias)`
+                    : g === 'Sem garantia'
+                    ? ROTULO_SO_LEGAL
+                    : g === '90 dias'
+                    ? '90 dias (CDC)'
+                    : g}
                 </option>
               ))}
               <option value={PERSONALIZADO}>Personalizado...</option>
@@ -277,7 +294,7 @@ export const ServicosCadastro: React.FC = () => {
             <Campo label="Dias de garantia" obrigatorio erro={erros.garantiaDias} className="md:col-span-2">
               <input
                 type="number"
-                min={1}
+                min={GARANTIA_LEGAL_DIAS}
                 value={form.garantiaDias}
                 onChange={(e) => atualizar('garantiaDias', e.target.value)}
                 placeholder="45"
@@ -311,8 +328,8 @@ export const ServicosCadastro: React.FC = () => {
               onChange={setFiltro}
               opcoes={[
                 { valor: 'todos', label: 'Todos' },
-                { valor: 'com-garantia', label: 'Com garantia' },
-                { valor: 'sem-garantia', label: 'Sem garantia' },
+                { valor: 'com-garantia', label: 'Garantia da loja' },
+                { valor: 'sem-garantia', label: 'Só garantia legal' },
               ]}
             />
           }

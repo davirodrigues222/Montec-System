@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { fazerLogin, cadastrarUsuario, recuperarSenha } from '../services/api';
 import { validarSenhaForte } from '../utils/formatadores';
+import { type DocumentoLegal, DocumentosLegais } from '../components/DocumentosLegais';
 
 interface Props {
   onLoginSuccess?: () => void;
@@ -28,6 +29,7 @@ export const Auth: React.FC<Props> = ({ onLoginSuccess, modoInicial = 'login', o
   const [cadSenha, setCadSenha] = useState('');
   const [cadConfirmarSenha, setCadConfirmarSenha] = useState('');
   const [concordouTermos, setConcordouTermos] = useState(false);
+  const [documentoAberto, setDocumentoAberto] = useState<DocumentoLegal | null>(null);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -473,7 +475,29 @@ export const Auth: React.FC<Props> = ({ onLoginSuccess, modoInicial = 'login', o
                       className="mt-1 rounded bg-[#0d131f] border-zinc-700 text-blue-600 focus:ring-blue-500"
                     />
                     <span className="text-xs text-zinc-400">
-                      Concordo com os Termos de Uso e Política de Privacidade do sistema.
+                      Concordo com os{' '}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          setDocumentoAberto('termos');
+                        }}
+                        className="text-blue-400 underline hover:text-blue-300"
+                      >
+                        Termos de Uso
+                      </button>{' '}
+                      e a{' '}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          setDocumentoAberto('privacidade');
+                        }}
+                        className="text-blue-400 underline hover:text-blue-300"
+                      >
+                        Política de Privacidade
+                      </button>{' '}
+                      do sistema.
                     </span>
                   </label>
                 </div>
@@ -511,6 +535,7 @@ export const Auth: React.FC<Props> = ({ onLoginSuccess, modoInicial = 'login', o
           </p>
         </div>
       </div>
+      {documentoAberto && <DocumentosLegais inicial={documentoAberto} onFechar={() => setDocumentoAberto(null)} />}
     </div>
   );
 };
