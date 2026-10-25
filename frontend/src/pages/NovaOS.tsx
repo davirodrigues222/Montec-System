@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   buscarClientes,
   buscarFornecedores,
@@ -27,6 +27,14 @@ import type { OrdemServico } from '../types';
 import { OPCOES_CHECKLIST, criarChecklistPadrao, itensChecklistAtivos } from '../utils/checklist';
 import { formatarValor } from '../utils/formatadores';
 import { enviarMensagemWhatsapp } from '../utils/whatsapp';
+
+type EtapaMobile = 1 | 2 | 3 | 4;
+const ETAPAS_MOBILE: { n: EtapaMobile; titulo: string; proxima: string }[] = [
+  { n: 1, titulo: 'Cliente e garantia', proxima: 'Continuar para aparelho' },
+  { n: 2, titulo: 'Aparelho, defeito e prazos', proxima: 'Continuar para valores' },
+  { n: 3, titulo: 'Orçamento e pagamento', proxima: 'Continuar para checklist' },
+  { n: 4, titulo: 'Checklist e confirmação', proxima: '' },
+];
 
 interface Props {
   onNavigate?: (tab: AbaSistema) => void;
@@ -187,6 +195,10 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
   const [carregando, setCarregando] = useState(false);
   const [osCriadaSucesso, setOsCriadaSucesso] = useState<{ idOs: string; numeroOs: string; dadosCompletos: OrdemServico } | null>(null);
   const [osParaImprimir, setOsParaImprimir] = useState<OrdemServico | null>(null);
+
+  // Celular: preenchimento em etapas (no desktop todos os cards ficam visíveis)
+  const [etapa, setEtapa] = useState<EtapaMobile>(1);
+  const topoEtapasRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     // As funções de busca já tratam erros e devolvem lista vazia
@@ -543,6 +555,48 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
 
     setChecklist(checklistInicial());
     setOsCriadaSucesso(null);
+    setEtapa(1);
+  };
+
+  // ================= ETAPAS (SOMENTE CELULAR) =================
+  /** Mensagem do que falta para sair da etapa, ou null se ela está completa. */
+  const pendenciaEtapa = (n: EtapaMobile): string | null => {
+    if (n === 1 && !nomeCliente.trim()) return 'Informe o Nome do Cliente (*) para continuar.';
+    if (n === 2 && (!modeloAparelho.trim() || !defeitoRelatado.trim())) return 'Informe o Modelo do Aparelho (*) e o Defeito Relatado (*) para continuar.';
+    if (n === 3 && numPrecoServico <= 0) return 'Informe o Valor do Serviço (*) para continuar.';
+    return null;
+  };
+
+  const irParaEtapa = (destino: EtapaMobile) => {
+    // Voltar é livre; avançar exige as etapas intermediárias completas
+    for (let n = etapa; n < destino; n++) {
+      const pendencia = pendenciaEtapa(n as EtapaMobile);
+      if (pendencia) {
+        alert(pendencia);
+        setEtapa(n as EtapaMobile);
+        return;
+      }
+    }
+    setEtapa(destino);
+    // O conteúdo rola dentro do <main> do Layout, não da janela
+    requestAnimationFrame(() => {
+      topoEtapasRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+  };
+
+  /** Esconde o card no celular quando ele não é da etapa atual; no desktop sempre aparece. */
+  const classeEtapa = (n: EtapaMobile) => (etapa === n ? '' : 'hidden md:block');
+
+  const enviarFormulario = (e: React.FormEvent) => {
+    // Enter num campo do celular avança a etapa em vez de tentar criar a OS
+    const ehCelular = !window.matchMedia('(min-width: 768px)').matches;
+    if (ehCelular && etapa < 4) {
+      e.preventDefault();
+      irParaEtapa((etapa + 1) as EtapaMobile);
+      return;
+    }
+    handleSubmit(e);
   };
 
   return (
@@ -557,8 +611,31 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
         </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <form onSubmit={enviarFormulario} className="space-y-6">
+        {/* ================= PROGRESSO DAS ETAPAS (SOMENTE CELULAR) ================= */}
+        <div ref={topoEtapasRef} className="md:hidden scroll-mt-4 bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-4 space-y-3">
+          <div className="flex items-baseline justify-between gap-3">
+            <p className="text-sm font-bold text-white truncate">{ETAPAS_MOBILE[etapa - 1].titulo}</p>
+            <span className="text-[11px] font-semibold text-zinc-400 whitespace-nowrap">Etapa {etapa} de 4</span>
+          </div>
+          <div className="grid grid-cols-4 gap-1.5">
+            {ETAPAS_MOBILE.map(({ n, titulo }) => (
+              <button
+                key={n}
+                type="button"
+                onClick={() => irParaEtapa(n)}
+                aria-label={`Etapa ${n}: ${titulo}`}
+                aria-current={etapa === n ? 'step' : undefined}
+                className="py-1.5"
+              >
+                <span className={`block h-1.5 rounded-full transition-colors ${n <= etapa ? 'bg-blue-500' : 'bg-zinc-800'}`} />
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* ================= BARRA DE COBERTURA (GARANTIA) ================= */}
+        <div className={classeEtapa(1)}>
         <div className="bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
           <div className="flex flex-wrap items-center gap-3">
             <span className="text-sm font-bold text-white tracking-wide uppercase">Cobertura de garantia:</span>
@@ -618,9 +695,10 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
             </button>
           </div>
         </div>
+        </div>
 
         {/* ================= CARD 01: DADOS DO CLIENTE ================= */}
-        <div className="bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-6 space-y-4 shadow-sm">
+        <div className={`bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-6 space-y-4 shadow-sm ${classeEtapa(1)}`}>
           <div className="flex items-center justify-between border-b border-zinc-800/60 pb-3">
             <div className="flex items-center space-x-2.5">
               <span className="w-6 h-6 rounded-lg bg-blue-600/15 border border-blue-500/30 text-blue-400 flex items-center justify-center text-xs font-bold">
@@ -695,7 +773,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
         </div>
 
         {/* ================= CARD 02: APARELHO E DATAS ================= */}
-        <div className="bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-6 space-y-4 shadow-sm">
+        <div className={`bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-6 space-y-4 shadow-sm ${classeEtapa(2)}`}>
           <div className="flex items-center justify-between border-b border-zinc-800/60 pb-3">
             <div className="flex items-center space-x-2.5">
               <span className="w-6 h-6 rounded-lg bg-blue-600/15 border border-blue-500/30 text-blue-400 flex items-center justify-center text-xs font-bold">
@@ -829,7 +907,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
         </div>
 
         {/* ================= CARD 03: VALORES E PAGAMENTO (FIGMA MAKE REFINADO) ================= */}
-        <div className="bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-6 space-y-5 shadow-sm">
+        <div className={`bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-6 space-y-5 shadow-sm ${classeEtapa(3)}`}>
           <div className="flex items-center justify-between border-b border-zinc-800/60 pb-3">
             <div className="flex items-center space-x-2.5">
               <span className="w-6 h-6 rounded-lg bg-blue-600/15 border border-blue-500/30 text-blue-400 flex items-center justify-center text-xs font-bold">
@@ -1376,8 +1454,30 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
           </div>
         </div>
 
+        {/* ================= RESUMO PARA CONFERÊNCIA (CELULAR, ETAPA 4) ================= */}
+        {etapa === 4 && (
+          <div className="md:hidden bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-4 space-y-2.5">
+            <p className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider">Confira antes de finalizar</p>
+            {[
+              { rotulo: 'Cliente', valor: nomeCliente.trim() || '—', voltarPara: 1 as EtapaMobile },
+              { rotulo: 'Aparelho', valor: modeloAparelho.trim() || '—', voltarPara: 2 as EtapaMobile },
+              { rotulo: 'Total cobrado', valor: `R$ ${formatarValor(valorCobrado)}`, voltarPara: 3 as EtapaMobile },
+            ].map((linha) => (
+              <button
+                key={linha.rotulo}
+                type="button"
+                onClick={() => irParaEtapa(linha.voltarPara)}
+                className="w-full flex items-center justify-between gap-3 text-left text-xs"
+              >
+                <span className="text-zinc-500 shrink-0">{linha.rotulo}</span>
+                <span className="font-semibold text-white truncate">{linha.valor}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* ================= SEÇÃO EXPANSÍVEL: CHECKLIST DE ENTRADA ================= */}
-        <div className="bg-[#0c101a] border border-zinc-800/80 rounded-2xl overflow-hidden shadow-sm">
+        <div className={`bg-[#0c101a] border border-zinc-800/80 rounded-2xl overflow-hidden shadow-sm ${classeEtapa(4)}`}>
           <button
             type="button"
             onClick={() => setMostrarChecklist(!mostrarChecklist)}
@@ -1390,8 +1490,9 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
             <span className="text-zinc-400 font-mono text-sm">{mostrarChecklist ? '▲' : '▼'}</span>
           </button>
 
-          {mostrarChecklist && (
-            <div className="p-5 border-t border-zinc-800/60 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 text-xs">
+          {/* Na etapa 4 do celular o checklist já abre expandido */}
+          {(mostrarChecklist || etapa === 4) && (
+            <div className={`p-5 border-t border-zinc-800/60 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 text-xs ${mostrarChecklist ? '' : 'md:hidden'}`}>
               {itensChecklist.map(({ chave, rotulo }) => (
                 <div key={chave}>
                   <label className="block text-[11px] font-medium text-zinc-400 mb-1">{rotulo}</label>
@@ -1410,8 +1511,56 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
           )}
         </div>
 
+        {/* ================= NAVEGAÇÃO DAS ETAPAS (SOMENTE CELULAR) ================= */}
+        <div className="md:hidden sticky bottom-0 z-20 -mx-3 px-3 pt-3 pb-3 bg-[#080c14]/95 backdrop-blur border-t border-zinc-800/80 space-y-2">
+          <div className="flex items-center gap-2">
+            {etapa > 1 && (
+              <button
+                type="button"
+                onClick={() => irParaEtapa((etapa - 1) as EtapaMobile)}
+                disabled={carregando}
+                className="shrink-0 px-4 py-3 rounded-xl border border-zinc-800 bg-[#0c101a] text-xs font-semibold text-zinc-300 hover:text-white transition"
+              >
+                ‹ Voltar
+              </button>
+            )}
+            {etapa < 4 ? (
+              <button
+                type="button"
+                onClick={() => irParaEtapa((etapa + 1) as EtapaMobile)}
+                className="flex-1 min-w-0 px-4 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white text-xs font-bold transition shadow-lg shadow-blue-600/25 truncate"
+              >
+                {ETAPAS_MOBILE[etapa - 1].proxima} ›
+              </button>
+            ) : (
+              <button
+                type="submit"
+                disabled={carregando}
+                className="flex-1 min-w-0 flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 active:bg-blue-700 disabled:opacity-50 text-white text-xs font-bold transition shadow-lg shadow-blue-600/25"
+              >
+                {carregando ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    <span>Registrando ordem...</span>
+                  </>
+                ) : (
+                  <span>Finalizar e gerar OS</span>
+                )}
+              </button>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={handleSalvarRascunho}
+            disabled={carregando}
+            className="w-full py-2 text-xs font-semibold text-amber-300/90 hover:text-amber-200 disabled:opacity-50 transition"
+          >
+            📝 Salvar como rascunho
+          </button>
+        </div>
+
         {/* ================= BOTÕES DE AÇÃO INFERIORES ================= */}
-        <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-3 pt-2">
+        <div className="hidden md:flex md:flex-row md:items-center md:justify-end gap-3 pt-2">
           <button
             type="button"
             onClick={handleSalvarRascunho}
