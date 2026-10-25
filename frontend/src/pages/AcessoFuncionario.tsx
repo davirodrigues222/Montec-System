@@ -250,7 +250,7 @@ export const AcessoFuncionario: React.FC<Props> = ({ session, onEntrar }) => {
           </div>
         </div>
 
-        <form onSubmit={enviar} noValidate className="bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-6 shadow-xl space-y-5">
+        <form onSubmit={enviar} noValidate autoComplete="off" className="bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-6 shadow-xl space-y-5">
           <div>
             <h1 className="text-lg font-extrabold text-white">{titulos[modo].titulo}</h1>
             <p className="text-xs text-zinc-400 mt-1 leading-relaxed">{titulos[modo].subtitulo}</p>
@@ -283,13 +283,15 @@ export const AcessoFuncionario: React.FC<Props> = ({ session, onEntrar }) => {
                   onChange={(e) => setCodigo(somenteDigitosCodigo(e.target.value))}
                   inputMode="numeric"
                   pattern="[0-9]*"
-                  autoComplete="username"
+                  name="codigo-acesso-funcionario"
+                  autoComplete="off"
                   autoFocus
                   placeholder="ex: 1024"
                   className={`${inputCls()} py-3 font-mono`}
                 />
               </Campo>
-              {campoSenha(senha, setSenha, 'Senha', 'current-password')}
+              {/* new-password: impede o navegador de colar o e-mail/senha salvos da conta nestes campos */}
+              {campoSenha(senha, setSenha, 'Senha', 'new-password')}
             </>
           )}
 
@@ -310,7 +312,8 @@ export const AcessoFuncionario: React.FC<Props> = ({ session, onEntrar }) => {
                   onChange={(e) => setCodigo(somenteDigitosCodigo(e.target.value))}
                   inputMode="numeric"
                   pattern="[0-9]*"
-                  autoComplete="username"
+                  name="codigo-acesso-funcionario"
+                  autoComplete="off"
                   placeholder="ex: 1024"
                   className={`${inputCls()} py-3 font-mono`}
                 />
