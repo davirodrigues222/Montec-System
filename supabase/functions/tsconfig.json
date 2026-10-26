@@ -1,0 +1,14 @@
+{
+  // Só para o VS Code entender as Edge Functions (elas rodam no Deno do Supabase, não no Node).
+  // O Supabase não usa este arquivo ao publicar.
+  "compilerOptions": {
+    "target": "es2022",
+    "lib": ["es2022", "dom"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "noEmit": true,
+    "strict": true,
+    "skipLibCheck": true
+  },
+  "include": ["**/*.ts"]
+}
