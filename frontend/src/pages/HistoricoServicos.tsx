@@ -131,6 +131,8 @@ export const HistoricoServicos: React.FC = () => {
   const [osParaEditar, setOsParaEditar] = useState<OrdemServico | null>(null);
   const [osParaExcluir, setOsParaExcluir] = useState<OrdemServico | null>(null);
   const { pode, operador } = useOperador();
+  // Custo e lucro só para quem tem acesso financeiro (o banco também não entrega: migração 20261026180000)
+  const veCustos = pode("tela_relatorios");
   const [osParaImprimir, setOsParaImprimir] = useState<OrdemServico | null>(
     null,
   );
@@ -452,11 +454,16 @@ export const HistoricoServicos: React.FC = () => {
           descontoInput: numDesconto,
           descontoGeralAplicado: valorDescontoCalculado,
           valorTotalOrcamento: valorComDesconto,
-          lucroTotalEstimadoInterno: lucroCalculado,
-          custoPeca: numCustoPeca,
-          freteReal: numFrete,
+          // Sem acesso financeiro os custos chegam vazios: não envia, para não apagar os valores gravados
+          ...(veCustos
+            ? {
+                lucroTotalEstimadoInterno: lucroCalculado,
+                custoPeca: numCustoPeca,
+                freteReal: numFrete,
+                custoPecaGarantia: custoGarantiaExistente,
+              }
+            : {}),
           fornecedorPeca: editFornecedor,
-          custoPecaGarantia: custoGarantiaExistente,
         },
         modificacoesLog: logs,
       });
@@ -1536,6 +1543,8 @@ export const HistoricoServicos: React.FC = () => {
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-5 gap-3 pt-2 border-t border-zinc-800/80">
+                    {veCustos && (
+                    <>
                     <div>
                       <label className="text-zinc-400 block mb-1">
                         Custo Peça (R$)
@@ -1570,6 +1579,8 @@ export const HistoricoServicos: React.FC = () => {
                         className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-white outline-none focus:border-blue-500"
                       />
                     </div>
+                    </>
+                    )}
                     <div>
                       <label className="text-zinc-400 block mb-1">
                         Tipo Desc.
@@ -1665,12 +1676,14 @@ export const HistoricoServicos: React.FC = () => {
                           <span className="text-emerald-400 uppercase text-[10px] font-bold block">Valor Final Cobrado</span>
                           <p className="text-sm font-black text-emerald-400 mt-1">R$ {fmt(valorComDesconto)}</p>
                         </div>
-                        <div className="p-3 bg-zinc-950 border border-purple-500/30 rounded-xl">
-                          <span className="text-purple-400 uppercase text-[10px] font-bold block">Lucro Líquido Estimado</span>
-                          <p className={`text-sm font-black mt-1 ${lucro >= 0 ? "text-purple-400" : "text-red-400"}`}>
-                            R$ {fmt(lucro)}
-                          </p>
-                        </div>
+                        {veCustos && (
+                          <div className="p-3 bg-zinc-950 border border-purple-500/30 rounded-xl">
+                            <span className="text-purple-400 uppercase text-[10px] font-bold block">Lucro Líquido Estimado</span>
+                            <p className={`text-sm font-black mt-1 ${lucro >= 0 ? "text-purple-400" : "text-red-400"}`}>
+                              R$ {fmt(lucro)}
+                            </p>
+                          </div>
+                        )}
                       </div>
                     );
                   })()}

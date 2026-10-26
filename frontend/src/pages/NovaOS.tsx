@@ -377,7 +377,9 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
   const [formaPagamento2, setFormaPagamento2] = useState('Dinheiro');
 
   // Botões de forma de pagamento: os do cadastro quando houver (carregados abaixo)
-  const { operador } = useOperador();
+  const { operador, pode } = useOperador();
+  // Lucro e margem só para quem tem acesso financeiro (o banco também não entrega: migração 20261026180000)
+  const veCustos = pode('tela_relatorios');
   const [opcoesPagamento, setOpcoesPagamento] = useState<OpcaoPagamento[]>(OPCOES_PAGAMENTO_NATIVAS);
   const [valorPg2, setValorPg2] = useState<number | ''>('');
   const [parcelas2, setParcelas2] = useState(1);
@@ -1655,6 +1657,8 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
                   <span className="block text-[10px] font-bold text-cyan-400/80 uppercase tracking-wider">Total ao cliente</span>
                   <p className="text-xl sm:text-2xl font-black text-cyan-300 tabular-nums mt-0.5">R$ {formatarValor(valorCobrado)}</p>
                 </div>
+                {/* Lucro e margem só para quem tem acesso financeiro (Análises e relatórios) */}
+                {veCustos && (
                 <div className={`p-4 border-l lg:border-l-0 lg:border-t border-zinc-800/80 ${lucroEstimado >= 0 ? 'bg-emerald-500/[0.05]' : 'bg-rose-500/[0.06]'}`}>
                   <span className={`block text-[10px] font-bold uppercase tracking-wider ${lucroEstimado >= 0 ? 'text-emerald-400/80' : 'text-rose-400/80'}`}>
                     Lucro estimado
@@ -1668,11 +1672,14 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
                     </p>
                   )}
                 </div>
+                )}
               </div>
             </div>
-            <p className="px-4 py-2.5 text-[10px] text-zinc-500 border-t border-zinc-800/80">
-              Lucro estimado = líquido recebido − custo da peça − frete. O desconto e a taxa da maquineta são registrados separadamente.
-            </p>
+            {veCustos && (
+              <p className="px-4 py-2.5 text-[10px] text-zinc-500 border-t border-zinc-800/80">
+                Lucro estimado = líquido recebido − custo da peça − frete. O desconto e a taxa da maquineta são registrados separadamente.
+              </p>
+            )}
           </div>
         </div>
 
