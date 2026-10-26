@@ -33,6 +33,11 @@ export const SECOES_CONFIGURACAO: { id: SecaoConfiguracao; rotulo: string; descr
     descricao: 'Logotipo, tema, senha da conta e exportação dos dados da loja.',
   },
   {
+    id: 'assinatura',
+    rotulo: 'Plano & Assinatura',
+    descricao: 'Situação da assinatura, validade do acesso e os planos Mensal e Anual.',
+  },
+  {
     id: 'leis',
     rotulo: 'Leis e termos de uso',
     descricao: 'Leis do CDC, Código Civil e LGPD para o balcão, termos de garantia impressos e termos de uso do sistema.',

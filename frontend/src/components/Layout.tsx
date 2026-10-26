@@ -10,6 +10,58 @@ import { SECOES_CONFIGURACAO } from '../pages/configuracoes/secoes';
 import { useOperador } from '../contexts/OperadorContext';
 import { type AbaSistema, PERMISSAO_POR_SECAO, podeAcessar, podeAcessarAba } from '../services/acesso';
 import { CARGOS, EVENTO_LOJAS_ATUALIZADAS, type Loja, listarLojas } from '../services/cadastros';
+import { useAssinatura } from '../contexts/AssinaturaContext';
+import { PLANOS, diasRestantes, ehCortesia, formatarPrecoPlano } from '../services/assinatura';
+
+/** Selo compacto do plano no rodapé do menu; leva para Configurações › Plano & Assinatura. */
+const SeloPlano: React.FC<{ onAbrir: () => void }> = ({ onAbrir }) => {
+  const { situacao } = useAssinatura();
+  // Assinatura ainda não disponível no banco (modo de transição): não mostra nada
+  if (!situacao.disponivel) return null;
+
+  const dataCurta = situacao.dataExpiracao
+    ? new Date(situacao.dataExpiracao).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
+    : '';
+  const dias = diasRestantes(situacao.dataExpiracao);
+  const pago = situacao.acessoLiberado && situacao.status !== 'trial';
+
+  let titulo: string;
+  let detalhe: string;
+  let cls: string;
+  if (ehCortesia(situacao)) {
+    titulo = 'Acesso liberado';
+    detalhe = 'Cortesia • sem vencimento';
+    cls = 'border-emerald-500/25 bg-emerald-500/5 text-emerald-300';
+  } else if (pago && situacao.status === 'ativa') {
+    titulo = `Plano ${situacao.plano === 'anual' ? 'Anual' : 'Mensal'} ativo`;
+    detalhe = `Renova em ${dataCurta}`;
+    cls = 'border-emerald-500/25 bg-emerald-500/5 text-emerald-300';
+  } else if (pago) {
+    titulo = 'Assinatura cancelada';
+    detalhe = `Acesso até ${dataCurta}`;
+    cls = 'border-amber-500/25 bg-amber-500/5 text-amber-300';
+  } else if (situacao.acessoLiberado) {
+    titulo = 'Período de avaliação';
+    detalhe = `${dias} ${dias === 1 ? 'dia restante' : 'dias restantes'} • Assinar plano`;
+    cls = 'border-blue-500/25 bg-blue-500/5 text-blue-300';
+  } else {
+    titulo = 'Assinar Plano';
+    detalhe = `${formatarPrecoPlano(PLANOS.mensal.preco)}/mês`;
+    cls = 'border-rose-500/25 bg-rose-500/5 text-rose-300';
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onAbrir}
+      title="Plano & Assinatura"
+      className={`w-full mb-3 px-3 py-2.5 rounded-xl border text-left transition hover:brightness-125 ${cls}`}
+    >
+      <p className="text-xs font-bold truncate">{titulo}</p>
+      <p className="text-[11px] text-zinc-400 truncate mt-0.5">{detalhe}</p>
+    </button>
+  );
+};
 
 interface Props {
   children: React.ReactNode;
@@ -454,6 +506,7 @@ export const Layout: React.FC<Props> = ({
 
         {/* Rodapé: Operador Logado */}
         <div className="p-4 border-t border-zinc-800/60 shrink-0">
+          <SeloPlano onAbrir={() => abrirSecaoConfiguracao('assinatura')} />
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3 overflow-hidden min-w-0">
               <div className="w-10 h-10 rounded-xl bg-slate-800 border border-slate-700/60 flex items-center justify-center text-xs font-extrabold text-white shrink-0 shadow-sm">

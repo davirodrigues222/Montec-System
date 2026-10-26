@@ -22,6 +22,7 @@ import { AbaWhatsapp } from './configuracoes/AbaWhatsapp';
 import { AbaEquipe } from './configuracoes/AbaEquipe';
 import { AbaAparenciaConta } from './configuracoes/AbaAparenciaConta';
 import { AbaLeisTermos } from './configuracoes/AbaLeisTermos';
+import { AbaAssinatura } from './configuracoes/AbaAssinatura';
 import { useOperador } from '../contexts/OperadorContext';
 
 interface Props {
@@ -178,7 +179,7 @@ export const Configuracoes: React.FC<Props> = ({ secao, onAbrirCadastro }) => {
   const secaoAtual = SECOES_CONFIGURACAO.find((s) => s.id === aba) || SECOES_CONFIGURACAO[0];
 
   // Abas que editam a configuração (as demais têm ações próprias)
-  const abaComFormulario = aba !== 'equipe' && aba !== 'conta' && aba !== 'leis';
+  const abaComFormulario = aba !== 'equipe' && aba !== 'conta' && aba !== 'assinatura' && aba !== 'leis';
 
   return (
     <div className="space-y-6 max-w-[1600px] mx-auto font-sans pb-24">
@@ -208,6 +209,7 @@ export const Configuracoes: React.FC<Props> = ({ secao, onAbrirCadastro }) => {
       {aba === 'operacional' && <AbaOperacional config={config} alterar={alterar} />}
       {aba === 'whatsapp' && <AbaWhatsapp config={config} alterar={alterar} />}
       {aba === 'equipe' && <AbaEquipe onAbrirCadastro={onAbrirCadastro} />}
+      {aba === 'assinatura' && <AbaAssinatura />}
       {aba === 'leis' && <AbaLeisTermos config={config} alterar={alterar} podeEditar={pode('tela_configuracoes')} />}
       {aba === 'conta' && (
         <AbaAparenciaConta

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, type ReactNode } from 'react';
 import { supabase } from './services/supabaseClient';
 import { Auth } from './pages/Auth';
 import { Layout } from './components/Layout';
@@ -19,6 +19,8 @@ import { LandingPage } from './pages/landing/LandingPage';
 import { AutorizacaoAdministrativa } from './components/AutorizacaoAdministrativa';
 import { SECOES_CONFIGURACAO, SECOES_CONFIGURACAO_LIVRES } from './pages/configuracoes/secoes';
 import { OperadorContext } from './contexts/OperadorContext';
+import { AssinaturaProvider } from './contexts/AssinaturaContext';
+import { PortaoAssinatura } from './components/PaywallAssinatura';
 import {
   type AbaSistema,
   type Operador,
@@ -384,8 +386,25 @@ export default function App() {
     );
   }
 
+  const sairDaConta = () => {
+    // Sair da conta abre o login com e-mail e senha da conta, mesmo que o aparelho lembre a loja
+    // (a identificação do funcionário é só para o cadeado "Trocar funcionário")
+    setLiberacao(null);
+    setUsarLoginDono(true);
+    setTelaPublica('login');
+    fazerLogout().catch((err) => console.error('Erro ao sair:', err));
+  };
+
+  // Assinatura da loja logada: com a chave de bloqueio ligada e o acesso vencido, mostra a renovação.
+  // Aparelho sem ninguém logado (identificação do funcionário) só verifica depois que alguém entra.
+  const comAssinatura = (conteudo: ReactNode) => (
+    <AssinaturaProvider contaId={session ? contaDoUsuario(session.user) : null}>
+      <PortaoAssinatura onSair={sairDaConta}>{conteudo}</PortaoAssinatura>
+    </AssinaturaProvider>
+  );
+
   if (!operador) {
-    return (
+    return comAssinatura(
       <AcessoFuncionario
         // Mesma loja = mesma tela: trocar o login do dono pelo do funcionário no meio da entrada não a recria
         key={contaDoUsuario(session?.user) || contaAparelho?.contaId || 'aparelho'}
@@ -427,7 +446,7 @@ export default function App() {
     setActiveTab(destino.aba);
   };
 
-  return (
+  return comAssinatura(
     <OperadorContext.Provider
       value={{
         operador,
@@ -436,14 +455,7 @@ export default function App() {
           setLiberacao(null);
           sairDoFuncionario();
         },
-        sairDaConta: () => {
-          // Sair da conta abre o login com e-mail e senha da conta, mesmo que o aparelho lembre a loja
-          // (a identificação do funcionário é só para o cadeado "Trocar funcionário")
-          setLiberacao(null);
-          setUsarLoginDono(true);
-          setTelaPublica('login');
-          fazerLogout().catch((err) => console.error('Erro ao sair:', err));
-        },
+        sairDaConta,
       }}
     >
       <Layout
