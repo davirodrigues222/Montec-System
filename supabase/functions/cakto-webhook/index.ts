@@ -227,12 +227,15 @@ Deno.serve(async (req) => {
       }
       resultados.push({ pedido: orderId, resultado: String(resultado) });
     } else {
+      // O plano do pedido: depois de uma troca (Mensal -> Anual), cancelar a assinatura antiga não
+      // pode cancelar a nova (migração 20261027120000_assinatura_troca_plano.sql)
       const { data: resultado, error } = await admin.rpc('encerrar_assinatura', {
         p_conta: contaId,
         p_order_id: orderId,
         p_evento: evento,
         p_imediato: ehEstorno,
         p_payload: pedido,
+        p_plano: descobrirPlano(pedido)?.plano ?? null,
       });
       if (error) {
         console.error('Erro ao encerrar a assinatura:', error.message);
