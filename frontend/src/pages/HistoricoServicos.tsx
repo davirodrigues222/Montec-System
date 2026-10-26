@@ -1333,13 +1333,6 @@ export const HistoricoServicos: React.FC = () => {
                   <CamposLegaisOS
                     valor={lerDadosLegaisOS(editChecklist)}
                     onChange={(d) => setEditChecklist((atual) => ({ ...atual, ...dadosLegaisParaChecklist(d) }))}
-                    valorTotal={
-                      calcularDescontoEdicao(
-                        editValorTotal === "" ? 0 : Number(editValorTotal),
-                        editTipoDesconto,
-                        editDesconto === "" ? 0 : Number(editDesconto),
-                      ).valorComDesconto
-                    }
                   />
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

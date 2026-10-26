@@ -605,10 +605,6 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
       return;
     }
 
-    if ((dadosLegais.valorPecas || 0) > valorCobrado) {
-      alert('O valor das peças não pode ser maior que o valor cobrado.');
-      return;
-    }
 
     // Validação de pagamentos combinados
     if (dividirPagamento) {
@@ -1163,7 +1159,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
             </div>
           </SubBloco>
 
-          <CamposLegaisOS valor={dadosLegais} onChange={setDadosLegais} valorTotal={valorCobrado} />
+          <CamposLegaisOS valor={dadosLegais} onChange={setDadosLegais} />
 
           {/* ---------- 3.3 Forma de pagamento e taxas ---------- */}
           <SubBloco
