@@ -271,6 +271,9 @@ export default function App() {
   const sairDaPaginaInicial = (destino: 'login' | 'cadastro') => {
     limparParametroInicio();
     setForcarInicio(false);
+    // "Entrar" num aparelho que lembra a loja: identificação do funcionário (o e-mail da conta
+    // continua a um clique, em "Entrar com o e-mail da conta"); "Criar conta" vai para o cadastro
+    setUsarLoginDono(destino === 'cadastro' || !contaAparelho);
     setTelaPublica(destino);
     window.scrollTo(0, 0);
   };
@@ -371,9 +374,10 @@ export default function App() {
         key={telaPublica}
         modoInicial={telaPublica === 'cadastro' ? 'cadastro' : 'login'}
         onVoltar={() => {
-          // Aparelho que lembra a loja volta para a identificação; os demais, para a página inicial
-          if (contaAparelho) setUsarLoginDono(false);
-          else setTelaPublica('inicio');
+          // "Voltar para a página inicial" sempre leva à página de boas-vindas (o "Entrar" de lá volta
+          // para a identificação do funcionário quando o aparelho lembra a loja)
+          setUsarLoginDono(true);
+          setTelaPublica('inicio');
           window.scrollTo(0, 0);
         }}
         onLoginSuccess={() => setLoading(false)}
