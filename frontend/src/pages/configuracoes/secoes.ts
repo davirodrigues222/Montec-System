@@ -32,4 +32,12 @@ export const SECOES_CONFIGURACAO: { id: SecaoConfiguracao; rotulo: string; descr
     rotulo: 'Conta',
     descricao: 'Logotipo, tema, senha da conta e exportação dos dados da loja.',
   },
+  {
+    id: 'leis',
+    rotulo: 'Leis e termos de uso',
+    descricao: 'Leis do CDC, Código Civil e LGPD para o balcão, termos de garantia impressos e termos de uso do sistema.',
+  },
 ];
+
+/** Seções abertas a qualquer funcionário (só consulta), sem a permissão de Configurações. */
+export const SECOES_CONFIGURACAO_LIVRES: SecaoConfiguracao[] = ['leis'];

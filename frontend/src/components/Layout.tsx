@@ -414,7 +414,7 @@ export const Layout: React.FC<Props> = ({
 
                 {configuracoesExpandido && (
                   <div id="submenu-configuracoes" className="ml-6 pl-3 border-l border-zinc-800/80 space-y-0.5 py-1">
-                    {SECOES_CONFIGURACAO.map((item) => {
+                    {SECOES_CONFIGURACAO.filter((item) => item.id !== 'leis').map((item) => {
                       const ativo = activeTab === 'configuracoes' && secaoConfiguracao === item.id;
                       const bloqueado = !podeAba('configuracoes');
                       return (
@@ -436,6 +436,23 @@ export const Layout: React.FC<Props> = ({
                     })}
                   </div>
                 )}
+
+                {/* Atalho: Leis e termos de uso (seção de Configurações aberta a todos os funcionários) */}
+                <button
+                  onClick={() => abrirSecaoConfiguracao('leis')}
+                  aria-current={activeTab === 'configuracoes' && secaoConfiguracao === 'leis' ? 'page' : undefined}
+                  title="Leis do CDC, Código Civil e LGPD para o balcão e termos de uso"
+                  className={`w-full flex items-center space-x-3.5 px-4 py-3 rounded-xl text-sm font-bold transition-all ${
+                    activeTab === 'configuracoes' && secaoConfiguracao === 'leis'
+                      ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
+                      : 'text-zinc-300 hover:text-white hover:bg-zinc-800/50'
+                  }`}
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3" />
+                  </svg>
+                  <span>Leis e termos de uso</span>
+                </button>
               </div>
             </div>
           </nav>
