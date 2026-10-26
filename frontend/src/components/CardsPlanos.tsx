@@ -39,10 +39,9 @@ export const CardsPlanos: React.FC<Props> = ({ situacao, onErro }) => {
         return (
           <div
             key={plano.id}
-            // No celular o plano em destaque vem primeiro; lado a lado, segue a ordem normal
             className={`relative flex flex-col min-w-0 rounded-2xl p-4 sm:p-6 border shadow-sm ${
               destaque
-                ? 'order-first md:order-none bg-gradient-to-b from-blue-600/15 to-[#0c101a] border-blue-500/60 shadow-blue-600/10'
+                ? 'bg-gradient-to-b from-blue-600/15 to-[#0c101a] border-blue-500/60 shadow-blue-600/10'
                 : 'bg-[#0c101a] border-zinc-800/80'
             }`}
           >

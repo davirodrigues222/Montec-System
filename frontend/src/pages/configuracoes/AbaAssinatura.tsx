@@ -125,6 +125,13 @@ export const AbaAssinatura: React.FC = () => {
 
   return (
     <div className="space-y-5 sm:space-y-6">
+      {/* Planos primeiro (Mensal, depois Anual); a situação da assinatura da conta vem logo abaixo */}
+      <CardsPlanos situacao={situacao} onErro={setErro} />
+
+      {erro && (
+        <div className="px-4 py-3 rounded-xl bg-rose-500/10 border border-rose-500/25 text-xs text-rose-300 font-semibold">{erro}</div>
+      )}
+
       {situacao.disponivel ? (
         <StatusAssinaturaCard situacao={situacao} onAtualizar={atualizar} />
       ) : (
@@ -132,12 +139,6 @@ export const AbaAssinatura: React.FC = () => {
           A assinatura ainda não está disponível para esta conta. O sistema continua liberado normalmente.
         </div>
       )}
-
-      {erro && (
-        <div className="px-4 py-3 rounded-xl bg-rose-500/10 border border-rose-500/25 text-xs text-rose-300 font-semibold">{erro}</div>
-      )}
-
-      <CardsPlanos situacao={situacao} onErro={setErro} />
     </div>
   );
 };
