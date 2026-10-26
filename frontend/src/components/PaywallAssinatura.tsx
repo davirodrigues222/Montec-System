@@ -58,8 +58,8 @@ export const PaywallAssinatura: React.FC<Props> = ({ situacao, onVerificarPagame
   const eraTeste = situacao.status === 'trial' || (!situacao.plano && situacao.status === 'vencida');
 
   return (
-    <div className="min-h-screen bg-[#080c14] text-white font-sans px-4 py-8 sm:py-12">
-      <div className="max-w-4xl mx-auto space-y-8">
+    <div className="min-h-screen bg-[#080c14] text-white font-sans px-4 pt-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:py-12">
+      <div className="max-w-4xl mx-auto space-y-5 sm:space-y-8">
         <div className="flex items-center gap-3.5">
           <div className="w-12 h-12 rounded-xl overflow-hidden shadow-lg shadow-blue-500/25 shrink-0 border border-blue-500/30 bg-[#0d131f]">
             <img src="/logo-montec.png" alt="Montec System" className="w-full h-full object-cover" />
@@ -74,23 +74,21 @@ export const PaywallAssinatura: React.FC<Props> = ({ situacao, onVerificarPagame
           <span className="inline-block px-2.5 py-1 rounded-lg border bg-amber-500/15 border-amber-500/30 text-amber-300 text-[11px] font-bold uppercase tracking-wider">
             {eraTeste ? 'Período de avaliação encerrado' : 'Assinatura vencida'}
           </span>
-          <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight">Seu período de acesso expirou</h2>
-          <p className="text-sm text-zinc-400 max-w-2xl">
+          <h2 className="text-[22px] sm:text-3xl font-extrabold tracking-tight leading-tight">Seu período de acesso expirou</h2>
+          <p className="text-sm leading-relaxed text-zinc-400 max-w-2xl">
             {situacao.dataExpiracao ? `O acesso terminou em ${formatarDataAssinatura(situacao.dataExpiracao)}. ` : ''}
             Seus dados continuam guardados com segurança. Escolha um plano para voltar a usar o sistema — a liberação é
             automática assim que o pagamento é confirmado.
           </p>
           {situacao.emailConta && (
-            <p className="text-xs text-zinc-500">
-              Pague com o e-mail da conta: <span className="text-zinc-300 font-semibold">{situacao.emailConta}</span> (o checkout
-              já vem preenchido).
+            <p className="text-xs leading-relaxed text-zinc-400 break-words">
+              Pague com o e-mail da conta: <span className="text-zinc-200 font-semibold break-all">{situacao.emailConta}</span>{' '}
+              (o checkout já vem preenchido).
             </p>
           )}
         </div>
 
-        <div className="pt-2">
-          <CardsPlanos situacao={situacao} onErro={(texto) => setMensagem({ erro: true, texto })} />
-        </div>
+        <CardsPlanos situacao={situacao} onErro={(texto) => setMensagem({ erro: true, texto })} />
 
         {mensagem && (
           <div
@@ -107,18 +105,19 @@ export const PaywallAssinatura: React.FC<Props> = ({ situacao, onVerificarPagame
             type="button"
             onClick={verificar}
             disabled={verificando}
-            className="inline-flex items-center justify-center gap-2 px-5 py-3 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white rounded-xl text-xs font-bold transition shadow-md shadow-emerald-600/20"
+            className="min-h-12 inline-flex items-center justify-center gap-2 px-5 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 disabled:opacity-60 text-white rounded-xl transition shadow-md shadow-emerald-600/20"
           >
-            <RefreshCw className={`w-4 h-4 ${verificando ? 'animate-spin' : ''}`} />
-            {verificando ? 'Verificando pagamento...' : 'Já paguei, liberar meu acesso'}
+            <RefreshCw className={`w-4 h-4 shrink-0 ${verificando ? 'animate-spin' : ''}`} />
+            {/* Texto num <span>: a regra global "button { font: inherit }" anularia o tamanho e o peso no botão */}
+            <span className="text-sm font-bold">{verificando ? 'Verificando pagamento...' : 'Já paguei, liberar meu acesso'}</span>
           </button>
           <button
             type="button"
             onClick={onSair}
-            className="inline-flex items-center justify-center gap-2 px-5 py-3 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 rounded-xl text-xs font-bold transition"
+            className="min-h-12 inline-flex items-center justify-center gap-2 px-5 bg-zinc-800 hover:bg-zinc-700 active:bg-zinc-600 border border-zinc-700 text-zinc-300 rounded-xl transition"
           >
-            <LogOut className="w-4 h-4" />
-            Sair da conta
+            <LogOut className="w-4 h-4 shrink-0" />
+            <span className="text-sm font-bold">Sair da conta</span>
           </button>
         </div>
       </div>

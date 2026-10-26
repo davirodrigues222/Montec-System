@@ -187,7 +187,10 @@ export const Configuracoes: React.FC<Props> = ({ secao, onAbrirCadastro }) => {
       <div>
         <span className="text-[10px] sm:text-[11px] font-bold tracking-widest text-blue-400 uppercase">Configurações</span>
         <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight mt-0.5">{secaoAtual.rotulo}</h2>
-        <p className="text-xs text-zinc-400 mt-1">{secaoAtual.descricao} Tudo é salvo só nesta conta.</p>
+        <p className="text-xs text-zinc-400 mt-1">
+          {secaoAtual.descricao}
+          {aba !== 'assinatura' && ' Tudo é salvo só nesta conta.'}
+        </p>
       </div>
 
       <feedback.Feedback />
