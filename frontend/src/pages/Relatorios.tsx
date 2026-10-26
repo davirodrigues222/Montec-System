@@ -927,7 +927,10 @@ export const Relatorios: React.FC = () => {
                     setErroMeta(null);
                   }}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter') handleSalvarMeta();
+                    if (e.key === 'Enter') {
+                      e.preventDefault(); // salva a meta em vez de pular para o próximo campo
+                      handleSalvarMeta();
+                    }
                     if (e.key === 'Escape') setEditandoMeta(false);
                   }}
                   placeholder="8.000,00"

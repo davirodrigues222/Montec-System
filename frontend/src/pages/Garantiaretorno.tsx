@@ -194,6 +194,7 @@ export const GarantiaRetorno: React.FC = () => {
             </svg>
             <input
               type="text"
+              data-enter-nao-avanca
               value={termoBusca}
               onChange={(e) => setTermoBusca(e.target.value)}
               placeholder="Buscar ordem ou cliente..."

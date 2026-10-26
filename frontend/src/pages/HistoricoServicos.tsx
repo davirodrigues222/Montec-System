@@ -577,6 +577,7 @@ export const HistoricoServicos: React.FC = () => {
           </svg>
           <input
             type="text"
+            data-enter-nao-avanca
             placeholder="Buscar OS, cliente, telefone, aparelho ou IMEI"
             value={termoBusca}
             onChange={(e) => setTermoBusca(e.target.value)}
