@@ -19,11 +19,28 @@ interface Props {
   onErro?: (mensagem: string) => void;
 }
 
-const textoBotao = (plano: Plano, situacao: SituacaoAssinatura) => {
-  const ativo = situacao.status === 'ativa' && situacao.acessoLiberado;
-  if (ativo && situacao.plano === plano.id) return `Renovar ${plano.id === 'anual' ? 'Plano Anual' : 'Plano Mensal'}`;
-  if (ativo && situacao.plano === 'mensal' && plano.id === 'anual') return 'Fazer upgrade para o Anual';
-  return `Assinar ${plano.id === 'anual' ? 'Plano Anual' : 'Plano Mensal'} (${formatarPrecoPlano(plano.preco)})`;
+type AcaoPlano = 'atual' | 'migrar' | 'reativar' | 'assinar';
+
+/**
+ * O que o card do plano oferece:
+ *   * atual: é o plano da assinatura ativa (renova sozinho na Cakto) — nada para assinar de novo;
+ *   * migrar: há outra assinatura ativa — troca Mensal <-> Anual;
+ *   * reativar: o plano foi cancelado, mas o acesso ainda vale até o fim do período pago;
+ *   * assinar: sem assinatura paga (teste, vencida ou cortesia).
+ */
+const acaoDoPlano = (plano: Plano, s: SituacaoAssinatura): AcaoPlano => {
+  if (!s.acessoLiberado || !s.plano) return 'assinar';
+  if (s.status === 'ativa') return s.plano === plano.id ? 'atual' : 'migrar';
+  if (s.status === 'cancelada' && s.plano === plano.id) return 'reativar';
+  return 'assinar';
+};
+
+const nomeCurto = (plano: Plano) => (plano.id === 'anual' ? 'Plano Anual' : 'Plano Mensal');
+
+const textoBotao = (plano: Plano, acao: AcaoPlano) => {
+  if (acao === 'migrar') return plano.id === 'anual' ? 'Migrar para o Plano Anual' : 'Mudar para o Plano Mensal';
+  if (acao === 'reativar') return `Reativar ${nomeCurto(plano)}`;
+  return `Assinar ${nomeCurto(plano)} (${formatarPrecoPlano(plano.preco)})`;
 };
 
 const ERRO_LINK = 'O link de pagamento deste plano ainda não foi configurado. Fale com o suporte do Montec System.';
@@ -70,7 +87,8 @@ export const CardsPlanos: React.FC<Props> = ({ situacao, onErro }) => {
     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-5 pt-3">
       {LISTA_PLANOS.map((plano) => {
         const destaque = !!plano.destaque;
-        const planoAtual = situacao.status === 'ativa' && situacao.acessoLiberado && situacao.plano === plano.id;
+        const acao = acaoDoPlano(plano, situacao);
+        const planoAtual = acao === 'atual';
         return (
           <div
             key={plano.id}
@@ -120,18 +138,39 @@ export const CardsPlanos: React.FC<Props> = ({ situacao, onErro }) => {
               ))}
             </ul>
 
-            <button
-              type="button"
-              onClick={() => assinar(plano.id)}
-              className={`mt-4 sm:mt-5 w-full min-h-12 px-4 py-3 rounded-xl transition ${
-                destaque
-                  ? 'bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white shadow-lg shadow-blue-600/25'
-                  : 'bg-zinc-800 hover:bg-zinc-700 active:bg-zinc-600 text-white border border-zinc-700'
-              }`}
-            >
-              {/* Texto num <span>: a regra global "button { font: inherit }" anularia o tamanho e o peso no botão */}
-              <span className="text-sm font-bold">{textoBotao(plano, situacao)}</span>
-            </button>
+            {planoAtual ? (
+              // Plano já assinado: renova sozinho na Cakto, não há o que assinar de novo
+              <div className="mt-4 sm:mt-5 w-full min-h-12 px-4 py-2.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 flex flex-col items-center justify-center text-center">
+                <span className="inline-flex items-center gap-1.5 text-sm font-bold text-emerald-300">
+                  <CircleCheck className="w-4 h-4 shrink-0" />
+                  Seu plano atual
+                </span>
+                <span className="text-[11px] text-zinc-400 mt-0.5">
+                  Renova automaticamente em {formatarDataAssinatura(situacao.dataExpiracao)}
+                </span>
+              </div>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() => assinar(plano.id)}
+                  className={`mt-4 sm:mt-5 w-full min-h-12 px-4 py-3 rounded-xl transition ${
+                    destaque
+                      ? 'bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white shadow-lg shadow-blue-600/25'
+                      : 'bg-zinc-800 hover:bg-zinc-700 active:bg-zinc-600 text-white border border-zinc-700'
+                  }`}
+                >
+                  {/* Texto num <span>: a regra global "button { font: inherit }" anularia o tamanho e o peso no botão */}
+                  <span className="text-sm font-bold">{textoBotao(plano, acao)}</span>
+                </button>
+                {acao === 'migrar' && (
+                  <p className="mt-2 text-[11px] leading-snug text-zinc-500 text-center">
+                    Os dias que faltam do plano atual são somados ao novo. Depois de pagar, a assinatura anterior é
+                    cancelada pelo suporte para não haver cobrança dupla.
+                  </p>
+                )}
+              </>
+            )}
           </div>
         );
       })}
