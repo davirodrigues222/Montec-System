@@ -35,6 +35,11 @@ export const CertidaoGarantia: React.FC<Props> = ({ os, onClose }) => {
   const termica = formato === 'TERMICA_80';
 
   const valorTotal = os.orcamentoCalculado?.valorTotalOrcamento || 0;
+  // Com desconto, o cliente vê o valor real do serviço, o desconto e o total a pagar
+  const desconto = Number(os.orcamentoCalculado?.descontoGeralAplicado || 0);
+  const valorServico = Number(os.orcamentoCalculado?.subtotalServicos || 0) || valorTotal + desconto;
+  const descontoPercentual =
+    os.orcamentoCalculado?.tipoDesconto === 'PERCENTUAL' ? Number(os.orcamentoCalculado?.descontoInput || 0) : 0;
   const itensChecklist = itensVisiveisChecklist(os.checklistEntrada);
   // A garantia legal vale mesmo para OS registrada sem garantia da loja (CDC, art. 24)
   const prazoGarantia = Math.max(
@@ -94,10 +99,30 @@ export const CertidaoGarantia: React.FC<Props> = ({ os, onClose }) => {
       )}
 
       {/* Serviço e valor */}
-      <div className="flex justify-between items-center gap-2 border-y border-slate-200 py-2">
-        <span className="font-medium">{os.servicoRealizado || os.defeitoRelatado || 'Manutenção geral do aparelho'}</span>
-        <span className={`${termica ? 'text-xs' : 'text-sm'} font-black text-slate-900 shrink-0`}>R$ {formatarValor(valorTotal)}</span>
-      </div>
+      {desconto >= 0.01 ? (
+        <div className="border-y border-slate-200 py-2 space-y-0.5">
+          <div className="flex justify-between items-center gap-2">
+            <span className="font-medium">{os.servicoRealizado || os.defeitoRelatado || 'Manutenção geral do aparelho'}</span>
+            <span className="shrink-0">R$ {formatarValor(valorServico)}</span>
+          </div>
+          <div className="flex justify-between items-center gap-2 text-slate-600">
+            <span>
+              Desconto
+              {descontoPercentual > 0 && ` (${descontoPercentual.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%)`}
+            </span>
+            <span className="shrink-0">− R$ {formatarValor(desconto)}</span>
+          </div>
+          <div className="flex justify-between items-center gap-2 pt-1 border-t border-dashed border-slate-300">
+            <span className="font-bold">Total com desconto</span>
+            <span className={`${termica ? 'text-xs' : 'text-sm'} font-black text-slate-900 shrink-0`}>R$ {formatarValor(valorTotal)}</span>
+          </div>
+        </div>
+      ) : (
+        <div className="flex justify-between items-center gap-2 border-y border-slate-200 py-2">
+          <span className="font-medium">{os.servicoRealizado || os.defeitoRelatado || 'Manutenção geral do aparelho'}</span>
+          <span className={`${termica ? 'text-xs' : 'text-sm'} font-black text-slate-900 shrink-0`}>R$ {formatarValor(valorTotal)}</span>
+        </div>
+      )}
 
       <BlocoOrcamentoImpressao os={os} />
 
