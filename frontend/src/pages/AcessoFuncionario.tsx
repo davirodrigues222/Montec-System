@@ -12,6 +12,15 @@ import {
 } from '../services/cadastros';
 import { type Operador, entrarComoProprietario, entrarFuncionario, primeiraAbaPermitida } from '../services/acesso';
 import { fazerLogout, obterConfiguracoesLojaSincrono } from '../services/api';
+import {
+  type ContaAparelho,
+  LoginProprioIndisponivel,
+  contaDoUsuario,
+  ehLoginDeFuncionario,
+  entrarComLoginProprio,
+  operadorDoLoginAtual,
+  sairDoLoginFuncionario,
+} from '../services/loginFuncionario';
 import { Campo, inputCls } from '../components/cadastros/ui';
 import { validarSenhaForte } from '../utils/formatadores';
 
@@ -19,16 +28,24 @@ type Modo = 'carregando' | 'entrar' | 'primeiro-admin' | 'solicitar' | 'propriet
 
 
 interface Props {
-  session: any;
+  /** Login atual (null no aparelho sem ninguém logado: a loja vem de `contaAparelho`). */
+  session: any | null;
+  /** Loja que o aparelho lembra (permite identificar o funcionário sem o login do dono salvo). */
+  contaAparelho?: ContaAparelho | null;
   /** token: sessão do funcionário no banco (permite o F5 sem pedir a senha de novo). */
   onEntrar: (operador: Operador, token?: string | null) => void;
+  /** Aparelho sem login: abrir a tela de e-mail e senha do dono da conta. */
+  onUsarLoginDono?: () => void;
+  /** Aparelho sem login: deixar de lembrar a loja neste aparelho. */
+  onEsquecerAparelho?: () => void;
 }
 
 /**
  * Tela exibida depois do login da conta e sempre que o sistema é aberto de novo (o F5 não pede outra vez):
  * identifica qual funcionário vai usar o sistema e, com isso, quais telas ele pode ver.
+ * Com o login próprio (segurança nível 3), o aparelho passa a ficar logado como o funcionário.
  */
-export const AcessoFuncionario: React.FC<Props> = ({ session, onEntrar }) => {
+export const AcessoFuncionario: React.FC<Props> = ({ session, contaAparelho, onEntrar, onUsarLoginDono, onEsquecerAparelho }) => {
   const [modo, setModo] = useState<Modo>('carregando');
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -41,13 +58,22 @@ export const AcessoFuncionario: React.FC<Props> = ({ session, onEntrar }) => {
   const [nome, setNome] = useState('');
   const [senhaConta, setSenhaConta] = useState('');
 
-  const loja = obterConfiguracoesLojaSincrono(session?.user);
-  const emailConta: string = session?.user?.email || '';
-  const nomeResponsavel: string = session?.user?.user_metadata?.nome_responsavel || '';
+  // Aparelho sem ninguém logado (ou já no login de um funcionário): só identificação, sem cadastros
+  const modoAparelho = !session || ehLoginDeFuncionario(session.user);
+  const contaId = session ? contaDoUsuario(session.user) : contaAparelho?.contaId || null;
+  // A loja do aparelho também tem o cofre local (nome e logotipo) gravado no último acesso
+  const loja = obterConfiguracoesLojaSincrono(session?.user || (contaAparelho ? { id: contaAparelho.contaId } : undefined));
+  const nomeLojaExibido = loja.nomeLoja || contaAparelho?.nomeLoja || '';
+  const emailConta: string = (!modoAparelho && session?.user?.email) || contaAparelho?.emailDono || '';
+  const nomeResponsavel: string = (!modoAparelho && session?.user?.user_metadata?.nome_responsavel) || '';
 
   const iniciar = async () => {
     setModo('carregando');
     setErro(null);
+    if (modoAparelho) {
+      setModo('entrar');
+      return;
+    }
     try {
       const total = await contarFuncionarios();
       if (total === 0) setCodigo('1'); // primeiro administrador: código 1 sugerido
@@ -91,6 +117,43 @@ export const AcessoFuncionario: React.FC<Props> = ({ session, onEntrar }) => {
     onEntrar(op, token);
   };
 
+  const MENSAGEM_CREDENCIAIS = 'Código de acesso ou senha inválidos. Após 5 tentativas o acesso é bloqueado por 15 minutos.';
+
+  /**
+   * Identifica o funcionário. Com o login próprio publicado (Edge Function), o aparelho passa a ficar
+   * logado COMO ele; sem ela, segue como antes (sessão do dono + token do funcionário).
+   */
+  const identificar = async (codigoFuncionario: string, senhaFuncionario: string) => {
+    if (contaId) {
+      try {
+        await entrarComLoginProprio(contaId, codigoFuncionario, senhaFuncionario);
+        const op = await operadorDoLoginAtual();
+        if (!op) {
+          await sairDoLoginFuncionario();
+          setErro('Este funcionário está inativo. Peça a um administrador para reativar o cadastro.');
+          setSenha('');
+          return;
+        }
+        if (!primeiraAbaPermitida(op)) await sairDoLoginFuncionario(); // aguarda liberação: não fica logado
+        concluirEntrada(op, null);
+        return;
+      } catch (e) {
+        if (!(e instanceof LoginProprioIndisponivel)) throw e;
+        if (modoAparelho) {
+          throw new Error('Não foi possível conectar ao servidor de login. Verifique a internet e tente de novo.');
+        }
+        // Edge Function ainda não publicada: entrada antiga, com a sessão do dono
+      }
+    }
+    const resultado = await entrarFuncionario(codigoFuncionario, senhaFuncionario);
+    if (!resultado) {
+      setErro(MENSAGEM_CREDENCIAIS);
+      setSenha('');
+      return;
+    }
+    concluirEntrada(resultado.operador, resultado.token);
+  };
+
   const entrar = async () => {
     if (!codigo.trim() || !senha) {
       setErro('Informe seu código de acesso e sua senha.');
@@ -99,15 +162,10 @@ export const AcessoFuncionario: React.FC<Props> = ({ session, onEntrar }) => {
     setEnviando(true);
     setErro(null);
     try {
-      const resultado = await entrarFuncionario(codigo, senha);
-      if (!resultado) {
-        setErro('Código de acesso ou senha inválidos. Após 5 tentativas o acesso é bloqueado por 15 minutos.');
-        setSenha('');
-        return;
-      }
-      concluirEntrada(resultado.operador, resultado.token);
+      await identificar(codigo, senha);
     } catch (e: any) {
-      setErro(e.message);
+      setErro(/inválid/i.test(e.message || '') ? MENSAGEM_CREDENCIAIS : e.message);
+      setSenha('');
     } finally {
       setEnviando(false);
     }
@@ -149,12 +207,12 @@ export const AcessoFuncionario: React.FC<Props> = ({ session, onEntrar }) => {
       );
 
       if (primeiro) {
-        const resultado = await entrarFuncionario(codigo, senha);
-        if (resultado) {
-          onEntrar(resultado.operador, resultado.token);
+        try {
+          await identificar(codigo, senha);
           return;
+        } catch {
+          setAviso('Administrador cadastrado. Entre com o código e a senha que você acabou de criar.');
         }
-        setAviso('Administrador cadastrado. Entre com o código e a senha que você acabou de criar.');
       } else {
         setAviso(`Cadastro de ${nome.trim().split(' ')[0]} enviado. Um administrador precisa liberar suas telas em Cadastros › Funcionários antes do primeiro acesso.`);
       }
@@ -168,6 +226,11 @@ export const AcessoFuncionario: React.FC<Props> = ({ session, onEntrar }) => {
   };
 
   const entrarProprietario = async () => {
+    // Aparelho que não conhece o e-mail do dono: vai para a tela de e-mail e senha da conta
+    if (!emailConta) {
+      onUsarLoginDono?.();
+      return;
+    }
     if (!senhaConta) {
       setErro('Informe a senha da conta.');
       return;
@@ -245,7 +308,7 @@ export const AcessoFuncionario: React.FC<Props> = ({ session, onEntrar }) => {
             )}
           </div>
           <div className="min-w-0">
-            <p className="font-extrabold text-white truncate">{loja.nomeLoja || 'Montec System'}</p>
+            <p className="font-extrabold text-white truncate">{nomeLojaExibido || 'Montec System'}</p>
             <p className="text-xs text-zinc-400 truncate">{emailConta}</p>
           </div>
         </div>
@@ -355,9 +418,13 @@ export const AcessoFuncionario: React.FC<Props> = ({ session, onEntrar }) => {
 
           {modo === 'entrar' && (
             <div className="pt-1 border-t border-zinc-800/60 space-y-2 text-center">
-              <button type="button" onClick={() => { setAviso(null); trocarModo('solicitar'); }} className="block w-full pt-3 text-xs font-bold text-blue-400 hover:text-blue-300">
-                Ainda não tem cadastro? Cadastrar novo funcionário
-              </button>
+              {modoAparelho ? (
+                <p className="pt-3 text-xs text-zinc-500">Ainda não tem cadastro? Peça a um administrador da loja.</p>
+              ) : (
+                <button type="button" onClick={() => { setAviso(null); trocarModo('solicitar'); }} className="block w-full pt-3 text-xs font-bold text-blue-400 hover:text-blue-300">
+                  Ainda não tem cadastro? Cadastrar novo funcionário
+                </button>
+              )}
               <button type="button" onClick={() => { setAviso(null); trocarModo('proprietario'); }} className="text-[11px] text-zinc-500 hover:text-zinc-300">
                 Esqueceu a senha? Entrar como proprietário da conta
               </button>
@@ -371,13 +438,32 @@ export const AcessoFuncionario: React.FC<Props> = ({ session, onEntrar }) => {
           )}
         </form>
 
-        <button
-          type="button"
-          onClick={() => fazerLogout().catch(() => {})}
-          className="block mx-auto text-[11px] text-zinc-500 hover:text-rose-400 transition"
-        >
-          Sair da conta {emailConta}
-        </button>
+        {modoAparelho ? (
+          <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-[11px]">
+            <button type="button" onClick={() => onUsarLoginDono?.()} className="text-zinc-400 hover:text-white transition">
+              Entrar com o e-mail da conta
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (window.confirm('Este aparelho deixa de lembrar a loja. Para usar de novo, será preciso entrar com o e-mail da conta.')) {
+                  onEsquecerAparelho?.();
+                }
+              }}
+              className="text-zinc-500 hover:text-rose-400 transition"
+            >
+              Esquecer este aparelho
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => fazerLogout().catch(() => {})}
+            className="block mx-auto text-[11px] text-zinc-500 hover:text-rose-400 transition"
+          >
+            Sair da conta {emailConta}
+          </button>
+        )}
       </div>
     </div>
   );

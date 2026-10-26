@@ -2,6 +2,7 @@ import { supabase } from './supabaseClient';
 import { validarSenhaForte } from '../utils/formatadores';
 import { GARANTIA_LEGAL_DIAS, STATUS_APAGAM_SENHA } from '../utils/conformidade';
 import { MENSAGEM_SEM_PERMISSAO, ehRecusaDePermissao, exigirLinhaAfetada } from './errosBanco';
+import { contaDoUsuario, ehLoginDeFuncionario } from './contaLogin';
 
 // ==========================================
 // 1. ISOLAMENTO DE CONFIGURAÇÕES, TEMA, METAS E IDENTIDADE VISUAL POR CONTA
@@ -309,9 +310,11 @@ function sanitizarHistoricoMetas(raw: any): Record<string, number> {
  * sem herdar absolutamente nenhuma logo, tema, meta ou dado privado de outra conta.
  */
 export function obterConfigPadraoConta(user?: any): ConfiguracoesLojaIsolada {
-  const meta = user?.user_metadata || {};
+  // Login de funcionário: o perfil dele não tem os dados da loja (vêm de configuracoes_conta)
+  const loginFuncionario = ehLoginDeFuncionario(user);
+  const meta = loginFuncionario ? {} : user?.user_metadata || {};
   return {
-    ownerUserId: user?.id || '',
+    ownerUserId: contaDoUsuario(user) || '',
     nomeLoja: meta.nome_assistencia || 'Minha Assistência',
     subtitulo: 'Assistência Técnica',
     cnpj: meta.cpf_cnpj || '',
@@ -325,7 +328,7 @@ export function obterConfigPadraoConta(user?: any): ConfiguracoesLojaIsolada {
     metaFaturamentoMensal: META_FATURAMENTO_PADRAO,
     historicoMetasMensais: {},
     inscricaoEstadual: '',
-    emailAtendimento: user?.email || '',
+    emailAtendimento: loginFuncionario ? '' : user?.email || '',
     instagram: '',
     horarioFuncionamento: '',
     formatoImpressao: 'A4',
@@ -406,6 +409,8 @@ export function sincronizarSessaoConfiguracoesLoja(user: any | null): Configurac
           id: user.id,
           email: user.email,
           user_metadata: user.user_metadata || {},
+          // conta_id do funcionário com login próprio (só o servidor grava app_metadata)
+          app_metadata: user.app_metadata || {},
         })
       );
 
@@ -460,24 +465,27 @@ export function obterConfiguracoesLojaSincrono(userParam?: any): ConfiguracoesLo
     return padrao;
   }
 
-  const chaveConta = `${PREFIXO_CONFIG_CONTA}${user.id}`;
-  const metaConfig = user.user_metadata?.configuracoes_loja;
+  // Configurações são da LOJA: funcionário com login próprio lê as da conta dele (o perfil do dono não é dele)
+  const contaId: string = contaDoUsuario(user) || user.id;
+  const loginFuncionario = ehLoginDeFuncionario(user);
+  const chaveConta = `${PREFIXO_CONFIG_CONTA}${contaId}`;
+  const metaConfig = loginFuncionario ? undefined : user.user_metadata?.configuracoes_loja;
 
   try {
     if (typeof window !== 'undefined' && window.localStorage) {
       // 1. Verifica cofre exclusivo desta conta no localStorage
       const rawConta = window.localStorage.getItem(chaveConta);
-      const chaveCache = rawConta ? `${user.id}|${metaConfig ? JSON.stringify(metaConfig) : ''}|${rawConta}` : '';
+      const chaveCache = rawConta ? `${contaId}|${metaConfig ? JSON.stringify(metaConfig) : ''}|${rawConta}` : '';
       if (rawConta && cacheConfig?.chave === chaveCache) return cacheConfig.config;
       if (rawConta) {
         const parsedConta = JSON.parse(rawConta);
-        if (!parsedConta.ownerUserId || parsedConta.ownerUserId === user.id) {
+        if (!parsedConta.ownerUserId || parsedConta.ownerUserId === contaId) {
           const metaRemotaValida =
-            metaConfig && (!metaConfig.ownerUserId || metaConfig.ownerUserId === user.id) ? metaConfig : {};
+            metaConfig && (!metaConfig.ownerUserId || metaConfig.ownerUserId === contaId) ? metaConfig : {};
           const mesclado: ConfiguracoesLojaIsolada = completarConfigLoja({
             ...metaRemotaValida,
             ...parsedConta,
-            ownerUserId: user.id,
+            ownerUserId: contaId,
             temaVisual: normalizarTemaVisual(parsedConta.temaVisual ?? metaRemotaValida?.temaVisual ?? padrao.temaVisual),
             termosGarantiaTexto: parsedConta.termosGarantiaTexto || padrao.termosGarantiaTexto,
             metaFaturamentoMensal: sanitizarNumeroMeta(
@@ -495,10 +503,10 @@ export function obterConfiguracoesLojaSincrono(userParam?: any): ConfiguracoesLo
 
       // 2. Se não houver cofre local ainda, mas houver configuracoes_loja salvas no user_metadata da conta no Supabase
       if (metaConfig && typeof metaConfig === 'object') {
-        if (!metaConfig.ownerUserId || metaConfig.ownerUserId === user.id) {
+        if (!metaConfig.ownerUserId || metaConfig.ownerUserId === contaId) {
           const restaurado: ConfiguracoesLojaIsolada = completarConfigLoja({
             ...metaConfig,
-            ownerUserId: user.id,
+            ownerUserId: contaId,
             temaVisual: normalizarTemaVisual(metaConfig.temaVisual ?? padrao.temaVisual),
             termosGarantiaTexto: metaConfig.termosGarantiaTexto || padrao.termosGarantiaTexto,
             metaFaturamentoMensal: sanitizarNumeroMeta(metaConfig.metaFaturamentoMensal ?? 0),
@@ -512,7 +520,7 @@ export function obterConfiguracoesLojaSincrono(userParam?: any): ConfiguracoesLo
 
       // 3. Migração segura para contas pré-existentes
       const rawLegado = window.localStorage.getItem(CHAVE_ESPELHO_SESSAO);
-      if (rawLegado) {
+      if (rawLegado && !loginFuncionario) {
         const legado = JSON.parse(rawLegado);
         if (legado && !legado.ownerUserId) {
           const nomeAssistenciaUsuario = String(user.user_metadata?.nome_assistencia || '').trim().toLowerCase();
@@ -520,7 +528,7 @@ export function obterConfiguracoesLojaSincrono(userParam?: any): ConfiguracoesLo
           if (nomeAssistenciaUsuario && nomeLojaLegado && nomeAssistenciaUsuario === nomeLojaLegado) {
             const migrado: ConfiguracoesLojaIsolada = completarConfigLoja({
               ...legado,
-              ownerUserId: user.id,
+              ownerUserId: contaId,
               temaVisual: normalizarTemaVisual(legado.temaVisual ?? padrao.temaVisual),
               metaFaturamentoMensal: sanitizarNumeroMeta(legado.metaFaturamentoMensal ?? 0),
               historicoMetasMensais: sanitizarHistoricoMetas(legado.historicoMetasMensais),
@@ -555,11 +563,39 @@ export async function carregarConfiguracoesLoja(targetUserId?: string): Promise<
     throw new Error('Não autorizado: é necessário estar autenticado para acessar as configurações da loja.');
   }
 
-  if (targetUserId && targetUserId !== user.id) {
+  const contaId = contaDoUsuario(user) || user.id;
+  if (targetUserId && targetUserId !== contaId) {
     throw new Error('Acesso negado: não é permitido acessar as configurações de outra conta.');
   }
 
-  return sincronizarSessaoConfiguracoesLoja(user);
+  const local = sincronizarSessaoConfiguracoesLoja(user);
+
+  // Configurações da loja no banco (migração 20261026150000): fonte para todos os logins da loja
+  const { data: linha, error } = await supabase
+    .from('configuracoes_conta')
+    .select('dados')
+    .eq('conta_id', contaId)
+    .maybeSingle();
+  if (error) return local; // tabela ainda não criada: segue com o cofre local / perfil do dono
+
+  if (linha?.dados && typeof linha.dados === 'object') {
+    const daLoja = completarConfigLoja({ ...local, ...linha.dados, ownerUserId: contaId }, obterConfigPadraoConta(user));
+    gravarLocal(`${PREFIXO_CONFIG_CONTA}${contaId}`, JSON.stringify(daLoja));
+    gravarEspelhoSessao(daLoja);
+    cacheConfig = null;
+    aplicarTemaVisualNoDOM(daLoja.temaVisual);
+    window.dispatchEvent(new Event('storage_configs_updated'));
+    return daLoja;
+  }
+
+  // Primeiro acesso do dono depois da migração: copia as configurações atuais para a loja
+  if (!ehLoginDeFuncionario(user)) {
+    await supabase
+      .from('configuracoes_conta')
+      .insert({ conta_id: contaId, dados: { ...local, ownerUserId: contaId } })
+      .then(undefined, () => undefined);
+  }
+  return local;
 }
 
 /**
@@ -577,11 +613,13 @@ export async function salvarConfiguracoesLoja(
     throw new Error('Não autorizado: faça login para salvar as configurações da loja.');
   }
 
-  if (targetUserId && targetUserId !== user.id) {
+  const contaId = contaDoUsuario(user) || user.id;
+  const loginFuncionario = ehLoginDeFuncionario(user);
+  if (targetUserId && targetUserId !== contaId) {
     throw new Error('Acesso negado: não é permitido modificar as configurações de outra conta.');
   }
 
-  if (novaConfig.ownerUserId && novaConfig.ownerUserId !== user.id) {
+  if (novaConfig.ownerUserId && novaConfig.ownerUserId !== contaId) {
     throw new Error('Acesso negado: tentativa de gravar configurações vinculadas a outro usuário.');
   }
 
@@ -607,41 +645,41 @@ export async function salvarConfiguracoesLoja(
       temaVisual: temaEscolhido,
       metaFaturamentoMensal: metaMensalFinal,
       historicoMetasMensais: historicoMetasFinal,
-      ownerUserId: user.id,
+      ownerUserId: contaId,
     },
     obterConfigPadraoConta(user)
   );
 
+  // 1. Configurações da loja no banco (migração 20261026150000), com o logotipo: todos os logins da
+  //    loja leem daqui. Sem a permissão de Configurações o banco recusa e nada muda neste aparelho.
+  const { error: erroLoja } = await supabase
+    .from('configuracoes_conta')
+    .upsert({ conta_id: contaId, dados: configFinal, atualizado_em: new Date().toISOString() }, { onConflict: 'conta_id' });
+  if (erroLoja) {
+    const tabelaAusente = erroLoja.code === 'PGRST205' || erroLoja.code === '42P01';
+    if (!tabelaAusente) throw new Error(traduzirErroBanco(erroLoja, 'Não foi possível salvar as configurações da loja.'));
+    if (loginFuncionario) throw new Error('As configurações da loja ainda não estão disponíveis para o login de funcionário.');
+  }
+
   // Aplica imediatamente o tema no DOM
   aplicarTemaVisualNoDOM(configFinal.temaVisual);
 
-  const chaveConta = `${PREFIXO_CONFIG_CONTA}${user.id}`;
+  const chaveConta = `${PREFIXO_CONFIG_CONTA}${contaId}`;
   if (typeof window !== 'undefined' && window.localStorage) {
     // O logotipo é gravado uma única vez (no cofre da conta); antes ia em 3 cópias e estourava o espaço
     gravarLocal(chaveConta, JSON.stringify(configFinal));
     gravarEspelhoSessao(configFinal);
-    const { logoUrl: _logoSessao, ...configSemLogoSessao } = configFinal;
-    gravarLocal(
-      CHAVE_USUARIO_ATIVO,
-      JSON.stringify({
-        id: user.id,
-        email: user.email,
-        user_metadata: {
-          ...(user.user_metadata || {}),
-          nome_assistencia: configFinal.nomeLoja,
-          whatsapp: configFinal.telefone,
-          cpf_cnpj: configFinal.cnpj,
-          configuracoes_loja: configSemLogoSessao,
-        },
-      })
-    );
+    cacheConfig = null;
   }
 
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new Event('storage_configs_updated'));
   }
 
-  // Persiste nos metadados exclusivos do usuário autenticado no Supabase.
+  // Login de funcionário não tem (nem deve ter) acesso ao perfil do dono
+  if (loginFuncionario) return configFinal;
+
+  // 2. Dono: também no perfil da conta (compatibilidade com aparelhos ainda sem a tabela).
   // O user_metadata vai dentro do token JWT enviado em TODA requisição: a logo (base64)
   // nunca pode ir para lá, senão o cabeçalho estoura e o navegador falha com ERR_HTTP2_PROTOCOL_ERROR.
   const { logoUrl: _logoLocal, ...configSemLogo } = configFinal;
@@ -663,6 +701,7 @@ export async function salvarConfiguracoesLoja(
         id: updateData.user.id,
         email: updateData.user.email,
         user_metadata: updateData.user.user_metadata || {},
+        app_metadata: updateData.user.app_metadata || {},
       })
     );
   }
@@ -1808,7 +1847,8 @@ async function resolverClienteDaOS(cliente: any): Promise<string> {
       nome,
       whatsapp,
       cpf_cnpj: String(cliente?.cpfCnpj || '').trim() || null,
-      ...(authData?.user?.id ? { user_id: authData.user.id } : {}),
+      // Dono do registro = a loja (no login de funcionário, a conta do vínculo; não o usuário dele)
+      ...(contaDoUsuario(authData?.user) ? { user_id: contaDoUsuario(authData?.user) } : {}),
     },
   ]);
   if (error) throw new Error(traduzirErroBanco(error, "Falha ao cadastrar o cliente"));

@@ -52,6 +52,8 @@ import {
 import { aplicarTokenAutorizacao, conferirSenhaFuncionario, temAutorizacaoAdmin } from '../../services/acesso';
 import { useOperador } from '../../contexts/OperadorContext';
 import { AutorizacaoAdministrativa } from '../../components/AutorizacaoAdministrativa';
+import { obterUsuarioAtivoSincrono } from '../../services/api';
+import { contaDoUsuario, sincronizarLoginFuncionario } from '../../services/loginFuncionario';
 
 /**
  * Redefinição de senha na edição: primeiro confirma a senha atual do funcionário
@@ -277,6 +279,12 @@ export const FuncionariosCadastro: React.FC = () => {
         precisaSenha ? form.senha : undefined,
         editandoId || undefined
       );
+      // Senha nova ou trocada: o login próprio do funcionário passa a usar ela na hora
+      // (a senha antiga deixa de valer). Sem a Edge Function publicada, vale no próximo acesso dele.
+      const contaId = contaDoUsuario(obterUsuarioAtivoSincrono());
+      if (precisaSenha && form.senha && contaId) {
+        await sincronizarLoginFuncionario(contaId, form.codigo_acesso, form.senha).catch(() => undefined);
+      }
       feedback.sucesso(editandoId ? 'Funcionário atualizado.' : 'Funcionário cadastrado com acesso liberado.');
       limpar();
       await carregar();

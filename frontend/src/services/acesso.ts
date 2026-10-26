@@ -155,7 +155,7 @@ export const temAutorizacaoAdmin = () => !!tokenAutorizacao;
 const funcaoAusente = (error: any, nome: string) =>
   !!error && (error.code === 'PGRST202' || error.code === '42883' || String(error.message || '').includes(nome));
 
-const montarOperador = (linha: any): Operador => {
+export const montarOperador = (linha: any): Operador => {
   const cargo = (linha.cargo as CargoFuncionario) in CARGOS ? (linha.cargo as CargoFuncionario) : 'ATENDENTE';
   return {
     idFuncionario: linha.id_funcionario,

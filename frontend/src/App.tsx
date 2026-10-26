@@ -30,6 +30,17 @@ import {
   primeiraAbaPermitida,
   restaurarSessaoFuncionario,
 } from './services/acesso';
+import { obterConfiguracoesLojaSincrono } from './services/api';
+import {
+  contaDoUsuario,
+  ehLoginDeFuncionario,
+  esquecerContaAparelho,
+  lembrarContaAparelho,
+  lerContaAparelho,
+  operadorDoLoginAtual,
+  sairDoLoginFuncionario,
+  sessaoSalvaEhDeFuncionario,
+} from './services/loginFuncionario';
 import type { SecaoCadastro, SecaoConfiguracao } from './types';
 
 // Marca que este navegador já entrou no sistema: na próxima visita vai direto ao login
@@ -125,9 +136,16 @@ export default function App() {
   const [operador, setOperador] = useState<Operador | null>(null);
   const [tokenOperador, setTokenOperador] = useState<string | null>(null);
   // Após F5: restaura o funcionário pelo banco antes de mostrar a tela de identificação
-  const [restaurandoOperador, setRestaurandoOperador] = useState(!!sessaoOperadorRestaurada);
+  // (sessão do dono com token, ou login próprio do funcionário)
+  const [restaurandoOperador, setRestaurandoOperador] = useState(() => !!sessaoOperadorRestaurada || sessaoSalvaEhDeFuncionario());
   const contaDoOperador = useRef<string | null>(null);
+  const jaCarregouSessao = useRef(false);
   const userId: string | undefined = session?.user?.id;
+
+  // Loja que este aparelho lembra: a identificação do funcionário funciona sem o login do dono salvo
+  const [contaAparelho, setContaAparelho] = useState(lerContaAparelho);
+  // Aparelho que lembra a loja, mas a pessoa pediu a tela de e-mail e senha da conta
+  const [usarLoginDono, setUsarLoginDono] = useState(false);
 
   useEffect(() => {
     if (loading) return; // sessão da conta ainda sendo lida
@@ -139,6 +157,8 @@ export default function App() {
       }
     }
     if (userId && contaDoOperador.current === userId) return;
+    const primeiraCarga = !jaCarregouSessao.current;
+    jaCarregouSessao.current = true;
     contaDoOperador.current = userId ?? null;
     setOperador(null);
     setTokenOperador(null);
@@ -146,6 +166,43 @@ export default function App() {
     // (o token dela ia junto nas consultas da próxima conta até alguém se identificar)
     setLiberacao(null);
     ultimaTelaPermitida.current = null;
+
+    // Login do dono: o aparelho passa a lembrar a loja (identificação sem o login do dono salvo)
+    if (session?.user && !ehLoginDeFuncionario(session.user)) {
+      lembrarContaAparelho({
+        contaId: session.user.id,
+        emailDono: session.user.email || '',
+        nomeLoja: obterConfiguracoesLojaSincrono(session.user).nomeLoja,
+      });
+      setContaAparelho(lerContaAparelho());
+      setUsarLoginDono(false);
+    }
+
+    // Login próprio do funcionário
+    if (session?.user && ehLoginDeFuncionario(session.user)) {
+      // Fora do F5 é a tela de identificação que acabou de entrar: ela mesma conclui a entrada
+      if (!primeiraCarga) {
+        setRestaurandoOperador(false);
+        return;
+      }
+      let ativo = true;
+      operadorDoLoginAtual()
+        .then(async (op) => {
+          if (!ativo) return;
+          if (op && primeiraAbaPermitida(op)) {
+            setOperador(op);
+            lembrarContaAparelho({ contaId: contaDoUsuario(session.user) || '' });
+          } else {
+            await sairDoLoginFuncionario(); // inativo ou sem telas liberadas: volta para a identificação
+          }
+        })
+        .finally(() => {
+          if (ativo) setRestaurandoOperador(false);
+        });
+      return () => {
+        ativo = false;
+      };
+    }
 
     // F5 na mesma conta: pede ao banco o funcionário da sessão (permissões atuais)
     const restaurar = sessaoOperadorRestaurada;
@@ -192,6 +249,12 @@ export default function App() {
 
   /** Sai do funcionário atual: encerra a sessão dele no banco e volta para a identificação. */
   const sairDoFuncionario = () => {
+    // Login próprio: sai do login do funcionário (o aparelho volta para a identificação da loja)
+    if (ehLoginDeFuncionario(session?.user)) {
+      setOperador(null);
+      sairDoLoginFuncionario().catch(() => {});
+      return;
+    }
     if (tokenOperador) encerrarSessaoFuncionario(tokenOperador).catch(() => {});
     setTokenOperador(null);
     setOperador(null);
@@ -293,17 +356,22 @@ export default function App() {
     );
   }
 
-  if (forcarInicio || (!session && telaPublica === 'inicio')) {
+  // Aparelho que lembra a loja e está sem ninguém logado: vai direto para a identificação do funcionário
+  const identificacaoSemLogin = !session && !!contaAparelho && !usarLoginDono;
+
+  if (forcarInicio || (!session && !identificacaoSemLogin && telaPublica === 'inicio')) {
     return <LandingPage onEntrar={() => sairDaPaginaInicial('login')} onCriarConta={() => sairDaPaginaInicial('cadastro')} />;
   }
 
-  if (!session) {
+  if (!session && !identificacaoSemLogin) {
     return (
       <Auth
         key={telaPublica}
         modoInicial={telaPublica === 'cadastro' ? 'cadastro' : 'login'}
         onVoltar={() => {
-          setTelaPublica('inicio');
+          // Aparelho que lembra a loja volta para a identificação; os demais, para a página inicial
+          if (contaAparelho) setUsarLoginDono(false);
+          else setTelaPublica('inicio');
           window.scrollTo(0, 0);
         }}
         onLoginSuccess={() => setLoading(false)}
@@ -312,7 +380,21 @@ export default function App() {
   }
 
   if (!operador) {
-    return <AcessoFuncionario key={userId} session={session} onEntrar={entrarComoOperador} />;
+    return (
+      <AcessoFuncionario
+        // Mesma loja = mesma tela: trocar o login do dono pelo do funcionário no meio da entrada não a recria
+        key={contaDoUsuario(session?.user) || contaAparelho?.contaId || 'aparelho'}
+        session={session}
+        contaAparelho={contaAparelho}
+        onEntrar={entrarComoOperador}
+        onUsarLoginDono={() => setUsarLoginDono(true)}
+        onEsquecerAparelho={() => {
+          esquecerContaAparelho();
+          setContaAparelho(null);
+          setTelaPublica('login');
+        }}
+      />
+    );
   }
 
   const chaveTela =

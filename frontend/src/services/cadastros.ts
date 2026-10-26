@@ -1,5 +1,6 @@
 import { supabase } from './supabaseClient';
 import { MENSAGEM_SEM_PERMISSAO, ehRecusaDePermissao, exigirLinhaAfetada } from './errosBanco';
+import { contaDoUsuario } from './contaLogin';
 
 // ==========================================
 // Acesso ao banco dos submódulos de Cadastro: Clientes, Lojas, Funcionários e Formas de Pagamento.
@@ -121,7 +122,7 @@ export async function salvarCliente(dados: Omit<Cliente, 'id_cliente'>, idClient
     observacoes: dados.observacoes?.trim() || null,
   };
   const novoId = gerarId();
-  const userId = idCliente ? undefined : (await supabase.auth.getUser()).data?.user?.id;
+  const userId = idCliente ? undefined : contaDoUsuario((await supabase.auth.getUser()).data?.user) || undefined;
 
   return gravarComColunasOpcionais(
     payload,
@@ -237,7 +238,7 @@ export async function salvarServico(dados: Omit<Servico, 'id_servico'>, idServic
     descricao: dados.descricao?.trim() || null,
   };
   const novoId = gerarId();
-  const userId = idServico ? undefined : (await supabase.auth.getUser()).data?.user?.id;
+  const userId = idServico ? undefined : contaDoUsuario((await supabase.auth.getUser()).data?.user) || undefined;
 
   return gravarComColunasOpcionais(
     payload,
@@ -296,7 +297,7 @@ export async function salvarFornecedor(dados: Omit<Fornecedor, 'id_fornecedor'>,
     observacoes: dados.observacoes?.trim() || null,
   };
   const novoId = gerarId();
-  const userId = idFornecedor ? undefined : (await supabase.auth.getUser()).data?.user?.id;
+  const userId = idFornecedor ? undefined : contaDoUsuario((await supabase.auth.getUser()).data?.user) || undefined;
 
   return gravarComColunasOpcionais(
     payload,

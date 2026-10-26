@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { alterarSenhaConta, gerarBackupConta, type ConfiguracoesLojaIsolada, type TemaVisual } from '../../services/api';
+import { alterarSenhaConta, gerarBackupConta, obterUsuarioAtivoSincrono, type ConfiguracoesLojaIsolada, type TemaVisual } from '../../services/api';
+import { ehLoginDeFuncionario } from '../../services/contaLogin';
 import { Campo, inputCls } from '../../components/cadastros/ui';
 import { cardCls } from './tipos';
 import { formatarDataOS, validarSenhaForte } from '../../utils/formatadores';
@@ -163,6 +164,16 @@ export const AbaAparenciaConta: React.FC<Props> = ({ config, emailConta, onSelec
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        {/* Login de funcionário: a senha da conta é do dono e só ele troca (entrando com o e-mail da conta) */}
+        {ehLoginDeFuncionario(obterUsuarioAtivoSincrono()) ? (
+          <div className={cardCls}>
+            <h3 className="text-sm font-bold text-white">Segurança da conta</h3>
+            <p className="text-xs text-zinc-400">
+              Você está com o login de funcionário. A senha da conta da loja só pode ser trocada pelo dono, entrando com o
+              e-mail da conta. A sua senha de funcionário é alterada em Cadastros › Funcionários.
+            </p>
+          </div>
+        ) : (
         <form onSubmit={trocarSenha} className={cardCls} autoComplete="off">
           <div>
             <h3 className="text-sm font-bold text-white">Segurança da conta</h3>
@@ -207,6 +218,7 @@ export const AbaAparenciaConta: React.FC<Props> = ({ config, emailConta, onSelec
             </button>
           </div>
         </form>
+        )}
 
         <div className={cardCls}>
           <div>

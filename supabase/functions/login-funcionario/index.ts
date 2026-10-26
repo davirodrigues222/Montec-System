@@ -4,9 +4,10 @@
 // Cria ou atualiza o LOGIN PRÓPRIO de um funcionário no Supabase Auth. Roda no servidor do
 // Supabase com a chave secreta (service role), que nunca vai para o navegador.
 //
-// Quem chama: o sistema, logado na conta da loja (dono ou funcionário com login próprio),
-// enviando o código e a senha do funcionário. A função:
-//   1. descobre a conta da loja de quem chamou;
+// Quem chama: o sistema, logado na conta da loja (dono ou funcionário com login próprio) ou na
+// tela de identificação de um aparelho sem ninguém logado (enviando a conta que o aparelho lembra),
+// sempre com o código e a senha do funcionário. A função:
+//   1. descobre a conta da loja;
 //   2. confere código + senha no banco (conferir_funcionario_servidor, com bloqueio por tentativas);
 //   3. cria o usuário do funcionário (ou atualiza a senha dele) e o vínculo em membros_conta;
 //   4. devolve o e-mail interno do login, para o sistema entrar com ele.
@@ -36,27 +37,35 @@ Deno.serve(async (req) => {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  // 1. Quem está chamando (precisa estar logado na conta da loja)
-  const jwt = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
-  const { data: autenticado } = await admin.auth.getUser(jwt);
-  const chamador = autenticado?.user;
-  if (!chamador) return resposta(401, { erro: 'Sessão inválida. Entre na conta novamente.' });
-
-  let corpo: { codigo?: string; senha?: string };
+  let corpo: { codigo?: string; senha?: string; contaId?: string };
   try {
     corpo = await req.json();
   } catch {
     return resposta(400, { erro: 'Requisição inválida.' });
+  }
+
+  // 1. Conta da loja
+  //    - logado (dono ou funcionário com login próprio): a conta de quem chamou;
+  //    - aparelho sem ninguém logado (tela de identificação): a conta que o aparelho lembra.
+  //    Nos dois casos quem decide é o código + senha, conferidos no banco com bloqueio por tentativas.
+  const jwt = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
+  const { data: autenticado } = await admin.auth.getUser(jwt);
+  const chamador = autenticado?.user;
+  let contaId: string;
+  if (chamador) {
+    const { data: membroChamador } = await admin.from('membros_conta').select('conta_id').eq('user_id', chamador.id).maybeSingle();
+    contaId = membroChamador?.conta_id ?? chamador.id;
+  } else {
+    contaId = String(corpo.contaId || '');
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(contaId)) {
+      return resposta(401, { erro: 'Sessão inválida. Entre na conta novamente.' });
+    }
   }
   const codigo = String(corpo.codigo || '').trim();
   const senha = String(corpo.senha || '');
   if (!/^[A-Za-z0-9._-]{1,30}$/.test(codigo) || senha.length < 8 || senha.length > 72) {
     return resposta(400, { erro: 'Código de acesso ou senha inválidos.' });
   }
-
-  // Conta da loja: funcionário com login próprio usa a conta dele; o dono usa o próprio id
-  const { data: membroChamador } = await admin.from('membros_conta').select('conta_id').eq('user_id', chamador.id).maybeSingle();
-  const contaId: string = membroChamador?.conta_id ?? chamador.id;
 
   // 2. Código + senha conferidos no banco (bloqueia após 5 tentativas)
   const { data: idFuncionario, error: erroConferir } = await admin.rpc('conferir_funcionario_servidor', {
