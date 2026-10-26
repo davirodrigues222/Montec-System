@@ -17,7 +17,7 @@ import { FormasPagamentoCadastro } from './pages/cadastros/FormasPagamentoCadast
 import { AcessoFuncionario } from './pages/AcessoFuncionario';
 import { LandingPage } from './pages/landing/LandingPage';
 import { AutorizacaoAdministrativa } from './components/AutorizacaoAdministrativa';
-import { SECOES_CONFIGURACAO } from './pages/configuracoes/secoes';
+import { SECOES_CONFIGURACAO, SECOES_CONFIGURACAO_LIVRES } from './pages/configuracoes/secoes';
 import { OperadorContext } from './contexts/OperadorContext';
 import {
   type AbaSistema,
@@ -317,7 +317,10 @@ export default function App() {
       : activeTab === 'configuracoes'
       ? `configuracoes:${secaoConfiguracao}`
       : activeTab;
-  const permitidaPeloPerfil = podeAcessarAba(operador, activeTab, activeTab === 'cadastros' ? secaoCadastro : undefined);
+  const permitidaPeloPerfil =
+    podeAcessarAba(operador, activeTab, activeTab === 'cadastros' ? secaoCadastro : undefined) ||
+    // Leis e termos: consulta aberta a todo funcionário (editar os termos continua exigindo a permissão)
+    (activeTab === 'configuracoes' && SECOES_CONFIGURACAO_LIVRES.includes(secaoConfiguracao));
   const liberadaPorAdmin = !permitidaPeloPerfil && liberacao?.chave === chaveTela;
   const telaLiberada = permitidaPeloPerfil || liberadaPorAdmin;
 

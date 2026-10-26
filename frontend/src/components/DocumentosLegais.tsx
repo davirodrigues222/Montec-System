@@ -9,7 +9,7 @@ const RESPONSAVEL = {
   cnpj: '',
   emailPrivacidade: '',
 };
-const ATUALIZADO_EM = '25/10/2026';
+export const ATUALIZADO_EM = '25/10/2026';
 
 export type DocumentoLegal = 'termos' | 'privacidade';
 
@@ -25,7 +25,7 @@ const contatoPrivacidade = RESPONSAVEL.emailPrivacidade
   ? `pelo e-mail ${RESPONSAVEL.emailPrivacidade}`
   : 'pelos canais de atendimento do Montec System';
 
-const Termos = () => (
+export const TermosDeUso = () => (
   <>
     <Secao titulo="1. O serviço">
       <p>
@@ -67,7 +67,7 @@ const Termos = () => (
   </>
 );
 
-const Privacidade = () => (
+export const PoliticaPrivacidade = () => (
   <>
     <Secao titulo="Quem trata os dados">
       <p>
@@ -169,7 +169,7 @@ export const DocumentosLegais: React.FC<{ inicial: DocumentoLegal; onFechar: () 
           ))}
         </div>
         <div className="max-h-[65vh] space-y-4 overflow-y-auto p-5">
-          {aba === 'termos' ? <Termos /> : <Privacidade />}
+          {aba === 'termos' ? <TermosDeUso /> : <PoliticaPrivacidade />}
           <p className="text-[11px] text-zinc-500">Atualizado em {ATUALIZADO_EM}.</p>
         </div>
       </div>
