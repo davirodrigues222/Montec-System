@@ -11,8 +11,6 @@ import {
 interface Props {
   valor: DadosLegaisOS;
   onChange: (valor: DadosLegaisOS) => void;
-  /** Valor total cobrado: as peças não podem passar dele. */
-  valorTotal: number;
 }
 
 const labelCls = 'block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5';
@@ -20,13 +18,12 @@ const campoCls =
   'w-full px-3.5 py-2.5 bg-[#080c14] border border-zinc-800/80 rounded-xl text-xs text-white outline-none focus:border-blue-500 transition';
 
 /**
- * Exigências do CDC na OS: peça empregada e autorização do cliente (arts. 21 e 70), valor das peças
- * discriminado no orçamento (art. 40) e aprovação expressa do orçamento antes do serviço (art. 39, VI).
+ * Exigências do CDC na OS: peça empregada e autorização do cliente (arts. 21 e 70)
+ * e aprovação expressa do orçamento antes do serviço (art. 39, VI).
  */
-export const CamposLegaisOS: React.FC<Props> = ({ valor, onChange, valorTotal }) => {
+export const CamposLegaisOS: React.FC<Props> = ({ valor, onChange }) => {
   const alterar = (parcial: Partial<DadosLegaisOS>) => onChange({ ...valor, ...parcial });
   const exigeAutorizacao = !!valor.tipoPeca && TIPOS_PECA[valor.tipoPeca].exigeAutorizacao;
-  const pecasAcimaDoTotal = (valor.valorPecas || 0) > valorTotal && valorTotal > 0;
 
   return (
     <div className="space-y-3.5 rounded-xl border border-zinc-800/80 bg-[#080c14]/60 p-4">
@@ -35,7 +32,7 @@ export const CamposLegaisOS: React.FC<Props> = ({ valor, onChange, valorTotal })
         <span className="text-[11px] text-zinc-500">Exigências do Código de Defesa do Consumidor</span>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
         <div>
           <label className={labelCls}>Tipo de peça</label>
           <select
@@ -52,22 +49,6 @@ export const CamposLegaisOS: React.FC<Props> = ({ valor, onChange, valorTotal })
               </option>
             ))}
           </select>
-        </div>
-
-        <div>
-          <label className={labelCls}>Peças no valor cobrado (R$)</label>
-          <input
-            type="number"
-            step="0.01"
-            min={0}
-            value={valor.valorPecas ?? ''}
-            onChange={(e) => alterar({ valorPecas: e.target.value === '' ? undefined : Math.max(0, Number(e.target.value)) })}
-            placeholder="0.00"
-            className={campoCls}
-          />
-          <p className={`mt-1 text-[10px] ${pecasAcimaDoTotal ? 'text-rose-400' : 'text-zinc-500'}`}>
-            {pecasAcimaDoTotal ? 'Maior que o valor cobrado.' : 'O restante sai como mão de obra no orçamento.'}
-          </p>
         </div>
 
         <div>
