@@ -352,6 +352,8 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
   // Celular: preenchimento em etapas (no desktop todos os cards ficam visíveis)
   const [etapa, setEtapa] = useState<EtapaMobile>(1);
   const topoEtapasRef = useRef<HTMLDivElement>(null);
+  // Quando o celular chegou na etapa 4: toques logo em seguida são o mesmo toque do "Continuar"
+  const chegouNaEtapa4Em = useRef(0);
 
   useEffect(() => {
     // As funções de busca já tratam erros e devolvem lista vazia
@@ -726,6 +728,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
         return;
       }
     }
+    if (destino === 4 && etapa !== 4) chegouNaEtapa4Em.current = Date.now();
     setEtapa(destino);
     // O conteúdo rola dentro do <main> do Layout, não da janela
     requestAnimationFrame(() => {
@@ -738,14 +741,21 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
   const classeEtapa = (n: EtapaMobile) => (etapa === n ? '' : 'hidden md:block');
 
   const enviarFormulario = (e: React.FormEvent) => {
-    // Enter num campo do celular avança a etapa em vez de tentar criar a OS
+    // Celular: o envio do formulário (Enter no teclado, toque repassado pelo navegador) nunca cria a OS,
+    // só avança a etapa. A OS é criada apenas pelo botão "Finalizar e gerar OS" (finalizarNoCelular).
     const ehCelular = !window.matchMedia('(min-width: 768px)').matches;
-    if (ehCelular && etapa < 4) {
+    if (ehCelular) {
       e.preventDefault();
-      irParaEtapa((etapa + 1) as EtapaMobile);
+      if (etapa < 4) irParaEtapa((etapa + 1) as EtapaMobile);
       return;
     }
     handleSubmit(e);
+  };
+
+  const finalizarNoCelular = (e: React.MouseEvent<HTMLButtonElement>) => {
+    // Ignora o toque que chega junto com a troca de etapa (o botão aparece embaixo do dedo)
+    if (Date.now() - chegouNaEtapa4Em.current < 800) return;
+    handleSubmit(e as unknown as React.FormEvent);
   };
 
   return (
@@ -1606,7 +1616,8 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
             ) : (
               <button
                 key="finalizar"
-                type="submit"
+                type="button"
+                onClick={finalizarNoCelular}
                 disabled={carregando}
                 className="flex-1 min-w-0 flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 disabled:opacity-50 text-white text-xs font-bold transition shadow-lg shadow-sky-500/20"
               >
