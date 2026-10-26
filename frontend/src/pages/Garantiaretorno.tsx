@@ -24,6 +24,7 @@ export const GarantiaRetorno: React.FC = () => {
   const [fretePeca, setFretePeca] = useState<number | ''>('');
   const [salvando, setSalvando] = useState(false);
   const salvandoRef = useRef(false); // trava imediata contra duplo clique
+  const formularioRef = useRef<HTMLDivElement>(null);
 
   // Regra de Elegibilidade da Garantia (Sem limite fixo de 90 dias, respeita prazo individual e flag Sem Garantia)
   const checarElegibilidade = (os: OrdemServico, listaServicos = servicosCadastrados): ResultadoElegibilidadeGarantia => {
@@ -88,6 +89,10 @@ export const GarantiaRetorno: React.FC = () => {
       return;
     }
     setOsSelecionada(os);
+    // Celular/tablet: o formulário fica abaixo da lista, então desce até ele (no desktop fica ao lado)
+    if (!window.matchMedia('(min-width: 1024px)').matches) {
+      requestAnimationFrame(() => formularioRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+    }
   };
 
   // Submissão do Retorno de Garantia
@@ -270,7 +275,10 @@ export const GarantiaRetorno: React.FC = () => {
         </div>
 
         {/* COLUNA DIREITA (Lg: 8/12): FORMULÁRIO DO FIGMA */}
-        <div className="lg:col-span-8 bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-6 shadow-sm">
+        <div
+          ref={formularioRef}
+          className="lg:col-span-8 bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-6 shadow-sm scroll-mt-4"
+        >
           {osSelecionada && validacaoSelecionada ? (
             <form onSubmit={handleRegistrarRetorno} className="space-y-5">
               {/* Linha Topo: Ordem Selecionada e Status */}
