@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Check, CircleCheck, ExternalLink, Sparkles } from 'lucide-react';
+import { Check, CircleCheck, Sparkles } from 'lucide-react';
 import { JanelaCheckout } from './JanelaCheckout';
 import {
   LISTA_PLANOS,
@@ -29,8 +29,9 @@ const textoBotao = (plano: Plano, situacao: SituacaoAssinatura) => {
 const ERRO_LINK = 'O link de pagamento deste plano ainda não foi configurado. Fale com o suporte do Montec System.';
 
 /**
- * Os 2 planos lado a lado. "Assinar" abre o checkout da Cakto (já preenchido) numa janela dentro do
- * sistema; o link abaixo do botão abre o mesmo checkout no site da Cakto, numa nova aba.
+ * Os 2 planos lado a lado. "Assinar" abre o checkout da Cakto (já preenchido) numa nova aba — a Cakto
+ * não permite ser exibida dentro de outro site — e o sistema fica em "Aguardando pagamento" até o
+ * webhook liberar o acesso.
  */
 export const CardsPlanos: React.FC<Props> = ({ situacao, onErro }) => {
   const [checkout, setCheckout] = useState<{ plano: IdPlano; link: string } | null>(null);
@@ -38,13 +39,10 @@ export const CardsPlanos: React.FC<Props> = ({ situacao, onErro }) => {
 
   const assinar = (id: IdPlano) => {
     const link = montarLinkCheckout(id, situacao);
-    if (!link) return onErro?.(ERRO_LINK);
+    // Abre no próprio clique (fora dele o navegador bloqueia a nova aba)
+    if (!link || !abrirCheckout(id, situacao)) return onErro?.(ERRO_LINK);
     setConfirmado(null);
     setCheckout({ plano: id, link });
-  };
-
-  const pagarNoSiteDaCakto = (id: IdPlano) => {
-    if (!abrirCheckout(id, situacao)) onErro?.(ERRO_LINK);
   };
 
   return (
@@ -133,15 +131,6 @@ export const CardsPlanos: React.FC<Props> = ({ situacao, onErro }) => {
             >
               {/* Texto num <span>: a regra global "button { font: inherit }" anularia o tamanho e o peso no botão */}
               <span className="text-sm font-bold">{textoBotao(plano, situacao)}</span>
-            </button>
-            {/* Alternativa: o mesmo checkout no site da Cakto, numa nova aba */}
-            <button
-              type="button"
-              onClick={() => pagarNoSiteDaCakto(plano.id)}
-              className="mt-1.5 w-full min-h-10 inline-flex items-center justify-center gap-1.5 rounded-lg text-zinc-400 hover:text-zinc-200 transition"
-            >
-              <span className="text-xs font-semibold">ou pagar no site da Cakto</span>
-              <ExternalLink className="w-3.5 h-3.5 shrink-0" />
             </button>
           </div>
         );
