@@ -5,7 +5,6 @@ import {
   obterMetaFinanceiraConta,
   parsearValorMonetarioBR,
   salvarMetaFinanceiraConta,
-  calcularValorTaxas,
   modalidadeDaForma,
   ROTULOS_MODALIDADE,
   type ModalidadePagamento,
@@ -21,7 +20,10 @@ const celulaCsv = (valor: unknown) => {
   return `"${seguro.replace(/"/g, '""')}"`;
 };
 import type { OrdemServico } from '../types';
-import { formatarValor } from '../utils/formatadores';
+import { formaSemParcelas } from '../services/formasPagamentoOS';
+// Mesmas fórmulas do Painel: a soma das linhas da auditoria sempre bate com os cards
+import { custoFreteOS, custoGarantiaOS, custoPecaOS, custosOS, somar, valorBrutoOS, valorLiquidoOS, valorTaxasOS } from '../utils/financeiroOS';
+import { formatarDataOS, formatarValor } from '../utils/formatadores';
 import { StatusBadge } from '../components/StatusBadge';
 
 type FiltroPeriodo = 'HOJE' | 'ATUAL' | 'ANTERIOR' | 'ANO_ATUAL' | 'TODOS' | 'PERSONALIZADO';
@@ -35,27 +37,17 @@ const somarDias = (chave: string, dias: number) => {
   return chaveDia(d);
 };
 
-// Valores de cada OS usados nos cards. A listagem de auditoria usa exatamente as mesmas funções,
-// então a soma das linhas sempre bate com os totais exibidos.
-const valorBrutoOS = (os: OrdemServico) => Number(os.orcamentoCalculado?.valorTotalOrcamento || os.valor_total || 0);
-const valorLiquidoOS = (os: OrdemServico) =>
-  os.valorLiquido !== undefined && os.valorLiquido !== null ? Number(os.valorLiquido) : valorBrutoOS(os);
-const custoPecaOS = (os: OrdemServico) => Number(os.orcamentoCalculado?.custoPeca || os.custo_peca || 0);
-const custoFreteOS = (os: OrdemServico) => Number(os.orcamentoCalculado?.freteReal || os.frete_real || 0);
-const custoGarantiaOS = (os: OrdemServico) =>
-  Number(
-    os.orcamentoCalculado?.custoPecaGarantia ||
-      os.garantia?.custoPecaGarantia ||
-      os.garantia?.custoTotalGarantia ||
-      os.custo_peca_garantia ||
-      0
-  );
-const custosOS = (os: OrdemServico) => custoPecaOS(os) + custoFreteOS(os) + custoGarantiaOS(os);
-// Taxa retida pela maquininha: coluna valor_taxas (ou bruto − líquido nas ordens antigas)
-const valorTaxasOS = (os: OrdemServico) => Number(os.valorTaxas ?? calcularValorTaxas(valorBrutoOS(os), valorLiquidoOS(os)));
 const modalidadeOS = (os: OrdemServico): ModalidadePagamento =>
   (os.modalidadePagamento as ModalidadePagamento) || modalidadeDaForma(os.formaPagamento || '', Number(os.parcelas || 1));
-const somar = (ordens: OrdemServico[], fn: (os: OrdemServico) => number) => ordens.reduce((acc, os) => acc + fn(os), 0);
+/**
+ * Nome da forma nos relatórios: as nativas pela modalidade (PIX, Débito, Crédito à vista/parcelado...);
+ * as complementares do cadastro (boleto, crediário, link...) pelo próprio nome, sem o "(3x)".
+ */
+const rotuloFormaOS = (os: OrdemServico): string => {
+  const modalidade = modalidadeOS(os);
+  if (modalidade !== 'OUTRO') return ROTULOS_MODALIDADE[modalidade];
+  return formaSemParcelas(os.formaPagamento || '') || ROTULOS_MODALIDADE.OUTRO;
+};
 
 /** Quantas linhas a listagem de auditoria mostra antes de "Mostrar mais". */
 const LINHAS_POR_PAGINA = 50;
@@ -416,9 +408,9 @@ export const Relatorios: React.FC = () => {
 
   // Bruto, taxas e líquido por forma de pagamento, das que mais faturaram para as que menos
   const porModalidade = useMemo(() => {
-    const grupos = new Map<ModalidadePagamento, { quantidade: number; bruto: number; taxas: number; liquido: number }>();
+    const grupos = new Map<string, { quantidade: number; bruto: number; taxas: number; liquido: number }>();
     ordensFiltradas.forEach((os) => {
-      const chave = modalidadeOS(os);
+      const chave = rotuloFormaOS(os);
       const g = grupos.get(chave) || { quantidade: 0, bruto: 0, taxas: 0, liquido: 0 };
       g.quantidade += 1;
       g.bruto += valorBrutoOS(os);
@@ -439,7 +431,7 @@ export const Relatorios: React.FC = () => {
       .filter(
         (os) =>
           !termo ||
-          [os.numero_os, os.cliente?.nome, os.aparelho?.modelo, os.servicoRealizado, os.defeitoRelatado, ROTULOS_MODALIDADE[modalidadeOS(os)]]
+          [os.numero_os, os.cliente?.nome, os.aparelho?.modelo, os.servicoRealizado, os.defeitoRelatado, rotuloFormaOS(os)]
             .some((campo) => String(campo || '').toLowerCase().includes(termo))
       )
       .sort(
@@ -473,7 +465,8 @@ export const Relatorios: React.FC = () => {
     const semanas = [0, 0, 0, 0, 0];
     ordensFiltradas.forEach((os) => {
       if (!os.data_abertura) return;
-      const dia = new Date(os.data_abertura).getDate();
+      const dia = Number(diaLocalDaData(os.data_abertura).slice(8, 10));
+      if (!dia) return;
       const valor = valorBrutoOS(os);
 
       if (dia <= 7) semanas[0] += valor;
@@ -517,10 +510,10 @@ export const Relatorios: React.FC = () => {
       const cli = celulaCsv(os.cliente?.nome);
       const apr = celulaCsv(os.aparelho?.modelo);
       const srv = celulaCsv(os.servicoRealizado || os.defeitoRelatado);
-      const data = os.data_abertura ? new Date(os.data_abertura).toLocaleDateString('pt-BR') : '';
+      const data = formatarDataOS(os.data_abertura);
       const st = os.status_os || '';
       // Mesmas funções dos cards: o CSV soma exatamente os totais da tela
-      const forma = `"${ROTULOS_MODALIDADE[modalidadeOS(os)]}"`;
+      const forma = `"${rotuloFormaOS(os)}"`;
       const val = valorBrutoOS(os).toFixed(2);
       const tax = valorTaxasOS(os).toFixed(2);
       const liq = valorLiquidoOS(os).toFixed(2);
@@ -536,7 +529,7 @@ export const Relatorios: React.FC = () => {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.setAttribute('download', `relatorio_financeiro_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute('download', `relatorio_financeiro_${diaLocalDaData(new Date().toISOString())}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -756,7 +749,7 @@ export const Relatorios: React.FC = () => {
                     <tbody className="divide-y divide-zinc-800/40">
                       {porModalidade.map(([modalidade, g]) => (
                         <tr key={modalidade}>
-                          <td className="py-2 px-3 text-zinc-200 font-medium">{ROTULOS_MODALIDADE[modalidade]}</td>
+                          <td className="py-2 px-3 text-zinc-200 font-medium">{modalidade}</td>
                           <td className="py-2 px-3 text-right text-zinc-400">{g.quantidade}</td>
                           <td className="py-2 px-3 text-right text-white font-semibold">R$ {formatarValor(g.bruto)}</td>
                           <td className="py-2 px-3 text-right text-rose-400">{g.taxas > 0 ? `− R$ ${formatarValor(g.taxas)}` : '—'}</td>
@@ -815,7 +808,7 @@ export const Relatorios: React.FC = () => {
                                     {(os.status_os === 'RASCUNHO' || os.status_os === 'CANCELADO') && <StatusBadge status={os.status_os} />}
                                   </div>
                                   <p className="text-[11px] text-zinc-500 mt-0.5">
-                                    {os.data_abertura ? new Date(os.data_abertura).toLocaleDateString('pt-BR') : '—'}
+                                    {formatarDataOS(os.data_abertura) || '—'}
                                   </p>
                                 </td>
                                 <td className="py-2.5 px-4 text-zinc-200 font-medium truncate max-w-[180px]">{os.cliente?.nome || 'Cliente balcão'}</td>
@@ -823,7 +816,7 @@ export const Relatorios: React.FC = () => {
                                   <p className="text-zinc-200 truncate">{os.aparelho?.modelo || '—'}</p>
                                   <p className="text-[11px] text-zinc-500 mt-0.5 truncate">{os.servicoRealizado || os.defeitoRelatado || '—'}</p>
                                 </td>
-                                <td className="py-2.5 px-4 text-zinc-400 whitespace-nowrap">{ROTULOS_MODALIDADE[modalidadeOS(os)]}</td>
+                                <td className="py-2.5 px-4 text-zinc-400 whitespace-nowrap">{rotuloFormaOS(os)}</td>
                                 <td className="py-2.5 px-4 text-right text-white font-semibold">R$ {formatarValor(valorBrutoOS(os))}</td>
                                 <td className="py-2.5 px-4 text-right text-rose-400/90">
                                   {valorTaxasOS(os) > 0 ? `- R$ ${formatarValor(valorTaxasOS(os))}` : '—'}

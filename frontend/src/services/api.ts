@@ -1,6 +1,7 @@
 import { supabase } from './supabaseClient';
 import { validarSenhaForte } from '../utils/formatadores';
 import { GARANTIA_LEGAL_DIAS, STATUS_APAGAM_SENHA } from '../utils/conformidade';
+import { MENSAGEM_SEM_PERMISSAO, ehRecusaDePermissao, exigirLinhaAfetada } from './errosBanco';
 
 // ==========================================
 // 1. ISOLAMENTO DE CONFIGURAÇÕES, TEMA, METAS E IDENTIDADE VISUAL POR CONTA
@@ -1716,6 +1717,7 @@ const limitarFormaPagamento = (texto: string) => {
 
 /** Mensagens do banco em português para os erros mais comuns ao gravar uma OS. */
 function traduzirErroBanco(error: any, padrao: string): string {
+  if (ehRecusaDePermissao(error)) return MENSAGEM_SEM_PERMISSAO;
   const msg = String(error?.message || '');
   const limite = msg.match(/value too long for type character varying\((\d+)\)/i);
   if (limite) return `Um dos campos da OS passou do limite de ${limite[1]} caracteres do banco. Encurte o texto e tente novamente.`;
@@ -1809,7 +1811,7 @@ async function resolverClienteDaOS(cliente: any): Promise<string> {
       ...(authData?.user?.id ? { user_id: authData.user.id } : {}),
     },
   ]);
-  if (error) throw new Error(`Falha ao cadastrar o cliente: ${error.message}`);
+  if (error) throw new Error(traduzirErroBanco(error, "Falha ao cadastrar o cliente"));
   return novoId;
 }
 
@@ -1832,7 +1834,7 @@ async function resolverAparelhoDaOS(idCliente: string, aparelho: any): Promise<s
   const { error: erroInsert } = await supabase
     .from('aparelhos_cliente')
     .insert([{ id_aparelho: novoId, id_cliente: idCliente, modelo, imei_1: imei }]);
-  if (erroInsert) throw new Error(`Falha ao cadastrar o aparelho: ${erroInsert.message}`);
+  if (erroInsert) throw new Error(traduzirErroBanco(erroInsert, "Falha ao cadastrar o aparelho"));
   return novoId;
 }
 
@@ -1952,7 +1954,7 @@ export async function editarOrdemServico(id_os: string, payload: any): Promise<v
     };
     if (payload.cliente.cpfCnpj !== undefined) dadosCliente.cpf_cnpj = String(payload.cliente.cpfCnpj || '').trim() || null;
     const { error: erroCliente } = await supabase.from('clientes').update(dadosCliente).eq('id_cliente', osAtual.id_cliente);
-    if (erroCliente) throw new Error(`Falha ao atualizar o cliente: ${erroCliente.message}`);
+    if (erroCliente) throw new Error(traduzirErroBanco(erroCliente, "Falha ao atualizar o cliente"));
   }
 
   // 3. Se o aparelho foi alterado, atualiza na tabela de aparelhos
@@ -1964,7 +1966,7 @@ export async function editarOrdemServico(id_os: string, payload: any): Promise<v
         imei_1: payload.aparelho?.imei1 || payload.aparelho?.imei || null,
       })
       .eq('id_aparelho', osAtual.id_aparelho);
-    if (erroAparelho) throw new Error(`Falha ao atualizar o aparelho: ${erroAparelho.message}`);
+    if (erroAparelho) throw new Error(traduzirErroBanco(erroAparelho, "Falha ao atualizar o aparelho"));
   }
 
   // 4. Prepara a atualização dos campos da Ordem de Serviço
@@ -2320,7 +2322,7 @@ export async function registrarGarantiaOS(
     return;
   }
   const funcaoAusente = /acrescentar_retorno_garantia|PGRST202|function/i.test(`${erroRpc.code} ${erroRpc.message}`);
-  if (!funcaoAusente) throw new Error(erroRpc.message || 'Falha ao registrar garantia');
+  if (!funcaoAusente) throw new Error(traduzirErroBanco(erroRpc, "Falha ao registrar garantia"));
 
   // Sem a migração: grava a lista completa (como antes)
   const listaRetornos = extrairListaRetornosGarantia(osAtual.garantia_json);
@@ -2331,19 +2333,22 @@ export async function registrarGarantiaOS(
     .eq('id_os', id_os);
 
   if (error) {
-    throw new Error(error.message || 'Falha ao registrar garantia');
+    throw new Error(traduzirErroBanco(error, "Falha ao registrar garantia"));
   }
   invalidarCacheOrdens();
 }
 
 export async function excluirOrdemServico(id_os: string): Promise<void> {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('ordens_servico')
     .delete()
-    .eq('id_os', id_os);
+    .eq('id_os', id_os)
+    .select('id_os');
 
   if (error) {
-    throw new Error(error.message || 'Falha ao excluir a Ordem de Serviço');
+    throw new Error(traduzirErroBanco(error, 'Falha ao excluir a Ordem de Serviço'));
   }
+  // Sem a permissão "Excluir OS" o banco não apaga nada e também não dá erro
+  exigirLinhaAfetada(data);
   invalidarCacheOrdens();
 }

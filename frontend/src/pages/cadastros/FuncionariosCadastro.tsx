@@ -689,7 +689,7 @@ export const FuncionariosCadastro: React.FC = () => {
             </div>
           }
           itens={[
-            ['Código de acesso', <span className="font-mono">{detalhe.codigo_acesso}</span>],
+            ['Código de acesso', <span key="codigo" className="font-mono">{detalhe.codigo_acesso}</span>],
             ['CPF', detalhe.cpf ? mascaraCpf(detalhe.cpf) : ''],
             ['Telefone', detalhe.telefone ? mascaraTelefone(detalhe.telefone) : ''],
             ['E-mail', detalhe.email || ''],

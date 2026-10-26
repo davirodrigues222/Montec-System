@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { alterarSenhaConta, gerarBackupConta, type ConfiguracoesLojaIsolada, type TemaVisual } from '../../services/api';
 import { Campo, inputCls } from '../../components/cadastros/ui';
 import { cardCls } from './tipos';
-import { validarSenhaForte } from '../../utils/formatadores';
+import { formatarDataOS, validarSenhaForte } from '../../utils/formatadores';
 import { baixarArquivo } from '../../utils/arquivo';
 
 interface Props {
@@ -65,7 +65,7 @@ export const AbaAparenciaConta: React.FC<Props> = ({ config, emailConta, onSelec
         const linhas = backup.ordens_servico.map((os: any) =>
           [
             os.numero_os,
-            os.data_abertura ? new Date(os.data_abertura).toLocaleDateString('pt-BR') : '',
+            formatarDataOS(os.data_abertura),
             os.status_os,
             os.cliente?.nome,
             os.cliente?.whatsapp,

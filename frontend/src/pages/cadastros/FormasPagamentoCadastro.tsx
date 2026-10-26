@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { TIPOS_NATIVOS, avisarFormasPagamentoAlteradas } from '../../services/formasPagamentoOS';
 import {
   type FormaPagamento,
   type FormaPagamentoInput,
@@ -9,6 +10,7 @@ import {
   alternarAtivoFormaPagamento,
   criarFormasPagamentoPadrao,
   excluirFormaPagamento,
+  formasPadraoFaltantes,
   listarFormasPagamento,
   listarLojas,
   obterTaxaParcela,
@@ -37,9 +39,11 @@ import { formatarDataHora, formatarMoeda, formatarPercentual } from '../../utils
 
 const MAX_PARCELAS = 24;
 
-const formVazio = () => ({
+const formBase = () => ({
+  /** Modelo escolhido ao cadastrar uma forma nova (não é gravado: vira tipo + valores iniciais). */
+  modalidade: 'crediario' as IdModalidade,
   nome: '',
-  tipo: 'CARTAO_CREDITO' as TipoFormaPagamento,
+  tipo: 'OUTRO' as TipoFormaPagamento,
   id_loja: '',
   taxa_percentual: '0',
   taxa_fixa: '0',
@@ -53,11 +57,99 @@ const formVazio = () => ({
   // Taxa por número de parcelas, como texto para permitir edição livre (vírgula ou ponto)
   taxas: {} as Record<number, string>,
 });
-type FormForma = ReturnType<typeof formVazio>;
+type FormForma = ReturnType<typeof formBase>;
+
+// Modalidades complementares às 4 nativas (PIX, dinheiro, débito e crédito, criadas automaticamente).
+// O banco guarda o tipo (boleto, transferência ou outro); o nome identifica a modalidade na OS e nos relatórios.
+type IdModalidade = 'crediario' | 'boleto' | 'link' | 'transferencia' | 'troca' | 'faturado' | 'carteira' | 'outro';
+const MODALIDADES: { id: IdModalidade; rotulo: string; tipo: TipoFormaPagamento; nome: string; dica: string; padrao: Partial<FormForma> }[] = [
+  {
+    id: 'crediario',
+    rotulo: 'A prazo / crediário próprio (carnê, promissória)',
+    tipo: 'OUTRO',
+    nome: 'Crediário próprio',
+    dica: 'Venda parcelada pela própria loja. Defina o máximo de parcelas e, se houver, a taxa de juros.',
+    padrao: { permite_parcelamento: true, parcelas_max: 12, parcelas_sem_juros: 1, prazo_recebimento_dias: '30' },
+  },
+  {
+    id: 'boleto',
+    rotulo: 'Boleto bancário',
+    tipo: 'BOLETO',
+    nome: 'Boleto bancário',
+    dica: 'Informe a tarifa por boleto (taxa fixa em R$) ou a taxa % do banco. Costuma compensar em D+1 ou D+2.',
+    padrao: { prazo_recebimento_dias: '1' },
+  },
+  {
+    id: 'link',
+    rotulo: 'Link de pagamento online (InfinitePay, Mercado Pago, Asaas...)',
+    tipo: 'OUTRO',
+    nome: 'Link de pagamento',
+    dica: 'Use o nome da plataforma (ex.: "Link InfinitePay") e as taxas do seu contrato, por parcela.',
+    padrao: { permite_parcelamento: true, parcelas_max: 12, parcelas_sem_juros: 1 },
+  },
+  {
+    id: 'transferencia',
+    rotulo: 'Transferência bancária / TED / DOC',
+    tipo: 'TRANSFERENCIA',
+    nome: 'Transferência bancária',
+    dica: 'Normalmente sem taxa, com recebimento em D+0 ou D+1.',
+    padrao: { prazo_recebimento_dias: '0' },
+  },
+  {
+    id: 'troca',
+    rotulo: 'Aparelho na troca (trade-in / abatimento)',
+    tipo: 'OUTRO',
+    nome: 'Aparelho na troca',
+    dica: 'Quando o cliente entrega um aparelho usado como parte do pagamento. Sem taxa.',
+    padrao: {},
+  },
+  {
+    id: 'faturado',
+    rotulo: 'Faturado para empresa (B2B / convênio)',
+    tipo: 'OUTRO',
+    nome: 'Faturado para empresa',
+    dica: 'Serviço cobrado depois da empresa ou convênio. Ajuste o prazo de recebimento (15 ou 30 dias).',
+    padrao: { prazo_recebimento_dias: '30' },
+  },
+  {
+    id: 'carteira',
+    rotulo: 'Carteira digital / QR Code da operadora (PicPay, Mercado Pago...)',
+    tipo: 'OUTRO',
+    nome: 'Carteira digital',
+    dica: 'Use o nome da carteira (ex.: "PicPay") e a taxa cobrada por ela.',
+    padrao: {},
+  },
+  {
+    id: 'outro',
+    rotulo: 'Outro (personalizado)',
+    tipo: 'OUTRO',
+    nome: '',
+    dica: 'Digite o nome exato da modalidade.',
+    padrao: {},
+  },
+];
+const modalidade = (id: IdModalidade) => MODALIDADES.find((m) => m.id === id) || MODALIDADES[0];
+
+/** Formulário de uma forma nova já com o tipo e os valores iniciais da modalidade. */
+const formDaModalidade = (id: IdModalidade): FormForma => {
+  const m = modalidade(id);
+  return { ...formBase(), ...m.padrao, modalidade: id, tipo: m.tipo, nome: m.nome };
+};
+const formVazio = () => formDaModalidade('crediario');
+
+/** PIX, dinheiro, débito e crédito: criadas sozinhas em toda conta; podem ser editadas e desativadas. */
+const ehNativa = (f: Pick<FormaPagamento, 'tipo'>) => TIPOS_NATIVOS.includes(f.tipo);
+const PRAZOS_RAPIDOS = [0, 1, 14, 30];
 type Erros = Partial<Record<keyof FormForma | 'taxasTabela', string>>;
 
 const num = (v: string) => Number(String(v).replace(',', '.'));
 const rotuloPrazo = (d: number) => (d === 0 ? 'Na hora (D+0)' : `D+${d}`);
+
+// Na Nova OS: cartão usa as taxas da maquininha (Configurações › Taxas); PIX e dinheiro não têm taxa;
+// as demais formas usam a taxa e o parcelamento definidos aqui
+const TIPOS_CARTAO: TipoFormaPagamento[] = ['CARTAO_CREDITO', 'CARTAO_DEBITO'];
+const TIPOS_SEM_TAXA: TipoFormaPagamento[] = ['PIX', 'DINHEIRO'];
+const usaTaxaPropria = (tipo: TipoFormaPagamento) => !TIPOS_CARTAO.includes(tipo) && !TIPOS_SEM_TAXA.includes(tipo);
 
 export const FormasPagamentoCadastro: React.FC = () => {
   const [formas, setFormas] = useState<FormaPagamento[]>([]);
@@ -79,9 +171,20 @@ export const FormasPagamentoCadastro: React.FC = () => {
   const [paraExcluir, setParaExcluir] = useState<FormaPagamento | null>(null);
   const feedback = useFeedback();
 
+  // A conta nunca fica sem as 4 formas nativas: as que faltarem são criadas na primeira carga da tela
+  const nativasVerificadas = useRef(false);
+
   const carregar = async () => {
     try {
-      const [listaF, listaL] = await Promise.all([listarFormasPagamento(), listarLojas()]);
+      let [listaF, listaL] = await Promise.all([listarFormasPagamento(), listarLojas()]);
+      if (!nativasVerificadas.current) {
+        nativasVerificadas.current = true;
+        if (formasPadraoFaltantes(listaF).length > 0) {
+          await criarFormasPagamentoPadrao(listaF);
+          listaF = await listarFormasPagamento();
+          avisarFormasPagamentoAlteradas();
+        }
+      }
       setFormas(listaF);
       setLojas(listaL);
       setTabelaAusente(false);
@@ -105,18 +208,21 @@ export const FormasPagamentoCadastro: React.FC = () => {
     if (erros[campo]) setErros((e) => ({ ...e, [campo]: undefined }));
   };
 
-  // Regras por tipo: Dinheiro/PIX/Débito/Transferência nunca parcelam; Dinheiro e PIX sem taxa e recebimento imediato
-  const trocarTipo = (tipo: TipoFormaPagamento) => {
+  // Troca de modalidade numa forma nova: aplica o tipo e os valores iniciais dela.
+  // O nome só é trocado se ainda for o sugerido pela modalidade anterior (o que o usuário digitou fica).
+  const trocarModalidade = (id: IdModalidade) => {
     setForm((f) => {
-      const novo = { ...f, tipo, nome: f.nome || TIPOS_FORMA_PAGAMENTO[tipo].label };
-      if (!TIPOS_FORMA_PAGAMENTO[tipo].aceitaParcelamento) {
-        Object.assign(novo, { permite_parcelamento: false, parcelas_max: 1, parcelas_sem_juros: 1, repassar_juros_cliente: false });
-      }
-      if (tipo === 'DINHEIRO' || tipo === 'PIX') {
-        Object.assign(novo, { taxa_percentual: '0', taxa_fixa: '0', prazo_recebimento_dias: '0' });
-      }
-      return novo;
+      const nomeSugerido = modalidade(f.modalidade).nome;
+      const novo = formDaModalidade(id);
+      return {
+        ...novo,
+        nome: f.nome.trim() && f.nome !== nomeSugerido ? f.nome : novo.nome,
+        id_loja: f.id_loja,
+        ordem: f.ordem,
+        ativo: f.ativo,
+      };
     });
+    setErros({});
   };
 
   const alternarParcelamento = (v: boolean) => {
@@ -145,6 +251,7 @@ export const FormasPagamentoCadastro: React.FC = () => {
     const taxas: Record<number, string> = {};
     f.taxas.forEach((t) => (taxas[t.parcelas] = String(t.taxa_percentual)));
     setForm({
+      modalidade: 'outro' as IdModalidade,
       nome: f.nome,
       tipo: f.tipo,
       id_loja: f.id_loja || '',
@@ -184,6 +291,8 @@ export const FormasPagamentoCadastro: React.FC = () => {
     if (!Number.isFinite(fixa) || fixa < 0) e.taxa_fixa = 'Valor inválido.';
     const prazo = num(form.prazo_recebimento_dias);
     if (!Number.isInteger(prazo) || prazo < 0 || prazo > 365) e.prazo_recebimento_dias = 'Dias inteiros entre 0 e 365.';
+    const ordem = num(form.ordem);
+    if (String(form.ordem).trim() !== '' && (!Number.isFinite(ordem) || ordem < 0)) e.ordem = 'Use 0 ou um número maior.';
     if (form.parcelas_sem_juros > form.parcelas_max) e.parcelas_sem_juros = 'Não pode passar do máximo de parcelas.';
     if (form.permite_parcelamento) {
       for (let p = 1; p <= form.parcelas_max; p++) {
@@ -216,15 +325,17 @@ export const FormasPagamentoCadastro: React.FC = () => {
       ativo: form.ativo,
       ordem: Number.isFinite(num(form.ordem)) ? Math.trunc(num(form.ordem)) : 0,
     };
-    // Só grava as parcelas com taxa diferente da base (as demais usam a taxa base)
+    // Grava toda parcela preenchida, mesmo igual à taxa padrão: assim ela não muda sozinha quando a
+    // taxa padrão for alterada depois. Parcelas em branco seguem a taxa padrão.
     const taxas = Object.entries(form.taxas)
       .map(([p, v]) => ({ parcelas: Number(p), taxa_percentual: num(v) }))
       .filter((t) => String(form.taxas[t.parcelas]).trim() !== '' && Number.isFinite(t.taxa_percentual))
-      .filter((t) => t.parcelas <= dados.parcelas_max && t.taxa_percentual !== dados.taxa_percentual);
+      .filter((t) => t.parcelas <= dados.parcelas_max);
 
     setSalvando(true);
     try {
       await salvarFormaPagamento(dados, taxas, editandoId || undefined);
+      avisarFormasPagamentoAlteradas();
       feedback.sucesso(editandoId ? 'Forma de pagamento atualizada.' : 'Forma de pagamento cadastrada.');
       limpar();
       await carregar();
@@ -238,6 +349,7 @@ export const FormasPagamentoCadastro: React.FC = () => {
   const alternarAtivo = async (f: FormaPagamento) => {
     try {
       await alternarAtivoFormaPagamento(f.id_forma_pagamento, !f.ativo);
+      avisarFormasPagamentoAlteradas();
       setFormas((lista) => lista.map((x) => (x.id_forma_pagamento === f.id_forma_pagamento ? { ...x, ativo: !x.ativo } : x)));
     } catch (err: any) {
       feedback.erro(err.message);
@@ -247,21 +359,27 @@ export const FormasPagamentoCadastro: React.FC = () => {
   const criarPadrao = async () => {
     setCriandoPadrao(true);
     try {
-      await criarFormasPagamentoPadrao();
-      feedback.sucesso('Formas de pagamento padrão criadas. Ajuste as taxas conforme sua maquininha.');
+      await criarFormasPagamentoPadrao(formas);
+      avisarFormasPagamentoAlteradas();
+      feedback.sucesso('Formas de pagamento padrão criadas. As taxas de cartão ficam em Configurações › Taxas.');
       await carregar();
     } catch (err: any) {
       feedback.erro(err.message);
+      await carregar(); // mostra as que chegaram a ser criadas; o botão continua para completar as restantes
     } finally {
       setCriandoPadrao(false);
     }
   };
+
+  /** A única forma nativa de cada tipo só pode ser desativada (excluída, seria recriada na próxima carga). */
+  const exclusaoBloqueada = (f: FormaPagamento) => ehNativa(f) && formas.filter((x) => x.tipo === f.tipo).length <= 1;
 
   const confirmarExclusao = async () => {
     if (!paraExcluir) return;
     setExcluindo(true);
     try {
       await excluirFormaPagamento(paraExcluir.id_forma_pagamento);
+      avisarFormasPagamentoAlteradas();
       if (editandoId === paraExcluir.id_forma_pagamento) limpar();
       feedback.sucesso('Forma de pagamento excluída.');
       setParaExcluir(null);
@@ -282,20 +400,30 @@ export const FormasPagamentoCadastro: React.FC = () => {
     const fixa = num(form.taxa_fixa) || 0;
     return Array.from({ length: parcelasAtivas }, (_, i) => {
       const p = i + 1;
-      const tx = form.taxas[p] !== undefined && form.taxas[p] !== '' ? num(form.taxas[p]) || 0 : base;
-      const desconto = (valor * tx) / 100 + fixa;
-      return { parcelas: p, taxa: tx, recebe: Math.max(0, valor - desconto), semJuros: p <= form.parcelas_sem_juros };
+      const tx = form.taxas[p] !== undefined && form.taxas[p] !== '' ? num(form.taxas[p]) : base;
+      // Taxa digitada errado não vira 0%: a parcela aparece como inválida
+      const valida = Number.isFinite(tx) && tx >= 0 && tx <= 100;
+      const desconto = valida ? (valor * tx) / 100 + fixa : 0;
+      return { parcelas: p, taxa: tx, valida, recebe: Math.max(0, valor - desconto), semJuros: p <= form.parcelas_sem_juros };
     });
   }, [valorSimulacao, form.taxa_percentual, form.taxa_fixa, form.taxas, form.parcelas_sem_juros, parcelasAtivas]);
 
   const nomeLoja = (id: string | null) => (id ? lojas.find((l) => l.id_loja === id)?.nome || 'Loja removida' : 'Todas as lojas');
 
   const resumoTaxa = (f: FormaPagamento) => {
+    if (TIPOS_CARTAO.includes(f.tipo)) return 'Pela maquininha';
+    if (TIPOS_SEM_TAXA.includes(f.tipo)) return 'Sem taxa';
     if (!f.permite_parcelamento || f.parcelas_max === 1) return formatarPercentual(f.taxa_percentual);
     const valores = Array.from({ length: f.parcelas_max }, (_, i) => obterTaxaParcela(f, i + 1));
     const min = Math.min(...valores);
     const max = Math.max(...valores);
     return min === max ? formatarPercentual(min) : `${formatarPercentual(min)} a ${formatarPercentual(max)}`;
+  };
+
+  const resumoParcelamento = (f: FormaPagamento) => {
+    if (TIPOS_CARTAO.includes(f.tipo)) return f.tipo === 'CARTAO_CREDITO' ? 'Pela maquininha' : 'À vista';
+    if (!f.permite_parcelamento) return 'À vista';
+    return `Até ${f.parcelas_max}x · ${f.parcelas_sem_juros > 1 ? `${f.parcelas_sem_juros}x s/ juros` : 'com juros'}`;
   };
 
   const filtradas = useMemo(() => {
@@ -307,6 +435,9 @@ export const FormasPagamentoCadastro: React.FC = () => {
       return [f.nome, TIPOS_FORMA_PAGAMENTO[f.tipo]?.label].some((v) => (v || '').toLowerCase().includes(q));
     });
   }, [formas, busca, filtro]);
+
+  const faltamPadrao = formasPadraoFaltantes(formas).length;
+  const taxaPropria = usaTaxaPropria(form.tipo);
 
   if (tabelaAusente) {
     return (
@@ -321,19 +452,38 @@ export const FormasPagamentoCadastro: React.FC = () => {
       titulo="Formas de pagamento"
       descricao="Parametrize as formas aceitas: taxas da maquininha, parcelamento e prazo de recebimento."
       acoes={
-        !carregando && formas.length === 0 ? (
+        !carregando && faltamPadrao > 0 ? (
           <button
             type="button"
             onClick={criarPadrao}
             disabled={criandoPadrao}
+            title={`Cria as ${faltamPadrao} formas nativas que ainda não existem nesta conta`}
             className="px-4 py-2.5 bg-[#0c101a] hover:bg-zinc-800 border border-zinc-700/80 text-white rounded-xl text-xs font-semibold transition disabled:opacity-60"
           >
-            {criandoPadrao ? 'Criando...' : 'Criar formas padrão'}
+            {criandoPadrao ? 'Criando...' : 'Criar formas nativas'}
           </button>
         ) : undefined
       }
     >
       <feedback.Feedback />
+
+      {/* Como a Nova OS usa este cadastro */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 text-[11px] leading-relaxed">
+        <div className="p-3 rounded-xl bg-[#0c101a] border border-zinc-800/80">
+          <p className="font-bold text-zinc-200">Botões da Nova OS</p>
+          <p className="text-zinc-500 mt-0.5">As formas ativas aparecem na Nova OS, na ordem definida aqui. Inativas ficam ocultas.</p>
+        </div>
+        <div className="p-3 rounded-xl bg-[#0c101a] border border-zinc-800/80">
+          <p className="font-bold text-zinc-200">Cartão de crédito e débito</p>
+          <p className="text-zinc-500 mt-0.5">
+            Taxas e parcelas vêm da maquininha escolhida na OS (Configurações › Taxas). Duas formas de crédito viram um botão só.
+          </p>
+        </div>
+        <div className="p-3 rounded-xl bg-[#0c101a] border border-zinc-800/80">
+          <p className="font-bold text-zinc-200">Boleto, transferência e outras</p>
+          <p className="text-zinc-500 mt-0.5">Usam a taxa, a taxa fixa e o parcelamento definidos aqui. PIX e dinheiro não têm taxa.</p>
+        </div>
+      </div>
 
       <CardFormulario
         titulo={editandoId ? 'Editar forma de pagamento' : 'Nova forma de pagamento'}
@@ -346,15 +496,38 @@ export const FormasPagamentoCadastro: React.FC = () => {
       >
         <Secao titulo="Identificação">
           <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
-            <Campo label="Tipo" obrigatorio className="md:col-span-3">
-              <select value={form.tipo} onChange={(e) => trocarTipo(e.target.value as TipoFormaPagamento)} className={inputCls()}>
-                {(Object.keys(TIPOS_FORMA_PAGAMENTO) as TipoFormaPagamento[]).map((t) => (
-                  <option key={t} value={t}>{TIPOS_FORMA_PAGAMENTO[t].label}</option>
-                ))}
-              </select>
-            </Campo>
-            <Campo label="Nome de exibição" obrigatorio erro={erros.nome} dica="Como aparece na Nova OS. Ex: Crédito Stone" className="md:col-span-4">
-              <input value={form.nome} onChange={(e) => atualizar('nome', e.target.value)} placeholder="Ex: Cartão de crédito" className={inputCls(erros.nome)} />
+            {editandoId ? (
+              // Na edição o tipo fica fixo: as OS já gravadas e os relatórios dependem dele
+              <Campo label="Tipo" className="md:col-span-3">
+                <div className={`${inputCls()} flex items-center gap-2`}>
+                  <span className="truncate">{TIPOS_FORMA_PAGAMENTO[form.tipo].label}</span>
+                  {ehNativa(form) && <Badge cor="azul">Nativa</Badge>}
+                </div>
+              </Campo>
+            ) : (
+              // As 4 nativas já existem na conta: aqui só as modalidades complementares
+              <Campo label="Modalidade" obrigatorio dica={modalidade(form.modalidade).dica} className="md:col-span-3">
+                <select value={form.modalidade} onChange={(e) => trocarModalidade(e.target.value as IdModalidade)} className={inputCls()}>
+                  {MODALIDADES.map((m) => (
+                    <option key={m.id} value={m.id}>{m.rotulo}</option>
+                  ))}
+                </select>
+              </Campo>
+            )}
+            <Campo
+              label="Nome de exibição"
+              obrigatorio
+              erro={erros.nome}
+              dica={!editandoId && form.modalidade === 'outro' ? 'Nome exato da modalidade, como aparece na Nova OS.' : 'Como aparece na Nova OS e nos relatórios.'}
+              className="md:col-span-4"
+            >
+              <input
+                value={form.nome}
+                onChange={(e) => atualizar('nome', e.target.value)}
+                maxLength={40}
+                placeholder={!editandoId && form.modalidade === 'outro' ? 'Ex: Vale-compra da loja' : 'Ex: Link InfinitePay'}
+                className={inputCls(erros.nome)}
+              />
             </Campo>
             <Campo label="Disponível em" className="md:col-span-3">
               <select value={form.id_loja} onChange={(e) => atualizar('id_loja', e.target.value)} className={inputCls()}>
@@ -364,26 +537,54 @@ export const FormasPagamentoCadastro: React.FC = () => {
                 ))}
               </select>
             </Campo>
-            <Campo label="Ordem" dica="Menor aparece primeiro." className="md:col-span-2">
-              <input type="number" min={0} value={form.ordem} onChange={(e) => atualizar('ordem', e.target.value)} className={inputCls()} />
+            <Campo label="Ordem" erro={erros.ordem} dica="Menor aparece primeiro na Nova OS." className="md:col-span-2">
+              <input type="number" min={0} value={form.ordem} onChange={(e) => atualizar('ordem', e.target.value)} className={inputCls(erros.ordem)} />
             </Campo>
           </div>
         </Secao>
 
         <Secao titulo="Taxas e recebimento">
+          {!taxaPropria && (
+            <div className="p-3.5 rounded-xl bg-blue-500/[0.06] border border-blue-500/20 text-xs text-zinc-300">
+              {TIPOS_CARTAO.includes(form.tipo)
+                ? 'As taxas e o parcelamento do cartão usados na Nova OS vêm da maquininha (Configurações › Taxas). Aqui fica só o prazo de recebimento.'
+                : `${TIPOS_FORMA_PAGAMENTO[form.tipo].label} não tem taxa: a loja recebe o valor integral.`}
+            </div>
+          )}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Campo label="Taxa percentual (%)" erro={erros.taxa_percentual} dica={form.permite_parcelamento ? 'Taxa à vista / padrão das parcelas.' : 'Cobrada sobre cada venda.'}>
-              <input inputMode="decimal" value={form.taxa_percentual} onChange={(e) => atualizar('taxa_percentual', e.target.value)} className={inputCls(erros.taxa_percentual)} />
-            </Campo>
-            <Campo label="Taxa fixa por transação (R$)" erro={erros.taxa_fixa}>
-              <input inputMode="decimal" value={form.taxa_fixa} onChange={(e) => atualizar('taxa_fixa', e.target.value)} className={inputCls(erros.taxa_fixa)} />
-            </Campo>
+            {taxaPropria && (
+              <>
+                <Campo label="Taxa percentual (%)" erro={erros.taxa_percentual} dica={form.permite_parcelamento ? 'Taxa à vista / padrão das parcelas.' : 'Cobrada sobre cada venda.'}>
+                  <input inputMode="decimal" value={form.taxa_percentual} onChange={(e) => atualizar('taxa_percentual', e.target.value)} className={inputCls(erros.taxa_percentual)} />
+                </Campo>
+                <Campo label="Taxa fixa por transação (R$)" erro={erros.taxa_fixa}>
+                  <input inputMode="decimal" value={form.taxa_fixa} onChange={(e) => atualizar('taxa_fixa', e.target.value)} className={inputCls(erros.taxa_fixa)} />
+                </Campo>
+              </>
+            )}
             <Campo label="Prazo de recebimento (dias)" erro={erros.prazo_recebimento_dias} dica={rotuloPrazo(num(form.prazo_recebimento_dias) || 0)}>
               <input type="number" min={0} max={365} value={form.prazo_recebimento_dias} onChange={(e) => atualizar('prazo_recebimento_dias', e.target.value)} className={inputCls(erros.prazo_recebimento_dias)} />
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {PRAZOS_RAPIDOS.map((d) => (
+                  <button
+                    key={d}
+                    type="button"
+                    onClick={() => atualizar('prazo_recebimento_dias', String(d))}
+                    className={`px-2 py-1 rounded-lg border text-[10px] font-bold transition ${
+                      num(form.prazo_recebimento_dias) === d
+                        ? 'bg-blue-600/15 border-blue-500/40 text-blue-300'
+                        : 'bg-[#080c14] border-zinc-800 text-zinc-400 hover:text-white'
+                    }`}
+                  >
+                    D+{d}
+                  </button>
+                ))}
+              </div>
             </Campo>
           </div>
         </Secao>
 
+        {taxaPropria && (
         <Secao titulo="Parcelamento">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <Toggle
@@ -462,7 +663,9 @@ export const FormasPagamentoCadastro: React.FC = () => {
             </>
           )}
         </Secao>
+        )}
 
+        {taxaPropria && (
         <Secao titulo="Simulação de recebimento">
           <div className="p-4 bg-[#080c14] border border-zinc-800/80 rounded-xl space-y-3">
             <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-400">
@@ -485,18 +688,21 @@ export const FormasPagamentoCadastro: React.FC = () => {
                 {simulacao.map((s) => (
                   <div key={s.parcelas} className="p-2.5 bg-[#0c101a] border border-zinc-800 rounded-lg">
                     <p className="text-[10px] font-bold text-zinc-500">
-                      {s.parcelas === 1 ? 'À vista' : `${s.parcelas}x`} · {formatarPercentual(s.taxa)}
+                      {s.parcelas === 1 ? 'À vista' : `${s.parcelas}x`} · {s.valida ? formatarPercentual(s.taxa) : 'taxa inválida'}
                     </p>
-                    <p className="text-sm font-extrabold text-emerald-400 mt-0.5">{formatarMoeda(s.recebe)}</p>
+                    <p className={`text-sm font-extrabold mt-0.5 ${s.valida ? 'text-emerald-400' : 'text-rose-400'}`}>
+                      {s.valida ? formatarMoeda(s.recebe) : '—'}
+                    </p>
                   </div>
                 ))}
               </div>
             )}
           </div>
         </Secao>
+        )}
 
         <div className="md:w-1/2">
-          <Toggle checked={form.ativo} onChange={(v) => atualizar('ativo', v)} label="Forma ativa" descricao="Formas inativas não aparecem para seleção nas vendas." />
+          <Toggle checked={form.ativo} onChange={(v) => atualizar('ativo', v)} label="Forma ativa" descricao="Formas inativas não aparecem na Nova OS." />
         </div>
       </CardFormulario>
 
@@ -521,35 +727,61 @@ export const FormasPagamentoCadastro: React.FC = () => {
             />
           }
         >
+          {/* Celular: cards sem rolagem lateral */}
+          {filtradas.length > 0 && (
+            <ul className="md:hidden divide-y divide-zinc-800/50">
+              {filtradas.map((f) => (
+                <li key={f.id_forma_pagamento} className={`px-4 py-3 space-y-1.5 ${editandoId === f.id_forma_pagamento ? 'bg-blue-500/5' : ''}`}>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-bold text-white text-sm truncate">
+                        {f.nome} {ehNativa(f) && <Badge cor="azul">Nativa do sistema</Badge>}
+                      </p>
+                      <p className="text-[11px] text-zinc-500">
+                        {TIPOS_FORMA_PAGAMENTO[f.tipo]?.label} · {nomeLoja(f.id_loja)}
+                      </p>
+                    </div>
+                    <button type="button" onClick={() => alternarAtivo(f)} className="shrink-0" title={f.ativo ? 'Toque para desativar' : 'Toque para ativar'}>
+                      {f.ativo ? <Badge cor="verde">Ativa</Badge> : <Badge cor="cinza">Inativa</Badge>}
+                    </button>
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-[11px] text-zinc-400 truncate">
+                      {resumoTaxa(f)}
+                      {usaTaxaPropria(f.tipo) && f.taxa_fixa > 0 && ` + ${formatarMoeda(f.taxa_fixa)}`} · {resumoParcelamento(f)} · {rotuloPrazo(f.prazo_recebimento_dias)}
+                    </p>
+                    <div className="shrink-0">
+                      <AcoesLinha onVer={() => setDetalhe(f)} onEditar={() => iniciarEdicao(f)} onExcluir={() => setParaExcluir(f)} />
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <div className={filtradas.length > 0 ? 'hidden md:block' : ''}>
           <TabelaCadastro
             colunas={['Forma', 'Taxa', 'Parcelamento', 'Recebimento', 'Loja', 'Status', 'Ações']}
             vazio={filtradas.length === 0}
             mensagemVazio={
               formas.length === 0
-                ? 'Nenhuma forma cadastrada. Use "Criar formas padrão" para começar com Dinheiro, PIX, Débito e Crédito.'
+                ? 'Não foi possível criar as formas nativas (PIX, dinheiro, débito e crédito). Use "Criar formas nativas" para tentar de novo.'
                 : 'Nenhuma forma encontrada com esses filtros.'
             }
           >
             {filtradas.map((f) => (
               <tr key={f.id_forma_pagamento} className={`hover:bg-zinc-800/20 transition ${editandoId === f.id_forma_pagamento ? 'bg-blue-500/5' : ''}`}>
                 <td className="px-4 sm:px-5 py-3">
-                  <p className="font-bold text-white">{f.nome}</p>
+                  <p className="font-bold text-white flex flex-wrap items-center gap-1.5">
+                    {f.nome} {ehNativa(f) && <Badge cor="azul">Nativa do sistema</Badge>}
+                  </p>
                   <p className="text-[11px] text-zinc-500 mt-0.5">{TIPOS_FORMA_PAGAMENTO[f.tipo]?.label}</p>
                 </td>
                 <td className="px-4 sm:px-5 py-3 text-zinc-300 whitespace-nowrap">
                   {resumoTaxa(f)}
-                  {f.taxa_fixa > 0 && <span className="text-zinc-500"> + {formatarMoeda(f.taxa_fixa)}</span>}
+                  {usaTaxaPropria(f.tipo) && f.taxa_fixa > 0 && <span className="text-zinc-500"> + {formatarMoeda(f.taxa_fixa)}</span>}
                 </td>
-                <td className="px-4 sm:px-5 py-3 text-zinc-300 whitespace-nowrap">
-                  {f.permite_parcelamento ? (
-                    <>
-                      Até {f.parcelas_max}x
-                      <span className="text-zinc-500"> · {f.parcelas_sem_juros > 1 ? `${f.parcelas_sem_juros}x s/ juros` : 'com juros'}</span>
-                    </>
-                  ) : (
-                    <span className="text-zinc-500">À vista</span>
-                  )}
-                </td>
+                <td className="px-4 sm:px-5 py-3 text-zinc-300 whitespace-nowrap">{resumoParcelamento(f)}</td>
                 <td className="px-4 sm:px-5 py-3 text-zinc-300 whitespace-nowrap">{rotuloPrazo(f.prazo_recebimento_dias)}</td>
                 <td className="px-4 sm:px-5 py-3 text-zinc-300">{nomeLoja(f.id_loja)}</td>
                 <td className="px-4 sm:px-5 py-3">
@@ -563,6 +795,7 @@ export const FormasPagamentoCadastro: React.FC = () => {
               </tr>
             ))}
           </TabelaCadastro>
+          </div>
         </ListaCadastro>
       )}
 
@@ -576,16 +809,23 @@ export const FormasPagamentoCadastro: React.FC = () => {
             </div>
           }
           itens={[
-            ['Taxa percentual', formatarPercentual(detalhe.taxa_percentual)],
-            ['Taxa fixa', formatarMoeda(detalhe.taxa_fixa)],
+            ...((usaTaxaPropria(detalhe.tipo)
+              ? [
+                  ['Taxa percentual', formatarPercentual(detalhe.taxa_percentual)],
+                  ['Taxa fixa', formatarMoeda(detalhe.taxa_fixa)],
+                  ['Parcelamento', detalhe.permite_parcelamento ? `Até ${detalhe.parcelas_max}x (${detalhe.parcelas_sem_juros}x sem juros)` : 'Somente à vista'],
+                  ['Juros repassados ao cliente', detalhe.repassar_juros_cliente ? 'Sim' : 'Não'],
+                ]
+              : [
+                  ['Taxa', resumoTaxa(detalhe)],
+                  ['Parcelamento', resumoParcelamento(detalhe)],
+                ]) as [string, string][]),
             ['Recebimento', rotuloPrazo(detalhe.prazo_recebimento_dias)],
             ['Loja', nomeLoja(detalhe.id_loja)],
-            ['Parcelamento', detalhe.permite_parcelamento ? `Até ${detalhe.parcelas_max}x (${detalhe.parcelas_sem_juros}x sem juros)` : 'Somente à vista'],
-            ['Juros repassados ao cliente', detalhe.repassar_juros_cliente ? 'Sim' : 'Não'],
             ['Cadastrada em', formatarDataHora(detalhe.created_at)],
           ]}
           extra={
-            detalhe.permite_parcelamento && (
+            usaTaxaPropria(detalhe.tipo) && detalhe.permite_parcelamento && (
               <div>
                 <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-2">Taxa por parcela</p>
                 <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5">
@@ -608,14 +848,29 @@ export const FormasPagamentoCadastro: React.FC = () => {
         <ModalConfirmacao
           titulo="Excluir forma de pagamento"
           mensagem={
-            <>
-              Excluir <strong className="text-zinc-200">{paraExcluir.nome}</strong>? As ordens de serviço já registradas
-              não são alteradas. Para apenas ocultá-la das vendas, desative em vez de excluir.
-            </>
+            exclusaoBloqueada(paraExcluir) ? (
+              <>
+                <strong className="text-zinc-200">{paraExcluir.nome}</strong> é uma forma nativa do sistema e não pode ser
+                excluída. Para tirá-la da Nova OS, desative a forma.
+              </>
+            ) : (
+              <>
+                Excluir <strong className="text-zinc-200">{paraExcluir.nome}</strong>? As ordens de serviço já registradas
+                não são alteradas. Para apenas ocultá-la da Nova OS, desative em vez de excluir.
+              </>
+            )
           }
-          rotuloConfirmar="Excluir forma"
+          rotuloConfirmar={exclusaoBloqueada(paraExcluir) ? 'Desativar forma' : 'Excluir forma'}
           carregando={excluindo}
-          onConfirmar={confirmarExclusao}
+          onConfirmar={
+            exclusaoBloqueada(paraExcluir)
+              ? async () => {
+                  const alvo = paraExcluir;
+                  setParaExcluir(null);
+                  if (alvo.ativo) await alternarAtivo(alvo);
+                }
+              : confirmarExclusao
+          }
           onCancelar={() => setParaExcluir(null)}
         />
       )}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   buscarOrdensServico,
   buscarServicosCadastrados,
@@ -8,6 +8,7 @@ import {
 } from '../services/api';
 import type { OrdemServico } from '../types';
 import { AvisoErroCarregamento } from '../components/AvisoErroCarregamento';
+import { formatarDataOS } from '../utils/formatadores';
 
 export const GarantiaRetorno: React.FC = () => {
   const [ordens, setOrdens] = useState<OrdemServico[]>([]);
@@ -22,6 +23,7 @@ export const GarantiaRetorno: React.FC = () => {
   const [custoPeca, setCustoPeca] = useState<number | ''>('');
   const [fretePeca, setFretePeca] = useState<number | ''>('');
   const [salvando, setSalvando] = useState(false);
+  const salvandoRef = useRef(false); // trava imediata contra duplo clique
 
   // Regra de Elegibilidade da Garantia (Sem limite fixo de 90 dias, respeita prazo individual e flag Sem Garantia)
   const checarElegibilidade = (os: OrdemServico, listaServicos = servicosCadastrados): ResultadoElegibilidadeGarantia => {
@@ -105,6 +107,8 @@ export const GarantiaRetorno: React.FC = () => {
       return;
     }
 
+    if (salvandoRef.current) return;
+    salvandoRef.current = true;
     setSalvando(true);
     try {
       const numCustoPeca = Number(custoPeca) || 0;
@@ -138,6 +142,7 @@ export const GarantiaRetorno: React.FC = () => {
       alert(err.message || 'Falha ao registrar garantia.');
     } finally {
       setSalvando(false);
+      salvandoRef.current = false;
     }
   };
 
@@ -313,7 +318,7 @@ export const GarantiaRetorno: React.FC = () => {
                   Serviço original: <span className="text-zinc-300 font-medium">{osSelecionada.servicoRealizado || osSelecionada.defeitoRelatado || 'Manutenção geral'}</span>
                 </p>
                 <p className="text-[11px] text-zinc-500">
-                  Data de abertura: {osSelecionada.data_abertura ? new Date(osSelecionada.data_abertura).toLocaleDateString('pt-BR') : '—'} ·{' '}
+                  Data de abertura: {formatarDataOS(osSelecionada.data_abertura) || '—'} ·{' '}
                   {validacaoSelecionada.prazoDias > 0
                     ? `${validacaoSelecionada.diasDecorridos} dia(s) decorrido(s) de ${validacaoSelecionada.prazoDias} dias`
                     : 'Sem cobertura de garantia'}

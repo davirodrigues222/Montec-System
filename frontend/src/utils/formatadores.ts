@@ -119,3 +119,19 @@ export async function buscarEnderecoPorCep(
     return null;
   }
 }
+
+/**
+ * Data da OS em dd/mm/aaaa sem voltar um dia: "2026-10-25" (só data) seria lido como meia-noite UTC,
+ * que no Brasil ainda é dia 24. Datas com horário usam o dia do fuso do computador.
+ */
+export function formatarDataOS(valor?: string | null): string {
+  if (!valor) return '';
+  const texto = String(valor).trim();
+  let dia = /^\d{4}-\d{2}-\d{2}$/.test(texto) ? texto : '';
+  if (!dia) {
+    const d = new Date(texto);
+    if (isNaN(d.getTime())) return '';
+    dia = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+  return new Date(`${dia}T12:00:00`).toLocaleDateString('pt-BR');
+}

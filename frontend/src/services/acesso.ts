@@ -132,6 +132,22 @@ export function aplicarTokenAutorizacao(token: string | null) {
   definirCabecalho('x-autorizacao-token', token);
 }
 
+/**
+ * Executa uma ação pontual com a liberação que um administrador acabou de dar (ex.: excluir uma OS).
+ * O banco confere o token (migração 20261026090000); depois a liberação é encerrada e a anterior volta.
+ */
+export async function comAutorizacaoAdmin<T>(token: string | null, acao: () => Promise<T>): Promise<T> {
+  if (!token) return acao();
+  const anterior = tokenAutorizacao;
+  definirCabecalho('x-autorizacao-token', token);
+  try {
+    return await acao();
+  } finally {
+    definirCabecalho('x-autorizacao-token', anterior);
+    supabase.rpc('encerrar_autorizacao_admin', { p_token: token }).then(undefined, () => {});
+  }
+}
+
 /** Há uma liberação de administrador ativa nesta aba. */
 export const temAutorizacaoAdmin = () => !!tokenAutorizacao;
 
