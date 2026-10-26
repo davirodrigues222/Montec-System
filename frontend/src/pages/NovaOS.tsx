@@ -1592,8 +1592,11 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
                 ‹ Voltar
               </button>
             )}
+            {/* Chaves diferentes: sem elas o React reaproveita o mesmo <button> e só troca o type para "submit"
+                no meio do toque em "Continuar", e o navegador envia o formulário pulando o checklist */}
             {etapa < 4 ? (
               <button
+                key="avancar"
                 type="button"
                 onClick={() => irParaEtapa((etapa + 1) as EtapaMobile)}
                 className="flex-1 min-w-0 px-4 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white text-xs font-bold transition shadow-lg shadow-blue-600/25 truncate"
@@ -1602,6 +1605,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
               </button>
             ) : (
               <button
+                key="finalizar"
                 type="submit"
                 disabled={carregando}
                 className="flex-1 min-w-0 flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 disabled:opacity-50 text-white text-xs font-bold transition shadow-lg shadow-sky-500/20"
