@@ -1,9 +1,13 @@
-import React from 'react';
-import { Check, Sparkles } from 'lucide-react';
+import React, { useState } from 'react';
+import { Check, CircleCheck, ExternalLink, Sparkles } from 'lucide-react';
+import { JanelaCheckout } from './JanelaCheckout';
 import {
   LISTA_PLANOS,
+  PLANOS,
   abrirCheckout,
+  formatarDataAssinatura,
   formatarPrecoPlano,
+  montarLinkCheckout,
   type IdPlano,
   type Plano,
   type SituacaoAssinatura,
@@ -22,16 +26,49 @@ const textoBotao = (plano: Plano, situacao: SituacaoAssinatura) => {
   return `Assinar ${plano.id === 'anual' ? 'Plano Anual' : 'Plano Mensal'} (${formatarPrecoPlano(plano.preco)})`;
 };
 
-/** Os 2 planos lado a lado, com o botão que abre o checkout da Cakto já preenchido. */
+const ERRO_LINK = 'O link de pagamento deste plano ainda não foi configurado. Fale com o suporte do Montec System.';
+
+/**
+ * Os 2 planos lado a lado. "Assinar" abre o checkout da Cakto (já preenchido) numa janela dentro do
+ * sistema; o link abaixo do botão abre o mesmo checkout no site da Cakto, numa nova aba.
+ */
 export const CardsPlanos: React.FC<Props> = ({ situacao, onErro }) => {
+  const [checkout, setCheckout] = useState<{ plano: IdPlano; link: string } | null>(null);
+  const [confirmado, setConfirmado] = useState<string | null>(null);
+
   const assinar = (id: IdPlano) => {
-    if (!abrirCheckout(id, situacao)) {
-      onErro?.('O link de pagamento deste plano ainda não foi configurado. Fale com o suporte do Montec System.');
-    }
+    const link = montarLinkCheckout(id, situacao);
+    if (!link) return onErro?.(ERRO_LINK);
+    setConfirmado(null);
+    setCheckout({ plano: id, link });
+  };
+
+  const pagarNoSiteDaCakto = (id: IdPlano) => {
+    if (!abrirCheckout(id, situacao)) onErro?.(ERRO_LINK);
   };
 
   return (
-    // pt-3: espaço para o selo de destaque, que fica metade para fora do card
+    <>
+    {checkout && (
+      <JanelaCheckout
+        plano={checkout.plano}
+        link={checkout.link}
+        onFechar={() => setCheckout(null)}
+        onConfirmado={(nova) => {
+          setCheckout(null);
+          setConfirmado(
+            `Pagamento confirmado! ${nova.plano ? PLANOS[nova.plano].nome : 'Plano'} ativo até ${formatarDataAssinatura(nova.dataExpiracao)}.`
+          );
+        }}
+      />
+    )}
+    {confirmado && (
+      <div className="flex items-start gap-2 px-4 py-3 rounded-xl bg-emerald-500/10 border border-emerald-500/25 text-sm text-emerald-300 font-semibold">
+        <CircleCheck className="w-5 h-5 shrink-0" />
+        <span>{confirmado}</span>
+      </div>
+    )}
+    {/* pt-3: espaço para o selo de destaque, que fica metade para fora do card */}
     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-5 pt-3">
       {LISTA_PLANOS.map((plano) => {
         const destaque = !!plano.destaque;
@@ -97,9 +134,19 @@ export const CardsPlanos: React.FC<Props> = ({ situacao, onErro }) => {
               {/* Texto num <span>: a regra global "button { font: inherit }" anularia o tamanho e o peso no botão */}
               <span className="text-sm font-bold">{textoBotao(plano, situacao)}</span>
             </button>
+            {/* Alternativa: o mesmo checkout no site da Cakto, numa nova aba */}
+            <button
+              type="button"
+              onClick={() => pagarNoSiteDaCakto(plano.id)}
+              className="mt-1.5 w-full min-h-10 inline-flex items-center justify-center gap-1.5 rounded-lg text-zinc-400 hover:text-zinc-200 transition"
+            >
+              <span className="text-xs font-semibold">ou pagar no site da Cakto</span>
+              <ExternalLink className="w-3.5 h-3.5 shrink-0" />
+            </button>
           </div>
         );
       })}
     </div>
+    </>
   );
 };
