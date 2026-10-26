@@ -50,53 +50,66 @@ export const StatusAssinaturaCard: React.FC<{ situacao: SituacaoAssinatura; onAt
     }
   };
 
+  const itens = [
+    {
+      rotulo: 'Plano atual',
+      valor: plano
+        ? `${plano.id === 'anual' ? 'Anual' : 'Mensal'} (${formatarPrecoPlano(plano.preco)})`
+        : cortesia
+        ? 'Cortesia (sem cobrança)'
+        : 'Nenhum plano',
+      cls: 'text-white',
+    },
+    {
+      rotulo: cortesia ? 'Validade' : rotuloValidade(situacao),
+      valor: cortesia ? 'Sem vencimento' : formatarDataAssinatura(situacao.dataExpiracao),
+      cls: 'text-white',
+    },
+    {
+      rotulo: 'Dias restantes',
+      valor: cortesia ? 'Ilimitado' : situacao.acessoLiberado ? `${dias} ${dias === 1 ? 'dia' : 'dias'}` : 'Acesso expirado',
+      cls: !cortesia && dias <= 5 ? 'text-amber-300' : 'text-white',
+    },
+  ];
+
   return (
-    <div className={cardCls}>
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider">Assinatura da conta</p>
-          <span className={`inline-block mt-2 px-2.5 py-1 rounded-lg border text-xs font-bold ${badge.cls}`}>{badge.rotulo}</span>
-        </div>
-        <button
-          type="button"
-          onClick={atualizar}
-          disabled={atualizando}
-          className="inline-flex items-center gap-2 px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-60 border border-zinc-700 text-zinc-200 rounded-xl text-xs font-bold transition"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${atualizando ? 'animate-spin' : ''}`} />
-          {atualizando ? 'Consultando...' : 'Verificar / Atualizar status do pagamento'}
-        </button>
+    <div className="bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-4 sm:p-6 space-y-4 shadow-sm">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider">Assinatura da conta</p>
+        <span className={`shrink-0 px-2.5 py-1 rounded-lg border text-[11px] sm:text-xs font-bold ${badge.cls}`}>{badge.rotulo}</span>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <div className="p-3.5 rounded-xl bg-[#080c14] border border-zinc-800/80">
-          <p className="text-[11px] text-zinc-500 font-semibold">Plano atual</p>
-          <p className="text-sm font-bold text-white mt-1">
-            {plano
-              ? `${plano.id === 'anual' ? 'Anual' : 'Mensal'} (${formatarPrecoPlano(plano.preco)})`
-              : cortesia
-              ? 'Cortesia (sem cobrança)'
-              : 'Nenhum plano assinado'}
-          </p>
-        </div>
-        <div className="p-3.5 rounded-xl bg-[#080c14] border border-zinc-800/80">
-          <p className="text-[11px] text-zinc-500 font-semibold">{cortesia ? 'Validade' : rotuloValidade(situacao)}</p>
-          <p className="text-sm font-bold text-white mt-1">
-            {cortesia ? 'Sem vencimento' : formatarDataAssinatura(situacao.dataExpiracao)}
-          </p>
-        </div>
-        <div className="p-3.5 rounded-xl bg-[#080c14] border border-zinc-800/80">
-          <p className="text-[11px] text-zinc-500 font-semibold">Dias restantes</p>
-          <p className={`text-sm font-bold mt-1 ${!cortesia && dias <= 5 ? 'text-amber-300' : 'text-white'}`}>
-            {cortesia ? 'Ilimitado' : situacao.acessoLiberado ? `${dias} ${dias === 1 ? 'dia' : 'dias'}` : 'Acesso expirado'}
-          </p>
-        </div>
-      </div>
+      {/* Celular: lista compacta (rótulo à esquerda, valor à direita); a partir de sm: 3 colunas */}
+      <dl className="rounded-xl bg-[#080c14] border border-zinc-800/80 divide-y divide-zinc-800/80 sm:grid sm:grid-cols-3 sm:divide-y-0 sm:divide-x">
+        {itens.map((item) => (
+          <div key={item.rotulo} className="flex items-center justify-between gap-3 px-3.5 py-3 sm:block sm:py-3.5">
+            <dt className="text-xs text-zinc-500 font-semibold">{item.rotulo}</dt>
+            <dd className={`text-sm font-bold text-right sm:text-left sm:mt-1 ${item.cls}`}>{item.valor}</dd>
+          </div>
+        ))}
+      </dl>
 
-      <p className="text-[11px] text-zinc-500">
-        Pagou no PIX ou no cartão? A liberação é automática em poucos instantes — use o botão acima para atualizar.
-        Pague sempre com o e-mail da conta{situacao.emailConta ? ` (${situacao.emailConta})` : ''}: é por ele que o pagamento é reconhecido.
-        {aviso && <span className="text-zinc-400"> {aviso}</span>}
+      <button
+        type="button"
+        onClick={atualizar}
+        disabled={atualizando}
+        className="w-full sm:w-auto min-h-12 inline-flex items-center justify-center gap-2 px-5 bg-blue-600/10 hover:bg-blue-600/20 active:bg-blue-600/25 disabled:opacity-60 border border-blue-500/40 text-blue-200 rounded-xl transition"
+      >
+        <RefreshCw className={`w-4 h-4 shrink-0 ${atualizando ? 'animate-spin' : ''}`} />
+        {/* Texto num <span>: a regra global "button { font: inherit }" anularia o tamanho e o peso no botão */}
+        <span className="text-sm font-bold">{atualizando ? 'Consultando...' : 'Verificar status do pagamento'}</span>
+      </button>
+
+      <p className="text-xs leading-relaxed text-zinc-400 break-words">
+        Pagou no PIX ou no cartão? A liberação é automática em poucos instantes — toque no botão acima para atualizar.
+        {situacao.emailConta && (
+          <>
+            {' '}Pague sempre com o e-mail da conta{' '}
+            <span className="font-semibold text-zinc-200 break-all">{situacao.emailConta}</span>: é por ele que o pagamento é
+            reconhecido.
+          </>
+        )}
+        {aviso && <span className="block mt-1 text-zinc-500">{aviso}</span>}
       </p>
     </div>
   );
@@ -111,7 +124,7 @@ export const AbaAssinatura: React.FC = () => {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5 sm:space-y-6">
       {situacao.disponivel ? (
         <StatusAssinaturaCard situacao={situacao} onAtualizar={atualizar} />
       ) : (
@@ -124,9 +137,7 @@ export const AbaAssinatura: React.FC = () => {
         <div className="px-4 py-3 rounded-xl bg-rose-500/10 border border-rose-500/25 text-xs text-rose-300 font-semibold">{erro}</div>
       )}
 
-      <div className="pt-2">
-        <CardsPlanos situacao={situacao} onErro={setErro} />
-      </div>
+      <CardsPlanos situacao={situacao} onErro={setErro} />
     </div>
   );
 };

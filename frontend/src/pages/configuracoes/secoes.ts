@@ -35,7 +35,7 @@ export const SECOES_CONFIGURACAO: { id: SecaoConfiguracao; rotulo: string; descr
   {
     id: 'assinatura',
     rotulo: 'Plano & Assinatura',
-    descricao: 'Situação da assinatura, validade do acesso e os planos Mensal e Anual.',
+    descricao: 'Sua assinatura e os planos disponíveis.',
   },
   {
     id: 'leis',

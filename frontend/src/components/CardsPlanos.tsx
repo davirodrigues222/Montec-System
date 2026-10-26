@@ -31,28 +31,30 @@ export const CardsPlanos: React.FC<Props> = ({ situacao, onErro }) => {
   };
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
+    // pt-3: espaço para o selo de destaque, que fica metade para fora do card
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-5 pt-3">
       {LISTA_PLANOS.map((plano) => {
         const destaque = !!plano.destaque;
         const planoAtual = situacao.status === 'ativa' && situacao.acessoLiberado && situacao.plano === plano.id;
         return (
           <div
             key={plano.id}
-            className={`relative flex flex-col rounded-2xl p-5 sm:p-6 border shadow-sm ${
+            // No celular o plano em destaque vem primeiro; lado a lado, segue a ordem normal
+            className={`relative flex flex-col min-w-0 rounded-2xl p-4 sm:p-6 border shadow-sm ${
               destaque
-                ? 'bg-gradient-to-b from-blue-600/15 to-[#0c101a] border-blue-500/60 shadow-blue-600/10'
+                ? 'order-first md:order-none bg-gradient-to-b from-blue-600/15 to-[#0c101a] border-blue-500/60 shadow-blue-600/10'
                 : 'bg-[#0c101a] border-zinc-800/80'
             }`}
           >
             {plano.destaque && (
-              <span className="absolute -top-3 left-1/2 -translate-x-1/2 whitespace-nowrap inline-flex items-center gap-1 px-3 py-1 rounded-full bg-blue-600 text-white text-[10px] font-extrabold tracking-wider shadow-md shadow-blue-600/30">
-                <Sparkles className="w-3 h-3" />
-                {plano.destaque}
+              <span className="absolute -top-3 left-1/2 -translate-x-1/2 max-w-[calc(100%-1.5rem)] inline-flex items-center gap-1 px-3 py-1 rounded-full bg-blue-600 text-white text-[9px] sm:text-[10px] font-extrabold tracking-wider shadow-md shadow-blue-600/30 whitespace-nowrap">
+                <Sparkles className="w-3 h-3 shrink-0" />
+                <span className="truncate">{plano.destaque}</span>
               </span>
             )}
 
             <div className="flex items-start justify-between gap-2 mt-1">
-              <h3 className="text-sm font-extrabold text-white">{plano.nome}</h3>
+              <h3 className="text-[15px] sm:text-sm font-extrabold text-white leading-snug">{plano.nome}</h3>
               {planoAtual && (
                 <span className="shrink-0 px-2 py-0.5 rounded-md bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-[10px] font-bold uppercase">
                   Seu plano
@@ -60,22 +62,26 @@ export const CardsPlanos: React.FC<Props> = ({ situacao, onErro }) => {
               )}
             </div>
 
-            <div className="mt-3">
-              <span className="text-3xl font-extrabold text-white tracking-tight">{formatarPrecoPlano(plano.preco)}</span>
-              <span className="text-sm text-zinc-400 font-semibold"> {plano.ciclo}</span>
-              {plano.equivalenteMensal && (
-                <p className="text-xs text-blue-300 font-semibold mt-1">
-                  equivale a {formatarPrecoPlano(plano.equivalenteMensal)}/mês
-                </p>
-              )}
-              <p className="text-[11px] text-zinc-500 mt-1">{plano.diasAcesso} dias de acesso a cada pagamento</p>
+            <div className="mt-2 sm:mt-3">
+              <p className="flex flex-wrap items-baseline gap-x-1">
+                <span className="text-[28px] sm:text-3xl font-extrabold text-white tracking-tight leading-none">
+                  {formatarPrecoPlano(plano.preco)}
+                </span>
+                <span className="text-sm text-zinc-400 font-semibold">{plano.ciclo}</span>
+              </p>
+              <p className="text-xs mt-1.5">
+                {plano.equivalenteMensal && (
+                  <span className="text-blue-300 font-semibold">equivale a {formatarPrecoPlano(plano.equivalenteMensal)}/mês · </span>
+                )}
+                <span className="text-zinc-500">{plano.diasAcesso} dias de acesso por pagamento</span>
+              </p>
             </div>
 
-            <ul className="mt-4 space-y-2 flex-1">
+            <ul className="mt-3 sm:mt-4 space-y-1.5 sm:space-y-2 flex-1">
               {plano.beneficios.map((b) => (
-                <li key={b} className="flex items-start gap-2 text-xs text-zinc-300">
-                  <Check className={`w-4 h-4 shrink-0 ${destaque ? 'text-blue-400' : 'text-emerald-400'}`} />
-                  <span>{b}</span>
+                <li key={b} className="flex items-start gap-2 text-[13px] sm:text-xs leading-snug text-zinc-300">
+                  <Check className={`w-4 h-4 shrink-0 mt-px ${destaque ? 'text-blue-400' : 'text-emerald-400'}`} />
+                  <span className="min-w-0">{b}</span>
                 </li>
               ))}
             </ul>
@@ -83,13 +89,14 @@ export const CardsPlanos: React.FC<Props> = ({ situacao, onErro }) => {
             <button
               type="button"
               onClick={() => assinar(plano.id)}
-              className={`mt-5 w-full px-4 py-3 rounded-xl text-xs font-bold transition ${
+              className={`mt-4 sm:mt-5 w-full min-h-12 px-4 py-3 rounded-xl transition ${
                 destaque
-                  ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-md shadow-blue-600/20'
-                  : 'bg-zinc-800 hover:bg-zinc-700 text-white border border-zinc-700'
+                  ? 'bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white shadow-lg shadow-blue-600/25'
+                  : 'bg-zinc-800 hover:bg-zinc-700 active:bg-zinc-600 text-white border border-zinc-700'
               }`}
             >
-              {textoBotao(plano, situacao)}
+              {/* Texto num <span>: a regra global "button { font: inherit }" anularia o tamanho e o peso no botão */}
+              <span className="text-sm font-bold">{textoBotao(plano, situacao)}</span>
             </button>
           </div>
         );
