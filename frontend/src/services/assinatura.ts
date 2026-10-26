@@ -14,10 +14,11 @@ const LINK_CAKTO_MENSAL = 'https://pay.cakto.com.br/thwo3ys_1246997'; // Plano P
 const LINK_CAKTO_ANUAL = 'https://pay.cakto.com.br/32sr59s'; // Plano Profissional Anual
 
 /**
- * Chave de bloqueio: com VITE_ASSINATURA_OBRIGATORIA=true, conta sem assinatura ativa (ou com o teste
- * vencido) vê a tela de renovação em vez do sistema. Desligada, todas as contas usam normalmente.
+ * Chave de bloqueio (ligada): conta sem assinatura ativa (ou com o teste vencido) vê a tela de
+ * renovação em vez do sistema. Para desligar sem mudar o código, cadastre
+ * VITE_ASSINATURA_OBRIGATORIA=false nas variáveis da Vercel e faça um novo deploy.
  */
-export const ASSINATURA_OBRIGATORIA = import.meta.env.VITE_ASSINATURA_OBRIGATORIA === 'true';
+export const ASSINATURA_OBRIGATORIA = import.meta.env.VITE_ASSINATURA_OBRIGATORIA !== 'false';
 
 export type IdPlano = 'mensal' | 'anual';
 
