@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
+  carregarConfiguracoesLoja,
   fazerLogout,
   obterConfiguracoesLojaSincrono,
   sincronizarSessaoConfiguracoesLoja,
@@ -132,6 +133,8 @@ export const Layout: React.FC<Props> = ({
     setLogoUrl('');
     if (userId) {
       sincronizarSessaoConfiguracoesLoja(session.user);
+      // Configurações da loja no banco (todos os logins da loja); ao chegar, o evento atualiza o menu
+      carregarConfiguracoesLoja().catch(() => {});
     }
     carregarConfigs();
     // eslint-disable-next-line react-hooks/exhaustive-deps
