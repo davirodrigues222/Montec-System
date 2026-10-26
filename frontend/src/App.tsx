@@ -30,7 +30,7 @@ import {
   primeiraAbaPermitida,
   restaurarSessaoFuncionario,
 } from './services/acesso';
-import { invalidarCacheOrdens, obterConfiguracoesLojaSincrono } from './services/api';
+import { fazerLogout, invalidarCacheOrdens, obterConfiguracoesLojaSincrono } from './services/api';
 import {
   contaDoUsuario,
   ehLoginDeFuncionario,
@@ -435,6 +435,14 @@ export default function App() {
         trocarFuncionario: () => {
           setLiberacao(null);
           sairDoFuncionario();
+        },
+        sairDaConta: () => {
+          // Sair da conta abre o login com e-mail e senha da conta, mesmo que o aparelho lembre a loja
+          // (a identificação do funcionário é só para o cadeado "Trocar funcionário")
+          setLiberacao(null);
+          setUsarLoginDono(true);
+          setTelaPublica('login');
+          fazerLogout().catch((err) => console.error('Erro ao sair:', err));
         },
       }}
     >

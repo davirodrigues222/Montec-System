@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   carregarConfiguracoesLoja,
-  fazerLogout,
   obterConfiguracoesLojaSincrono,
   sincronizarSessaoConfiguracoesLoja,
   aplicarTemaVisualNoDOM,
@@ -145,21 +144,13 @@ export const Layout: React.FC<Props> = ({
     return () => window.removeEventListener('storage_configs_updated', carregarConfigs);
   }, [session]);
 
-  const handleLogout = async () => {
-    try {
-      await fazerLogout();
-    } catch (err) {
-      console.error('Erro ao sair:', err);
-    }
-  };
-
   const mudarAba = (aba: typeof activeTab) => {
     setActiveTab(aba);
     setMenuAberto(false);
   };
 
   // Menu mostra todas as telas; as que o perfil não permite ganham um cadeado e pedem autorização ao abrir
-  const { operador, trocarFuncionario } = useOperador();
+  const { operador, trocarFuncionario, sairDaConta } = useOperador();
   const podeAba = (aba: AbaSistema) => podeAcessarAba(operador, aba);
   const podeSecao = (secao: SecaoCadastro) => podeAcessar(operador, PERMISSAO_POR_SECAO[secao]);
 
@@ -484,7 +475,7 @@ export const Layout: React.FC<Props> = ({
               </svg>
             </button>
             <button
-              onClick={handleLogout}
+              onClick={sairDaConta}
               title="Sair da conta (desconectar do sistema)"
               aria-label="Sair da conta"
               className="p-2 text-zinc-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-xl transition shrink-0 ml-2"
