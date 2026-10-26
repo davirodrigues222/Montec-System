@@ -5,6 +5,8 @@ import {
   CalendarClock,
   CalendarDays,
   Check,
+  CircleDollarSign,
+  Landmark,
   ClipboardCheck,
   CreditCard,
   FileText,
@@ -56,6 +58,9 @@ import type { OrdemServico } from '../types';
 import { OPCOES_CHECKLIST, criarChecklistPadrao, itensChecklistAtivos } from '../utils/checklist';
 import { formatarValor } from '../utils/formatadores';
 import { enviarMensagemWhatsapp } from '../utils/whatsapp';
+import { type FormaPagamento, type TipoFormaPagamento, obterTaxaParcela } from '../services/cadastros';
+import { EVENTO_FORMAS_PAGAMENTO, OPCOES_PAGAMENTO_NATIVAS, type OpcaoPagamentoOS, carregarOpcoesPagamento } from '../services/formasPagamentoOS';
+import { useOperador } from '../contexts/OperadorContext';
 
 type EtapaMobile = 1 | 2 | 3 | 4;
 const ETAPAS_MOBILE: { n: EtapaMobile; titulo: string; proxima: string }[] = [
@@ -150,17 +155,57 @@ const CabecalhoCard: React.FC<{ numero: string; titulo: string; descricao: strin
 
 const cardCls = 'bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-5 sm:p-6 space-y-5 shadow-sm';
 
-const FORMAS_PAGAMENTO: { valor: string; rotulo: string; icone: React.ElementType; ativo: string }[] = [
-  { valor: 'PIX', rotulo: 'PIX', icone: QrCode, ativo: 'border-emerald-500/60 bg-emerald-500/10 text-emerald-300' },
-  { valor: 'Cartão de crédito', rotulo: 'Crédito', icone: CreditCard, ativo: 'border-blue-500/60 bg-blue-500/10 text-blue-300' },
-  { valor: 'Cartão de débito', rotulo: 'Débito', icone: Wallet, ativo: 'border-cyan-500/60 bg-cyan-500/10 text-cyan-300' },
-  { valor: 'Dinheiro', rotulo: 'Dinheiro', icone: Banknote, ativo: 'border-amber-500/60 bg-amber-500/10 text-amber-300' },
-];
+/** Forma oferecida na Nova OS (ver services/formasPagamentoOS: texto gravado, tipo e taxa própria). */
+type OpcaoPagamento = OpcaoPagamentoOS;
 
-/** Forma de pagamento em botões de um toque (mesmos valores do antigo select). */
-const BotoesFormaPagamento: React.FC<{ valor: string; onChange: (forma: string) => void; compacto?: boolean }> = ({ valor, onChange, compacto }) => (
+const ESTILO_TIPO_PAGAMENTO: Record<TipoFormaPagamento, { icone: React.ElementType; ativo: string }> = {
+  PIX: { icone: QrCode, ativo: 'border-emerald-500/60 bg-emerald-500/10 text-emerald-300' },
+  CARTAO_CREDITO: { icone: CreditCard, ativo: 'border-blue-500/60 bg-blue-500/10 text-blue-300' },
+  CARTAO_DEBITO: { icone: Wallet, ativo: 'border-cyan-500/60 bg-cyan-500/10 text-cyan-300' },
+  DINHEIRO: { icone: Banknote, ativo: 'border-amber-500/60 bg-amber-500/10 text-amber-300' },
+  BOLETO: { icone: Receipt, ativo: 'border-violet-500/60 bg-violet-500/10 text-violet-300' },
+  TRANSFERENCIA: { icone: Landmark, ativo: 'border-sky-500/60 bg-sky-500/10 text-sky-300' },
+  OUTRO: { icone: CircleDollarSign, ativo: 'border-zinc-500/60 bg-zinc-500/10 text-zinc-200' },
+};
+
+/** Parcelas de uma forma do cadastro, com a taxa de cada uma; sem parcelamento, mostra "à vista". */
+const SeletorParcelasCadastro: React.FC<{ cadastro: FormaPagamento; valor: number; onChange: (p: number) => void }> = ({
+  cadastro,
+  valor,
+  onChange,
+}) => (
+  <div>
+    <Rotulo>Parcelas</Rotulo>
+    {cadastro.permite_parcelamento && cadastro.parcelas_max > 1 ? (
+      <select value={valor} onChange={(e) => onChange(Number(e.target.value))} className={`${inputCls} cursor-pointer`}>
+        {Array.from({ length: cadastro.parcelas_max }, (_, i) => i + 1).map((p) => (
+          <option key={p} value={p}>
+            {p}x{p === 1 ? ' (à vista)' : ''} · taxa {obterTaxaParcela(cadastro, p).toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%
+          </option>
+        ))}
+      </select>
+    ) : (
+      <div className={`${inputCls} flex items-center text-zinc-500`}>À vista</div>
+    )}
+  </div>
+);
+
+/** Forma preferida se estiver disponível; senão a primeira diferente de `evitar`. */
+const escolherForma = (opcoes: OpcaoPagamento[], preferida: string, evitar?: string) =>
+  opcoes.some((o) => o.valor === preferida)
+    ? preferida
+    : (opcoes.find((o) => o.valor !== evitar) || opcoes[0])?.valor || preferida;
+
+/** Forma de pagamento em botões de um toque. */
+const BotoesFormaPagamento: React.FC<{ valor: string; onChange: (forma: string) => void; opcoes: OpcaoPagamento[]; compacto?: boolean }> = ({
+  valor,
+  onChange,
+  opcoes,
+  compacto,
+}) => (
   <div role="radiogroup" className={`grid grid-cols-2 ${compacto ? '' : 'sm:grid-cols-4'} gap-2`}>
-    {FORMAS_PAGAMENTO.map(({ valor: forma, rotulo, icone: Icone, ativo }) => {
+    {opcoes.map(({ valor: forma, rotulo, tipo }) => {
+      const { icone: Icone, ativo } = ESTILO_TIPO_PAGAMENTO[tipo] || ESTILO_TIPO_PAGAMENTO.OUTRO;
       const selecionado = valor === forma;
       return (
         <button
@@ -173,8 +218,8 @@ const BotoesFormaPagamento: React.FC<{ valor: string; onChange: (forma: string) 
             selecionado ? ativo : 'border-zinc-800 bg-[#080c14] text-zinc-400 hover:text-white hover:border-zinc-700'
           }`}
         >
-          <Icone className="w-4 h-4" />
-          {rotulo}
+          <Icone className="w-4 h-4 shrink-0" />
+          <span className="truncate">{rotulo}</span>
         </button>
       );
     })}
@@ -330,6 +375,10 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
 
   // Forma 2 (quando dividirPagamento === true)
   const [formaPagamento2, setFormaPagamento2] = useState('Dinheiro');
+
+  // Botões de forma de pagamento: os do cadastro quando houver (carregados abaixo)
+  const { operador } = useOperador();
+  const [opcoesPagamento, setOpcoesPagamento] = useState<OpcaoPagamento[]>(OPCOES_PAGAMENTO_NATIVAS);
   const [valorPg2, setValorPg2] = useState<number | ''>('');
   const [parcelas2, setParcelas2] = useState(1);
   const [taxaMaquinetaPercentual2, setTaxaMaquinetaPercentual2] = useState<number | ''>(0);
@@ -346,6 +395,8 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
   });
 
   const [carregando, setCarregando] = useState(false);
+  // Trava imediata contra envio duplo (o estado "carregando" só chega no próximo render)
+  const enviandoRef = useRef(false);
   const [osCriadaSucesso, setOsCriadaSucesso] = useState<{ idOs: string; numeroOs: string; dadosCompletos: OrdemServico } | null>(null);
   const [osParaImprimir, setOsParaImprimir] = useState<OrdemServico | null>(null);
 
@@ -406,14 +457,65 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
     }
   };
 
+  // Formas de pagamento de Cadastros › Formas de pagamento (sem cadastro, ficam as 4 padrão)
+  // Recarrega quando o cadastro muda (ex.: forma desativada em outra aba): inativas somem das novas OS
+  useEffect(() => {
+    let ativo = true;
+    const carregar = () =>
+      carregarOpcoesPagamento(operador?.lojas || []).then((opcoes) => {
+        if (!ativo) return;
+        setOpcoesPagamento(opcoes);
+        // Forma escolhida que ficou inativa troca para a primeira disponível
+        setFormaPagamento1((atual) => escolherForma(opcoes, atual));
+        setFormaPagamento2((atual) => escolherForma(opcoes, atual));
+      });
+    carregar();
+    window.addEventListener(EVENTO_FORMAS_PAGAMENTO, carregar);
+    return () => {
+      ativo = false;
+      window.removeEventListener(EVENTO_FORMAS_PAGAMENTO, carregar);
+    };
+  }, []);
+
+  /** Cadastro da forma escolhida quando ela usa taxa própria (boleto, transferência, outras). */
+  const cadastroDaForma = (forma: string) => opcoesPagamento.find((o) => o.valor === forma)?.cadastro;
+  /** Máximo de parcelas de uma forma do cadastro (1 quando não parcela). */
+  const parcelasMaxCadastro = (cadastro: FormaPagamento) => (cadastro.permite_parcelamento ? cadastro.parcelas_max : 1);
+  /** Crédito parcela pela maquininha; as formas do cadastro, se o cadastro permitir. */
+  const parcelavel = (forma: string) => {
+    if (forma === 'Cartão de crédito') return true;
+    const cadastro = cadastroDaForma(forma);
+    return !!cadastro && parcelasMaxCadastro(cadastro) > 1;
+  };
+
   // Ajuste automático de taxa e parcelas conforme a forma de pagamento
   useEffect(() => {
+    const cadastro = cadastroDaForma(formaPagamento1);
+    if (cadastro) {
+      const maximo = parcelasMaxCadastro(cadastro);
+      if (parcelas1 > maximo) {
+        setParcelas1(maximo); // o efeito roda de novo com a parcela ajustada
+        return;
+      }
+      setTaxaMaquinetaPercentual1(obterTaxaParcela(cadastro, parcelas1));
+      return;
+    }
     aplicarRegraTaxa(formaPagamento1, parcelas1, maquininha1, setTaxaMaquinetaPercentual1, setParcelas1);
-  }, [formaPagamento1, parcelas1, maquininha1]);
+  }, [formaPagamento1, parcelas1, maquininha1, opcoesPagamento]);
 
   useEffect(() => {
+    const cadastro = cadastroDaForma(formaPagamento2);
+    if (cadastro) {
+      const maximo = parcelasMaxCadastro(cadastro);
+      if (parcelas2 > maximo) {
+        setParcelas2(maximo);
+        return;
+      }
+      setTaxaMaquinetaPercentual2(obterTaxaParcela(cadastro, parcelas2));
+      return;
+    }
     aplicarRegraTaxa(formaPagamento2, parcelas2, maquininha2, setTaxaMaquinetaPercentual2, setParcelas2);
-  }, [formaPagamento2, parcelas2, maquininha2]);
+  }, [formaPagamento2, parcelas2, maquininha2, opcoesPagamento]);
 
   // Maquininha registrada em cada pagamento com cartão (fica no JSON de pagamentos da OS)
   const dadosMaquininha = (forma: string, id: string) =>
@@ -439,13 +541,17 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
   const saldoRestante = Math.round((valorCobrado - somaPagamentos) * 100) / 100;
 
   // Taxa individual Forma 1 (nunca cobra sobre Dinheiro ou PIX)
+  // Formas do cadastro (boleto, transferência...) podem ter taxa fixa por transação, além da percentual
+  const taxaFixa1 = numValorPg1 > 0 ? cadastroDaForma(formaPagamento1)?.taxa_fixa || 0 : 0;
+  const taxaFixa2 = numValorPg2 > 0 ? cadastroDaForma(formaPagamento2)?.taxa_fixa || 0 : 0;
+
   const numTaxa1 = FORMAS_SEM_TAXA.includes(formaPagamento1) ? 0 : (Number(taxaMaquinetaPercentual1) || 0);
-  const valorTaxa1 = (numValorPg1 * numTaxa1) / 100;
+  const valorTaxa1 = Math.min(numValorPg1, (numValorPg1 * numTaxa1) / 100 + taxaFixa1);
   const liquidoPg1 = Math.max(0, numValorPg1 - valorTaxa1);
 
   // Taxa individual Forma 2 (nunca cobra sobre Dinheiro ou PIX)
   const numTaxa2 = FORMAS_SEM_TAXA.includes(formaPagamento2) ? 0 : (Number(taxaMaquinetaPercentual2) || 0);
-  const valorTaxa2 = dividirPagamento ? ((numValorPg2 * numTaxa2) / 100) : 0;
+  const valorTaxa2 = dividirPagamento ? Math.min(numValorPg2, (numValorPg2 * numTaxa2) / 100 + taxaFixa2) : 0;
   const liquidoPg2 = dividirPagamento ? Math.max(0, numValorPg2 - valorTaxa2) : 0;
 
   // Totais consolidados
@@ -459,7 +565,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
   // Estrutura de dados dos pagamentos para salvar no banco
   const gerarDadosPagamento = () => {
     if (!dividirPagamento) {
-      const descForma = formaPagamento1 === 'Cartão de crédito' && parcelas1 > 1
+      const descForma = parcelavel(formaPagamento1) && parcelas1 > 1
         ? `${formaPagamento1} (${parcelas1}x)`
         : formaPagamento1;
 
@@ -468,7 +574,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
           id: 'pg_1',
           forma: formaPagamento1,
           valor: valorCobrado,
-          parcelas: formaPagamento1 === 'Cartão de crédito' ? parcelas1 : 1,
+          parcelas: parcelavel(formaPagamento1) ? parcelas1 : 1,
           taxaPercentual: numTaxa1,
           valorTaxa: valorTaxa1,
           valorLiquido: liquidoPg1,
@@ -478,26 +584,26 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
 
       return {
         formaPagamentoTexto: descForma,
-        parcelasFinal: formaPagamento1 === 'Cartão de crédito' ? parcelas1 : 1,
+        parcelasFinal: parcelavel(formaPagamento1) ? parcelas1 : 1,
         pagamentosArray: pgs,
       };
     }
 
     // Texto curto (coluna forma_pagamento tem limite de 50 caracteres); valores de cada forma ficam em pagamentosArray
-    const desc1 = formaPagamento1 === 'Cartão de crédito' && parcelas1 > 1 ? `${formaPagamento1} (${parcelas1}x)` : formaPagamento1;
+    const desc1 = parcelavel(formaPagamento1) && parcelas1 > 1 ? `${formaPagamento1} (${parcelas1}x)` : formaPagamento1;
 
-    const desc2 = formaPagamento2 === 'Cartão de crédito' && parcelas2 > 1 ? `${formaPagamento2} (${parcelas2}x)` : formaPagamento2;
+    const desc2 = parcelavel(formaPagamento2) && parcelas2 > 1 ? `${formaPagamento2} (${parcelas2}x)` : formaPagamento2;
 
-    const parcelasFinal = formaPagamento1 === 'Cartão de crédito'
+    const parcelasFinal = parcelavel(formaPagamento1)
       ? parcelas1
-      : (formaPagamento2 === 'Cartão de crédito' ? parcelas2 : 1);
+      : (parcelavel(formaPagamento2) ? parcelas2 : 1);
 
     const pgs = [
       {
         id: 'pg_1',
         forma: formaPagamento1,
         valor: numValorPg1,
-        parcelas: formaPagamento1 === 'Cartão de crédito' ? parcelas1 : 1,
+        parcelas: parcelavel(formaPagamento1) ? parcelas1 : 1,
         taxaPercentual: numTaxa1,
         valorTaxa: valorTaxa1,
         valorLiquido: liquidoPg1,
@@ -507,7 +613,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
         id: 'pg_2',
         forma: formaPagamento2,
         valor: numValorPg2,
-        parcelas: formaPagamento2 === 'Cartão de crédito' ? parcelas2 : 1,
+        parcelas: parcelavel(formaPagamento2) ? parcelas2 : 1,
         taxaPercentual: numTaxa2,
         valorTaxa: valorTaxa2,
         valorLiquido: liquidoPg2,
@@ -591,6 +697,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
   // Submissão do Formulário
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (enviandoRef.current) return; // duplo clique ou Enter + clique: evita criar a OS duas vezes
 
     if (!nomeCliente.trim() || !modeloAparelho.trim() || !defeitoRelatado.trim()) {
       alert('Preencha os campos obrigatórios (*): Nome do Cliente, Modelo do Aparelho e Defeito Relatado.');
@@ -620,6 +727,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
       }
     }
 
+    enviandoRef.current = true;
     setCarregando(true);
     try {
       const payload = montarPayload();
@@ -642,16 +750,19 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
       alert(`Falha ao salvar Ordem de Serviço: ${err.message || 'Verifique sua conexão.'}`);
     } finally {
       setCarregando(false);
+      enviandoRef.current = false;
     }
   };
 
   // Salvar OS em modo Rascunho
   const handleSalvarRascunho = async () => {
+    if (enviandoRef.current) return; // duplo clique: o disabled só vale depois do próximo render
     if (!nomeCliente.trim() && !modeloAparelho.trim()) {
       alert('Para salvar como rascunho, preencha ao menos o Nome do Cliente ou o Modelo do Aparelho.');
       return;
     }
 
+    enviandoRef.current = true;
     setCarregando(true);
     try {
       const resultado = await criarOrdemServico({ ...montarPayload(), status_os: 'RASCUNHO' });
@@ -664,6 +775,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
       alert(`Falha ao salvar rascunho: ${err.message || 'Verifique sua conexão.'}`);
     } finally {
       setCarregando(false);
+      enviandoRef.current = false;
     }
   };
 
@@ -692,16 +804,23 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
 
     // Reset pagamentos
     setDividirPagamento(false);
-    setFormaPagamento1('Cartão de crédito');
+    // Volta às formas iniciais que existirem no cadastro, com a taxa original de cada uma
+    const forma1 = escolherForma(opcoesPagamento, 'Cartão de crédito');
+    const forma2 = escolherForma(opcoesPagamento, 'Dinheiro', forma1);
+    const taxaInicial = (forma: string) => {
+      const cadastro = cadastroDaForma(forma);
+      return cadastro ? obterTaxaParcela(cadastro, 1) : obterTaxaPadrao(forma, 1, maquininhaPadraoId);
+    };
+    setFormaPagamento1(forma1);
     setParcelas1(1);
     setMaquininha1(maquininhaPadraoId);
     setMaquininha2(maquininhaPadraoId);
-    setTaxaMaquinetaPercentual1(obterTaxaPadrao('Cartão de crédito', 1, maquininhaPadraoId));
+    setTaxaMaquinetaPercentual1(taxaInicial(forma1));
     setValorPg1('');
 
-    setFormaPagamento2('Dinheiro');
+    setFormaPagamento2(forma2);
     setParcelas2(1);
-    setTaxaMaquinetaPercentual2(0);
+    setTaxaMaquinetaPercentual2(taxaInicial(forma2));
     setValorPg2('');
 
     setChecklist(checklistInicial());
@@ -1207,7 +1326,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
             {/* --- MODO 1: FORMA DE PAGAMENTO ÚNICA --- */}
             {!dividirPagamento && (
               <div className="space-y-3.5">
-                <BotoesFormaPagamento valor={formaPagamento1} onChange={setFormaPagamento1} />
+                <BotoesFormaPagamento valor={formaPagamento1} onChange={setFormaPagamento1} opcoes={opcoesPagamento} />
 
                 {ehCartao(formaPagamento1) ? (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 p-3.5 rounded-xl bg-[#080c14]/70 border border-zinc-800/80">
@@ -1243,6 +1362,34 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
                       />
                     </div>
 
+                    <div>
+                      <Rotulo>Líquido recebido</Rotulo>
+                      <div className={`${inputCls} flex items-center font-bold text-emerald-400`}>R$ {formatarValor(liquidoRecebido)}</div>
+                    </div>
+                  </div>
+                ) : cadastroDaForma(formaPagamento1) ? (
+                  // Boleto, transferência e outras: taxa do cadastro da forma, ajustável nesta OS
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 p-3.5 rounded-xl bg-[#080c14]/70 border border-zinc-800/80">
+                    <SeletorParcelasCadastro
+                      cadastro={cadastroDaForma(formaPagamento1)!}
+                      valor={parcelas1}
+                      onChange={setParcelas1}
+                    />
+                    <div>
+                      <Rotulo>Taxa da forma (%)</Rotulo>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={taxaMaquinetaPercentual1}
+                        onChange={(e) => setTaxaMaquinetaPercentual1(e.target.value === '' ? '' : Number(e.target.value))}
+                        placeholder="0,00"
+                        className={inputCls}
+                      />
+                    </div>
+                    <div>
+                      <Rotulo>Taxa fixa</Rotulo>
+                      <div className={`${inputCls} flex items-center text-zinc-400`}>R$ {formatarValor(cadastroDaForma(formaPagamento1)?.taxa_fixa || 0)}</div>
+                    </div>
                     <div>
                       <Rotulo>Líquido recebido</Rotulo>
                       <div className={`${inputCls} flex items-center font-bold text-emerald-400`}>R$ {formatarValor(liquidoRecebido)}</div>
@@ -1292,7 +1439,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
                       </span>
                     </div>
 
-                    <BotoesFormaPagamento valor={formaPagamento1} onChange={setFormaPagamento1} compacto />
+                    <BotoesFormaPagamento valor={formaPagamento1} onChange={setFormaPagamento1} opcoes={opcoesPagamento} compacto />
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div className="sm:col-span-2">
@@ -1343,6 +1490,24 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
                           </div>
                         </>
                       )}
+                      {cadastroDaForma(formaPagamento1) && (
+                        <SeletorParcelasCadastro cadastro={cadastroDaForma(formaPagamento1)!} valor={parcelas1} onChange={setParcelas1} />
+                      )}
+                      {cadastroDaForma(formaPagamento1) && (
+                        <div>
+                          <Rotulo extra={(cadastroDaForma(formaPagamento1)?.taxa_fixa || 0) > 0 && <span className="text-[10px] text-zinc-500">+ R$ {formatarValor(cadastroDaForma(formaPagamento1)?.taxa_fixa || 0)} fixa</span>}>
+                            Taxa da forma (%)
+                          </Rotulo>
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={taxaMaquinetaPercentual1}
+                            onChange={(e) => setTaxaMaquinetaPercentual1(e.target.value === '' ? '' : Number(e.target.value))}
+                            placeholder="0,00"
+                            className={inputCls}
+                          />
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -1355,7 +1520,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
                       </span>
                     </div>
 
-                    <BotoesFormaPagamento valor={formaPagamento2} onChange={setFormaPagamento2} compacto />
+                    <BotoesFormaPagamento valor={formaPagamento2} onChange={setFormaPagamento2} opcoes={opcoesPagamento} compacto />
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div className="sm:col-span-2">
@@ -1423,6 +1588,24 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
                             />
                           </div>
                         </>
+                      )}
+                      {cadastroDaForma(formaPagamento2) && (
+                        <SeletorParcelasCadastro cadastro={cadastroDaForma(formaPagamento2)!} valor={parcelas2} onChange={setParcelas2} />
+                      )}
+                      {cadastroDaForma(formaPagamento2) && (
+                        <div>
+                          <Rotulo extra={(cadastroDaForma(formaPagamento2)?.taxa_fixa || 0) > 0 && <span className="text-[10px] text-zinc-500">+ R$ {formatarValor(cadastroDaForma(formaPagamento2)?.taxa_fixa || 0)} fixa</span>}>
+                            Taxa da forma (%)
+                          </Rotulo>
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={taxaMaquinetaPercentual2}
+                            onChange={(e) => setTaxaMaquinetaPercentual2(e.target.value === '' ? '' : Number(e.target.value))}
+                            placeholder="0,00"
+                            className={inputCls}
+                          />
+                        </div>
                       )}
                     </div>
                   </div>

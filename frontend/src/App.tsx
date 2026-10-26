@@ -142,6 +142,10 @@ export default function App() {
     contaDoOperador.current = userId ?? null;
     setOperador(null);
     setTokenOperador(null);
+    // Logout ou troca de conta: a liberação dada por um administrador da conta anterior não vale mais
+    // (o token dela ia junto nas consultas da próxima conta até alguém se identificar)
+    setLiberacao(null);
+    ultimaTelaPermitida.current = null;
 
     // F5 na mesma conta: pede ao banco o funcionário da sessão (permissões atuais)
     const restaurar = sessaoOperadorRestaurada;

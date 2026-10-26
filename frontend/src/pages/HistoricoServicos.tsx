@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
   buscarOrdensServico,
   excluirOrdemServico,
@@ -10,16 +10,15 @@ import {
 } from "../services/api";
 import { AvisoErroCarregamento } from "../components/AvisoErroCarregamento";
 
-const FORMAS_PADRAO = ["PIX", "Dinheiro", "Cartão de débito", "Cartão de crédito"];
-
-/** Forma da OS na lista padrão; pagamento dividido ou texto fora do padrão é mantido como está. */
+/** Forma da OS como aparece no select (sem o "(3x)"); pagamento dividido fica com o texto gravado. */
 const formaBaseDaOS = (os: OrdemServico): string => {
   const modalidade = os.modalidadePagamento || modalidadeDaForma(os.formaPagamento || "", Number(os.parcelas || 1));
   if (modalidade === "PIX") return "PIX";
   if (modalidade === "DINHEIRO") return "Dinheiro";
   if (modalidade === "DEBITO") return "Cartão de débito";
   if (modalidade === "CREDITO_VISTA" || modalidade === "CREDITO_PARCELADO") return "Cartão de crédito";
-  return os.formaPagamento || "PIX";
+  if (modalidade === "MISTO") return os.formaPagamento || "PIX";
+  return formaSemParcelas(os.formaPagamento || "") || "PIX";
 };
 
 /** Linhas exibidas por vez na listagem (botão "Mostrar mais" carrega o restante). */
@@ -47,9 +46,20 @@ import {
   classeFormato,
 } from "../components/impressao";
 import { useOperador } from "../contexts/OperadorContext";
+import { comAutorizacaoAdmin } from "../services/acesso";
+import {
+  EVENTO_FORMAS_PAGAMENTO,
+  OPCOES_PAGAMENTO_NATIVAS,
+  type OpcaoPagamentoOS,
+  carregarOpcoesPagamento,
+  formaSemParcelas,
+  liquidoComTaxa,
+  parcelasMaximas,
+  taxaDaForma,
+} from "../services/formasPagamentoOS";
 import type { OrdemServico, StatusOS } from "../types";
 import { ITENS_CHECKLIST, OPCOES_CHECKLIST, itensVisiveisChecklist, rotuloItemChecklist } from "../utils/checklist";
-import { formatarValor } from "../utils/formatadores";
+import { formatarDataOS, formatarValor } from "../utils/formatadores";
 
 // ================= FILTROS DA LISTAGEM =================
 type FiltroData = "TODAS" | "DIA" | "MES" | "ANO";
@@ -120,13 +130,14 @@ export const HistoricoServicos: React.FC = () => {
   const [osSelecionada, setOsSelecionada] = useState<OrdemServico | null>(null);
   const [osParaEditar, setOsParaEditar] = useState<OrdemServico | null>(null);
   const [osParaExcluir, setOsParaExcluir] = useState<OrdemServico | null>(null);
-  const { pode } = useOperador();
+  const { pode, operador } = useOperador();
   const [osParaImprimir, setOsParaImprimir] = useState<OrdemServico | null>(
     null,
   );
 
   const [excluindo, setExcluindo] = useState(false);
   const [salvandoEdicao, setSalvandoEdicao] = useState(false);
+  const salvandoEdicaoRef = useRef(false); // trava imediata contra duplo clique
   const [abaModal, setAbaModal] = useState<
     "detalhes" | "checklist" | "historico"
   >("detalhes");
@@ -161,6 +172,8 @@ export const HistoricoServicos: React.FC = () => {
 
   const [editFormaPagamento, setEditFormaPagamento] = useState("PIX");
   const [editParcelas, setEditParcelas] = useState<number>(1);
+  // Formas ativas de Cadastros › Formas de pagamento (as mesmas da Nova OS)
+  const [opcoesPagamento, setOpcoesPagamento] = useState<OpcaoPagamentoOS[]>(OPCOES_PAGAMENTO_NATIVAS);
 
   const [editDataAbertura, setEditDataAbertura] = useState("");
   const [editDataConclusao, setEditDataConclusao] = useState("");
@@ -209,22 +222,40 @@ export const HistoricoServicos: React.FC = () => {
   };
 
   // Atualiza o Valor Líquido Final na tela sempre que bruto, tipo ou desconto mudarem
+  const opcaoDaForma = (forma: string) => opcoesPagamento.find((o) => o.valor === forma);
+  // Maquininha já registrada na OS (cartão): a taxa recalculada usa a mesma
+  const maquininhaDaOS = () => (osParaEditar?.pagamentos || []).find((p: any) => p?.maquininhaId)?.maquininhaId;
+
   const recalcularValorLiquido = (
     bruto: number | "",
     tipo: 'VALOR' | 'PERCENTUAL',
     desconto: number | "",
+    forma: string = editFormaPagamento,
+    parcelas: number = editParcelas,
   ) => {
     const { valorComDesconto } = calcularDescontoEdicao(
       bruto === "" ? 0 : Number(bruto),
       tipo,
       desconto === "" ? 0 : Number(desconto),
     );
-    const taxa = obterTaxaEfetivaPagamentos(osParaEditar);
-    setEditValorLiquido((valorComDesconto * (1 - taxa)).toFixed(2));
+    // Mesma forma e parcelas da OS: mantém a taxa que foi cobrada nela.
+    // Forma ou parcelas trocadas: usa a taxa configurada para a nova forma na loja.
+    const mesmaForma =
+      !!osParaEditar && forma === formaBaseDaOS(osParaEditar) && parcelas === Number(osParaEditar.parcelas || 1);
+    const opcao = opcaoDaForma(forma);
+    const liquido =
+      mesmaForma || !opcao
+        ? valorComDesconto * (1 - obterTaxaEfetivaPagamentos(osParaEditar))
+        : liquidoComTaxa(valorComDesconto, taxaDaForma(opcao, parcelas, maquininhaDaOS()));
+    setEditValorLiquido(liquido.toFixed(2));
   };
 
   useEffect(() => {
     carregarHistorico();
+    const carregarFormas = () => carregarOpcoesPagamento(operador?.lojas || []).then(setOpcoesPagamento);
+    carregarFormas();
+    window.addEventListener(EVENTO_FORMAS_PAGAMENTO, carregarFormas);
+    return () => window.removeEventListener(EVENTO_FORMAS_PAGAMENTO, carregarFormas);
   }, []);
 
   const handleImprimir = (os: OrdemServico) => {
@@ -318,6 +349,8 @@ export const HistoricoServicos: React.FC = () => {
       };
     }
 
+    if (salvandoEdicaoRef.current) return;
+    salvandoEdicaoRef.current = true;
     setSalvandoEdicao(true);
     try {
       const logs: string[] = [];
@@ -355,10 +388,12 @@ export const HistoricoServicos: React.FC = () => {
         numValorLiquidoFinal - (numCustoPeca + numFrete + custoGarantiaExistente);
 
       // Forma e pagamentos: refeitos só quando forma, parcelas ou valores mudaram (antes ficavam os antigos)
-      const formaPadrao = FORMAS_PADRAO.includes(editFormaPagamento);
-      const credito = editFormaPagamento === "Cartão de crédito";
-      const parcelasFinais = credito ? editParcelas : 1;
-      const formaTexto = credito && parcelasFinais > 1 ? `Cartão de crédito (${parcelasFinais}x)` : editFormaPagamento;
+      // Forma do cadastro (nativa ou complementar): pagamentos refeitos; texto fora da lista ("Manter") fica como está
+      const opcaoEscolhida = opcaoDaForma(editFormaPagamento);
+      const formaPadrao = !!opcaoEscolhida;
+      const parcelavel = parcelasMaximas(opcaoEscolhida, maquininhaDaOS()) > 1;
+      const parcelasFinais = parcelavel ? editParcelas : 1;
+      const formaTexto = parcelavel && parcelasFinais > 1 ? `${editFormaPagamento} (${parcelasFinais}x)` : editFormaPagamento;
       const brutoAnterior = Number(osParaEditar.orcamentoCalculado?.valorTotalOrcamento || 0);
       const liquidoAnterior = Number(osParaEditar.valorLiquido ?? brutoAnterior);
       const pagamentoMudou =
@@ -440,14 +475,16 @@ export const HistoricoServicos: React.FC = () => {
       alert(err.message || "Erro ao atualizar a Ordem de Serviço.");
     } finally {
       setSalvandoEdicao(false);
+      salvandoEdicaoRef.current = false;
     }
   };
 
-  const handleConfirmarExclusao = async () => {
+  // Sem a permissão "Excluir OS", vem da autorização do administrador: o token dela vai junto para o banco
+  const handleConfirmarExclusao = async (admin?: { token: string | null }) => {
     if (!osParaExcluir) return;
     setExcluindo(true);
     try {
-      await excluirOrdemServico(osParaExcluir.id_os);
+      await comAutorizacaoAdmin(admin?.token ?? null, () => excluirOrdemServico(osParaExcluir.id_os));
       setOrdens((prev) =>
         prev.filter((os) => os.id_os !== osParaExcluir.id_os),
       );
@@ -1408,54 +1445,53 @@ export const HistoricoServicos: React.FC = () => {
                       <select
                         value={editFormaPagamento}
                         onChange={(e) => {
-                          setEditFormaPagamento(e.target.value);
-                          if (e.target.value !== "Cartão de crédito") {
-                            setEditParcelas(1);
-                          }
+                          const forma = e.target.value;
+                          // Parcelas além do máximo da nova forma voltam para o máximo dela
+                          const parcelas = Math.min(editParcelas, parcelasMaximas(opcaoDaForma(forma), maquininhaDaOS()));
+                          setEditFormaPagamento(forma);
+                          setEditParcelas(parcelas);
+                          recalcularValorLiquido(editValorTotal, editTipoDesconto, editDesconto, forma, parcelas);
                         }}
                         className="w-full bg-zinc-950 border border-amber-500/50 rounded-lg p-2.5 text-amber-400 font-bold outline-none"
                       >
-                        {!FORMAS_PADRAO.includes(editFormaPagamento) && (
+                        {!opcaoDaForma(editFormaPagamento) && (
                           <option value={editFormaPagamento}>Manter: {editFormaPagamento}</option>
                         )}
-                        <option value="PIX">PIX</option>
-                        <option value="Dinheiro">Dinheiro</option>
-                        <option value="Cartão de Débito">
-                          Cartão de Débito
-                        </option>
-                        <option value="Cartão de crédito">
-                          Cartão de Crédito
-                        </option>
+                        {opcoesPagamento.map((o) => (
+                          <option key={o.valor} value={o.valor}>
+                            {o.rotulo}
+                          </option>
+                        ))}
                       </select>
                     </div>
 
-                    {/* Parcelas: 100% visível em Cartão de Crédito; translúcido, inselecionável e desabilitado nas demais */}
+                    {/* Parcelas: liberadas quando a forma parcela (crédito pela maquininha, demais pelo cadastro) */}
+                    {(() => {
+                      const maxParcelas = parcelasMaximas(opcaoDaForma(editFormaPagamento), maquininhaDaOS());
+                      const parcela = maxParcelas > 1;
+                      return (
                     <div className={`transition-all duration-200 ${
-                      editFormaPagamento === "Cartão de crédito"
+                      parcela
                         ? "opacity-100"
                         : "opacity-30 pointer-events-none select-none"
                     }`}>
                       <label className="text-zinc-400 block mb-1 font-bold text-blue-400">
-                        Parcelas {editFormaPagamento !== "Cartão de crédito" && <span className="text-[10px] text-zinc-500 font-normal lowercase">(à vista)</span>}
+                        Parcelas {!parcela && <span className="text-[10px] text-zinc-500 font-normal lowercase">(à vista)</span>}
                       </label>
                       <select
-                        disabled={editFormaPagamento !== "Cartão de crédito"}
-                        value={editFormaPagamento === "Cartão de crédito" ? editParcelas : 1}
+                        disabled={!parcela}
+                        value={parcela ? editParcelas : 1}
                         onChange={(e) => {
-                          setEditParcelas(Number(e.target.value));
+                          const parcelas = Number(e.target.value);
+                          setEditParcelas(parcelas);
+                          recalcularValorLiquido(editValorTotal, editTipoDesconto, editDesconto, editFormaPagamento, parcelas);
                         }}
                         className={`w-full bg-zinc-950 border border-blue-500/50 rounded-lg p-2.5 text-blue-400 font-bold outline-none ${
-                          editFormaPagamento === "Cartão de crédito" ? "cursor-pointer" : "cursor-not-allowed text-zinc-500"
+                          parcela ? "cursor-pointer" : "cursor-not-allowed text-zinc-500"
                         }`}
                       >
-                        {/* Até o maior parcelamento entre as maquininhas (Configurações › Taxas) */}
                         {Array.from(
-                          {
-                            length: Math.max(
-                              editParcelas,
-                              ...obterConfiguracoesLojaSincrono().maquininhas.map((m) => m.taxas.credito.length),
-                            ),
-                          },
+                          { length: Math.max(editParcelas, maxParcelas) },
                           (_, i) => i + 1,
                         ).map((num) => (
                           <option key={num} value={num}>
@@ -1464,6 +1500,8 @@ export const HistoricoServicos: React.FC = () => {
                         ))}
                       </select>
                     </div>
+                      );
+                    })()}
 
                     <div>
                       <label className="text-zinc-400 block mb-1 font-bold text-emerald-400">
@@ -1725,7 +1763,7 @@ export const HistoricoServicos: React.FC = () => {
                   Cancelar
                 </button>
                 <button
-                  onClick={handleConfirmarExclusao}
+                  onClick={() => handleConfirmarExclusao()}
                   disabled={excluindo}
                   className="px-4 py-2 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition"
                 >
@@ -1765,7 +1803,7 @@ export const HistoricoServicos: React.FC = () => {
                       <p className={`${termica ? "text-xs" : "text-base"} font-black font-mono text-blue-900`}>#{os.numero_os}</p>
                       <p className="text-slate-600">
                         <strong>Abertura:</strong>{" "}
-                        {os.data_abertura ? new Date(os.data_abertura).toLocaleDateString("pt-BR") : "-"}
+                        {formatarDataOS(os.data_abertura) || "-"}
                       </p>
                     </div>
                   </div>

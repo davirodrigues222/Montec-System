@@ -12,6 +12,7 @@ import { AvisoErroCarregamento } from '../components/AvisoErroCarregamento';
 import type { OrdemServico, StatusOS } from '../types';
 import type { AbaSistema } from '../services/acesso';
 import { formatarValor } from '../utils/formatadores';
+import { custosOS, somar, valorLiquidoOS } from '../utils/financeiroOS';
 import { useOperador } from '../contexts/OperadorContext';
 
 interface Props {
@@ -151,28 +152,10 @@ export const Dashboard: React.FC<Props> = ({ onNavigate, session }) => {
 
   const faturamentoMes = resumoMeta.valorAlcancado;
 
-  const custosTotais = useMemo(
-    () =>
-      ordensDoMesAtual.reduce((acc, os) => {
-        const peca = Number(os?.orcamentoCalculado?.custoPeca || os?.custo_peca || 0);
-        const frete = Number(os?.orcamentoCalculado?.freteReal || os?.frete_real || 0);
-        const garantia = Number(
-          os?.orcamentoCalculado?.custoPecaGarantia ||
-            os?.garantia?.custoPecaGarantia ||
-            os?.custo_peca_garantia ||
-            0
-        );
-        return acc + peca + frete + garantia;
-      }, 0),
-    [ordensDoMesAtual]
-  );
-
-  // Lucro real: o que entrou de fato (líquido, já sem as taxas da maquininha) menos os custos.
-  // Mesma regra de Análises e relatórios.
-  const liquidoMes = useMemo(
-    () => ordensDoMesAtual.reduce((acc, os) => acc + Number(os.valorLiquido ?? os.orcamentoCalculado?.valorTotalOrcamento ?? 0), 0),
-    [ordensDoMesAtual]
-  );
+  // Lucro real: o que entrou de fato (líquido, já sem as taxas da maquininha) menos os custos
+  // (peça, frete e garantia). Mesmas funções de Análises e relatórios (utils/financeiroOS).
+  const custosTotais = useMemo(() => somar(ordensDoMesAtual, custosOS), [ordensDoMesAtual]);
+  const liquidoMes = useMemo(() => somar(ordensDoMesAtual, valorLiquidoOS), [ordensDoMesAtual]);
   const lucroLiquidoReal = liquidoMes - custosTotais;
 
   // Faturamento, lucro, valores em R$ e meta só aparecem para quem tem acesso a Análises e relatórios.

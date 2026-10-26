@@ -1,4 +1,5 @@
 import { supabase } from './supabaseClient';
+import { MENSAGEM_SEM_PERMISSAO, ehRecusaDePermissao, exigirLinhaAfetada } from './errosBanco';
 
 // ==========================================
 // Acesso ao banco dos submódulos de Cadastro: Clientes, Lojas, Funcionários e Formas de Pagamento.
@@ -24,6 +25,7 @@ function tratarErro(error: any, tabela: string): never {
   if (error?.code === '23505') {
     throw new Error('Já existe um registro com esses dados (valor duplicado).');
   }
+  if (ehRecusaDePermissao(error)) throw new Error(MENSAGEM_SEM_PERMISSAO);
   throw new Error(error?.message || 'Falha ao acessar o banco de dados.');
 }
 
@@ -145,8 +147,9 @@ export async function excluirCliente(idCliente: string): Promise<void> {
     );
   }
 
-  const { error } = await supabase.from('clientes').delete().eq('id_cliente', idCliente);
+  const { data, error } = await supabase.from('clientes').delete().eq('id_cliente', idCliente).select('id_cliente');
   if (error) tratarErro(error, 'clientes');
+  exigirLinhaAfetada(data); // sem permissão o banco não exclui e não dá erro
 }
 
 /** Quantidade de OS por cliente, para exibir na listagem. */
@@ -249,8 +252,9 @@ export async function salvarServico(dados: Omit<Servico, 'id_servico'>, idServic
 
 /** As OS guardam o prazo de garantia e o nome do serviço nelas mesmas, então excluir não afeta OS já abertas. */
 export async function excluirServico(idServico: string): Promise<void> {
-  const { error } = await supabase.from('cad_servicos').delete().eq('id_servico', idServico);
+  const { data, error } = await supabase.from('cad_servicos').delete().eq('id_servico', idServico).select('id_servico');
   if (error) tratarErro(error, 'cad_servicos');
+  exigirLinhaAfetada(data); // sem permissão o banco não exclui e não dá erro
 }
 
 // ==========================================
@@ -307,8 +311,9 @@ export async function salvarFornecedor(dados: Omit<Fornecedor, 'id_fornecedor'>,
 
 /** As OS guardam o nome do fornecedor como texto, então excluir não altera OS já registradas. */
 export async function excluirFornecedor(idFornecedor: string): Promise<void> {
-  const { error } = await supabase.from('cad_fornecedores').delete().eq('id_fornecedor', idFornecedor);
+  const { data, error } = await supabase.from('cad_fornecedores').delete().eq('id_fornecedor', idFornecedor).select('id_fornecedor');
   if (error) tratarErro(error, 'cad_fornecedores');
+  exigirLinhaAfetada(data); // sem permissão o banco não exclui e não dá erro
 }
 
 /** Quantidade de OS por fornecedor (as OS guardam o nome em fornecedor_peca; chave em minúsculas). */
@@ -373,8 +378,9 @@ export async function salvarLoja(dados: LojaInput, idLoja?: string): Promise<voi
 }
 
 export async function excluirLoja(idLoja: string): Promise<void> {
-  const { error } = await supabase.from('lojas').delete().eq('id_loja', idLoja);
+  const { data, error } = await supabase.from('lojas').delete().eq('id_loja', idLoja).select('id_loja');
   if (error) tratarErro(error, 'lojas');
+  exigirLinhaAfetada(data); // sem permissão o banco não exclui e não dá erro
 }
 
 // ==========================================
@@ -704,18 +710,26 @@ export async function salvarFormaPagamento(
     id = data!.id_forma_pagamento;
   }
 
-  const { error: errDel } = await supabase.from('formas_pagamento_taxas').delete().eq('id_forma_pagamento', id!);
-  if (errDel) tratarErro(errDel, 'formas_pagamento_taxas');
-
   const taxasValidas = dados.permite_parcelamento
     ? taxas.filter((t) => t.parcelas >= 1 && t.parcelas <= dados.parcelas_max)
     : [];
+
+  // Grava as taxas novas antes de remover as que saíram: se a conexão cair no meio,
+  // a tabela fica com as taxas antigas em vez de vazia
   if (taxasValidas.length > 0) {
     const { error: errIns } = await supabase
       .from('formas_pagamento_taxas')
-      .insert(taxasValidas.map((t) => ({ id_forma_pagamento: id!, ...t })));
+      .upsert(
+        taxasValidas.map((t) => ({ id_forma_pagamento: id!, ...t })),
+        { onConflict: 'id_forma_pagamento,parcelas' }
+      );
     if (errIns) tratarErro(errIns, 'formas_pagamento_taxas');
   }
+
+  let remover = supabase.from('formas_pagamento_taxas').delete().eq('id_forma_pagamento', id!);
+  if (taxasValidas.length > 0) remover = remover.not('parcelas', 'in', `(${taxasValidas.map((t) => t.parcelas).join(',')})`);
+  const { error: errDel } = await remover;
+  if (errDel) tratarErro(errDel, 'formas_pagamento_taxas');
 }
 
 export async function alternarAtivoFormaPagamento(idForma: string, ativo: boolean): Promise<void> {
@@ -724,8 +738,9 @@ export async function alternarAtivoFormaPagamento(idForma: string, ativo: boolea
 }
 
 export async function excluirFormaPagamento(idForma: string): Promise<void> {
-  const { error } = await supabase.from('formas_pagamento').delete().eq('id_forma_pagamento', idForma);
+  const { data, error } = await supabase.from('formas_pagamento').delete().eq('id_forma_pagamento', idForma).select('id_forma_pagamento');
   if (error) tratarErro(error, 'formas_pagamento');
+  exigirLinhaAfetada(data); // sem permissão o banco não exclui e não dá erro
 }
 
 /** Taxa efetiva para N parcelas: usa a tabela por parcela quando existir, senão a taxa base. */
@@ -734,7 +749,10 @@ export function obterTaxaParcela(forma: Pick<FormaPagamento, 'taxa_percentual' |
   return especifica ? especifica.taxa_percentual : forma.taxa_percentual;
 }
 
-/** Formas padrão sugeridas para contas novas (mesmas taxas usadas hoje na Nova OS). */
+/**
+ * Formas nativas criadas automaticamente em toda conta (mesmas taxas padrão da maquininha).
+ * No cartão, a Nova OS usa as taxas da maquininha escolhida; as daqui ficam como referência.
+ */
 export const FORMAS_PAGAMENTO_PADRAO: { dados: FormaPagamentoInput; taxas: TaxaParcela[] }[] = [
   {
     dados: { id_loja: null, nome: 'Dinheiro', tipo: 'DINHEIRO', taxa_percentual: 0, taxa_fixa: 0, permite_parcelamento: false, parcelas_max: 1, parcelas_sem_juros: 1, repassar_juros_cliente: false, prazo_recebimento_dias: 0, ativo: true, ordem: 1 },
@@ -757,8 +775,15 @@ export const FORMAS_PAGAMENTO_PADRAO: { dados: FormaPagamentoInput; taxas: TaxaP
   },
 ];
 
-export async function criarFormasPagamentoPadrao(): Promise<void> {
-  for (const { dados, taxas } of FORMAS_PAGAMENTO_PADRAO) {
+/** Formas nativas (PIX, dinheiro, débito e crédito) que a conta ainda não tem, pelo tipo (renomear não duplica). */
+export const formasPadraoFaltantes = (existentes: Pick<FormaPagamento, 'tipo'>[]) => {
+  const tipos = new Set(existentes.map((f) => f.tipo));
+  return FORMAS_PAGAMENTO_PADRAO.filter((p) => !tipos.has(p.dados.tipo));
+};
+
+/** Cria só as formas nativas que faltam: repetir depois de uma falha no meio não duplica nada. */
+export async function criarFormasPagamentoPadrao(existentes: Pick<FormaPagamento, 'tipo'>[] = []): Promise<void> {
+  for (const { dados, taxas } of formasPadraoFaltantes(existentes)) {
     await salvarFormaPagamento(dados, taxas);
   }
 }

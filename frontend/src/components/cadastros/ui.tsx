@@ -1,4 +1,4 @@
-import React, { useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import React, { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 
 // ==========================================
 // Kit visual dos submódulos de Cadastro.
@@ -35,16 +35,26 @@ export const CardFormulario: React.FC<{
   editando: boolean;
   salvando: boolean;
   rotuloSalvar: string;
-  onSubmit: () => void;
+  onSubmit: () => void | Promise<void>;
   onLimpar: () => void;
   children: ReactNode;
-}> = ({ titulo, subtitulo, editando, salvando, rotuloSalvar, onSubmit, onLimpar, children }) => (
+}> = ({ titulo, subtitulo, editando, salvando, rotuloSalvar, onSubmit, onLimpar, children }) => {
+  // Trava imediata: o disabled do botão só vale depois do próximo render, e um duplo clique
+  // (ou Enter + clique) chegava antes dele e cadastrava o mesmo registro duas vezes
+  const enviando = useRef(false);
+  return (
   <form
     id="form-cadastro"
     noValidate
-    onSubmit={(e: FormEvent) => {
+    onSubmit={async (e: FormEvent) => {
       e.preventDefault();
-      onSubmit();
+      if (salvando || enviando.current) return;
+      enviando.current = true;
+      try {
+        await onSubmit();
+      } finally {
+        enviando.current = false;
+      }
     }}
     className={`bg-[#0c101a] border rounded-2xl p-5 sm:p-6 shadow-sm space-y-5 scroll-mt-24 ${
       editando ? 'border-blue-500/50 ring-1 ring-blue-500/20' : 'border-zinc-800/80'
@@ -93,7 +103,8 @@ export const CardFormulario: React.FC<{
       </div>
     </div>
   </form>
-);
+  );
+};
 
 export const Campo: React.FC<{
   label: string;
