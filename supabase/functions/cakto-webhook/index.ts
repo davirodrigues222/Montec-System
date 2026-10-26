@@ -47,25 +47,85 @@ const iguais = (a: string, b: string) => {
   return diferenca === 0;
 };
 
-const hmacHex = async (segredo: string, mensagem: string) => {
+/** HMAC-SHA256 da mensagem com o segredo, em hexadecimal e em base64. */
+const hmac = async (segredo: string, mensagem: string) => {
   const chave = await crypto.subtle.importKey('raw', codificador.encode(segredo), { name: 'HMAC', hash: 'SHA-256' }, false, [
     'sign',
   ]);
-  const assinatura = new Uint8Array(await crypto.subtle.sign('HMAC', chave, codificador.encode(mensagem)));
-  return Array.from(assinatura, (b) => b.toString(16).padStart(2, '0')).join('');
+  const bytes = new Uint8Array(await crypto.subtle.sign('HMAC', chave, codificador.encode(mensagem)));
+  return {
+    hex: Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join(''),
+    base64: btoa(String.fromCharCode(...bytes)),
+  };
 };
 
-/** O aviso veio mesmo da Cakto? Usa a assinatura do cabeçalho quando existe; senão, o secret do corpo. */
-const avisoAutentico = async (req: Request, corpoCru: string, secretDoCorpo: unknown, segredo: string) => {
-  const assinatura = req.headers.get('X-Cakto-Signature');
-  const timestamp = req.headers.get('X-Cakto-Timestamp');
-  if (assinatura && timestamp) {
-    const enviadoEm = Number(timestamp);
-    if (!Number.isFinite(enviadoEm) || Math.abs(Date.now() / 1000 - enviadoEm) > TOLERANCIA_SEGUNDOS) return false;
-    const esperado = `v1=${await hmacHex(segredo, `${timestamp}.${corpoCru}`)}`;
-    return iguais(assinatura, esperado);
+/**
+ * Valores de assinatura dentro do cabeçalho. Aceita "v1=<hex>", "sha256=<hex>", "t=<ts>,v1=<hex>"
+ * ou só "<hex>"/"<base64>" — o formato real da Cakto difere do descrito na documentação.
+ */
+const lerCabecalhoAssinatura = (valor: string) => {
+  const partes = valor.split(',').map((p) => p.trim()).filter(Boolean);
+  let timestamp: string | null = null;
+  const assinaturas: string[] = [];
+  for (const parte of partes) {
+    const i = parte.indexOf('=');
+    // "=" no fim é preenchimento de base64, não separador de chave
+    const chave = i > 0 && i < parte.length - 2 ? parte.slice(0, i).toLowerCase() : '';
+    const conteudo = chave ? parte.slice(i + 1) : parte;
+    if (chave === 't' || chave === 'timestamp') timestamp = conteudo;
+    else assinaturas.push(conteudo);
   }
-  return typeof secretDoCorpo === 'string' && iguais(secretDoCorpo, segredo);
+  return { timestamp, assinaturas };
+};
+
+/** O HMAC do cabeçalho confere com a chave? Testa as mensagens usuais ("<ts>.<corpo>" e só o corpo). */
+const assinaturaConfere = async (req: Request, corpoCru: string, segredo: string) => {
+  const cabecalho = req.headers.get('X-Cakto-Signature');
+  if (!cabecalho) return false;
+  const { timestamp: tsNoCabecalho, assinaturas } = lerCabecalhoAssinatura(cabecalho);
+  const timestamp = req.headers.get('X-Cakto-Timestamp') || tsNoCabecalho;
+  const mensagens = timestamp ? [`${timestamp}.${corpoCru}`, corpoCru] : [corpoCru];
+  for (const mensagem of mensagens) {
+    const esperado = await hmac(segredo, mensagem);
+    for (const recebida of assinaturas) {
+      if (iguais(recebida.toLowerCase(), esperado.hex) || iguais(recebida, esperado.base64)) {
+        // Reenvio manual pela Cakto pode chegar com o horário antigo: só avisa (o mesmo pedido nunca
+        // conta duas vezes, então repetir um aviso legítimo não libera nada a mais)
+        const enviadoEm = Number(timestamp);
+        const segundos = enviadoEm > 1e12 ? enviadoEm / 1000 : enviadoEm;
+        if (timestamp && Number.isFinite(segundos) && Math.abs(Date.now() / 1000 - segundos) > TOLERANCIA_SEGUNDOS) {
+          console.warn('Assinatura válida, mas com horário antigo (provável reenvio manual).');
+        }
+        return true;
+      }
+    }
+  }
+  return false;
+};
+
+/**
+ * O aviso veio mesmo da Cakto? Vale qualquer um:
+ *   * a assinatura HMAC do cabeçalho X-Cakto-Signature, feita com a chave secreta cadastrada no
+ *     webhook da Cakto (CAKTO_WEBHOOK_SECRET);
+ *   * o campo "secret" do corpo igual a CAKTO_WEBHOOK_SECRET ou a CAKTO_WEBHOOK_SECRET_CORPO (o código
+ *     de 36 caracteres que a Cakto põe no corpo, visto em Webhooks > Ver Logs > Requisição enviada).
+ */
+const avisoAutentico = async (req: Request, corpoCru: string, secretDoCorpo: unknown, segredo: string) => {
+  if (await assinaturaConfere(req, corpoCru, segredo)) return true;
+  const segredosCorpo = [segredo, Deno.env.get('CAKTO_WEBHOOK_SECRET_CORPO')?.trim()].filter(Boolean) as string[];
+  if (typeof secretDoCorpo === 'string' && segredosCorpo.some((s) => iguais(secretDoCorpo.trim(), s))) return true;
+
+  // Sem expor segredos: só o formato do que veio, para descobrir o motivo da recusa nos logs
+  const cabecalho = req.headers.get('X-Cakto-Signature');
+  const caktoHeaders = [...req.headers.keys()].filter((h) => h.toLowerCase().startsWith('x-cakto'));
+  const formato = cabecalho
+    ? `${cabecalho.length} caracteres, começa com "${cabecalho.replace(/[0-9a-f]{8,}.*$/i, '…').slice(0, 12)}"`
+    : 'ausente';
+  console.warn(
+    `Aviso recusado. Cabeçalhos x-cakto: [${caktoHeaders.join(', ')}]; assinatura: ${formato}; ` +
+      `secret no corpo: ${typeof secretDoCorpo === 'string' ? `${secretDoCorpo.length} caracteres` : 'ausente'}.`
+  );
+  return false;
 };
 
 const paraNumero = (v: unknown) => {
@@ -90,7 +150,7 @@ const descobrirPlano = (pedido: any): { plano: 'mensal' | 'anual'; valor: number
 Deno.serve(async (req) => {
   if (req.method !== 'POST') return resposta(405, { erro: 'Método não permitido.' });
 
-  const segredo = Deno.env.get('CAKTO_WEBHOOK_SECRET');
+  const segredo = Deno.env.get('CAKTO_WEBHOOK_SECRET')?.trim();
   if (!segredo) {
     console.error('CAKTO_WEBHOOK_SECRET não configurado.');
     return resposta(500, { erro: 'Webhook não configurado.' });
@@ -110,6 +170,7 @@ Deno.serve(async (req) => {
   }
 
   const evento = String(aviso.event || '');
+  console.log(`Aviso da Cakto recebido: ${evento}`);
   const ehPagamento = EVENTOS_PAGAMENTO.has(evento);
   const ehCancelamento = EVENTOS_CANCELAMENTO.has(evento);
   const ehEstorno = EVENTOS_ESTORNO.has(evento);
@@ -181,5 +242,6 @@ Deno.serve(async (req) => {
     }
   }
 
+  console.log(`Evento ${evento}: ${JSON.stringify(resultados)}`);
   return resposta(200, { ok: true, evento, resultados });
 });
