@@ -1962,7 +1962,8 @@ export async function criarOrdemServico(payload: {
   };
 
   const { data, error } = await gravarComColunasDeTaxas(dadosParaSalvar, (dados) =>
-    supabase.from('ordens_servico').insert([dados]).select().single()
+    // Só o que a tela usa: custo e lucro não são legíveis direto da tabela (migração 20261026180000)
+    supabase.from('ordens_servico').insert([dados]).select('id_os, numero_os').single()
   );
 
   if (error) {
@@ -2186,21 +2187,63 @@ export async function buscarOrdensServico(forcarAtualizacao = false): Promise<an
   return promessa;
 }
 
+const EMBUTIR_CLIENTE_APARELHO = `
+  *,
+  clientes:id_cliente (nome, whatsapp, cpf_cnpj),
+  aparelhos_cliente:id_aparelho (modelo, imei_1)
+`;
+const tabelaAusente = (error: any) => error?.code === 'PGRST205' || error?.code === '42P01';
+
+/**
+ * Linhas das OS da loja. Com a migração 20261026180000, custo e lucro não saem mais da tabela:
+ * as OS vêm de ordens_servico_leitura e os custos de ordens_servico_reservado (vazios para quem não
+ * tem acesso financeiro), juntados aqui por id_os. Sem a migração, lê a tabela como antes.
+ */
+async function lerOrdensDoBanco(): Promise<any[]> {
+  const [leitura, reservado] = await Promise.all([
+    supabase.from('ordens_servico_leitura').select(EMBUTIR_CLIENTE_APARELHO).order('data_abertura', { ascending: false }),
+    supabase.from('ordens_servico_reservado').select('id_os, custo_peca, frete_real, lucro_estimado_total, garantia_json'),
+  ]);
+
+  if (leitura.error && tabelaAusente(leitura.error)) {
+    const { data, error } = await supabase
+      .from('ordens_servico')
+      .select(EMBUTIR_CLIENTE_APARELHO)
+      .order('data_abertura', { ascending: false });
+    if (error) throw error;
+    return data || [];
+  }
+
+  let linhas: any[] = leitura.data || [];
+  if (leitura.error) {
+    // Relação cliente/aparelho não reconhecida na visão: busca os dois à parte e junta
+    if (leitura.error.code !== 'PGRST200') throw leitura.error;
+    const [ordens, clientes, aparelhos] = await Promise.all([
+      supabase.from('ordens_servico_leitura').select('*').order('data_abertura', { ascending: false }),
+      supabase.from('clientes').select('id_cliente, nome, whatsapp, cpf_cnpj'),
+      supabase.from('aparelhos_cliente').select('id_aparelho, modelo, imei_1'),
+    ]);
+    if (ordens.error) throw ordens.error;
+    const porCliente = new Map((clientes.data || []).map((c: any) => [String(c.id_cliente), c]));
+    const porAparelho = new Map((aparelhos.data || []).map((a: any) => [String(a.id_aparelho), a]));
+    linhas = (ordens.data || []).map((os: any) => ({
+      ...os,
+      clientes: porCliente.get(String(os.id_cliente)) || null,
+      aparelhos_cliente: porAparelho.get(String(os.id_aparelho)) || null,
+    }));
+  }
+
+  if (reservado.error) throw reservado.error;
+  const custos = new Map((reservado.data || []).map((r: any) => [String(r.id_os), r]));
+  return linhas.map((os) => {
+    const r: any = custos.get(String(os.id_os)) || {};
+    return { ...os, custo_peca: r.custo_peca, frete_real: r.frete_real, lucro_estimado_total: r.lucro_estimado_total, garantia_json: r.garantia_json };
+  });
+}
+
 async function carregarOrdensDoBanco(): Promise<any[]> {
   try {
-    const [{ data, error }, servicosCadastrados] = await Promise.all([
-      supabase
-        .from('ordens_servico')
-        .select(`
-          *,
-          clientes:id_cliente (nome, whatsapp, cpf_cnpj),
-          aparelhos_cliente:id_aparelho (modelo, imei_1)
-        `)
-        .order('data_abertura', { ascending: false }),
-      buscarServicosCadastrados(),
-    ]);
-
-    if (error) throw error;
+    const [data, servicosCadastrados] = await Promise.all([lerOrdensDoBanco(), buscarServicosCadastrados()]);
 
     return (data || []).map((item: any) => {
       const listaRetornos = extrairListaRetornosGarantia(item.garantia_json);
@@ -2325,21 +2368,28 @@ export async function atualizarStatusOS(id_os: string, status_os: string): Promi
   await editarOrdemServico(id_os, { status_os });
 }
 
+/** A OS para conferir a garantia: das visões da migração 20261026180000 ou, sem ela, da tabela. */
+async function lerOrdemParaGarantia(id_os: string): Promise<any | null> {
+  const [leitura, reservado] = await Promise.all([
+    supabase.from('ordens_servico_leitura').select('*').eq('id_os', id_os).maybeSingle(),
+    supabase.from('ordens_servico_reservado').select('garantia_json').eq('id_os', id_os).maybeSingle(),
+  ]);
+  if (leitura.error && tabelaAusente(leitura.error)) {
+    const { data } = await supabase.from('ordens_servico').select('*').eq('id_os', id_os).maybeSingle();
+    return data || null;
+  }
+  if (leitura.error || !leitura.data) return null;
+  return { ...leitura.data, garantia_json: reservado.data?.garantia_json ?? null };
+}
+
 export async function registrarGarantiaOS(
   id_os: string,
   garantia: any,
   _descricaoOcorrencia?: string
 ): Promise<void> {
-  const [{ data: osAtual, error: errBusca }, servicosCadastrados] = await Promise.all([
-    supabase
-      .from('ordens_servico')
-      .select('*')
-      .eq('id_os', id_os)
-      .single(),
-    buscarServicosCadastrados(),
-  ]);
+  const [osAtual, servicosCadastrados] = await Promise.all([lerOrdemParaGarantia(id_os), buscarServicosCadastrados()]);
 
-  if (errBusca || !osAtual) {
+  if (!osAtual) {
     throw new Error('Falha ao localizar OS para registrar garantia.');
   }
 

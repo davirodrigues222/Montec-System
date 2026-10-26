@@ -30,7 +30,7 @@ import {
   primeiraAbaPermitida,
   restaurarSessaoFuncionario,
 } from './services/acesso';
-import { obterConfiguracoesLojaSincrono } from './services/api';
+import { invalidarCacheOrdens, obterConfiguracoesLojaSincrono } from './services/api';
 import {
   contaDoUsuario,
   ehLoginDeFuncionario,
@@ -249,6 +249,7 @@ export default function App() {
 
   /** Sai do funcionário atual: encerra a sessão dele no banco e volta para a identificação. */
   const sairDoFuncionario = () => {
+    invalidarCacheOrdens();
     // Login próprio: sai do login do funcionário (o aparelho volta para a identificação da loja)
     if (ehLoginDeFuncionario(session?.user)) {
       setOperador(null);
@@ -286,6 +287,7 @@ export default function App() {
   const ultimaTelaPermitida = useRef<{ aba: AbaSistema; secao: SecaoCadastro } | null>(null);
 
   const entrarComoOperador = (op: Operador, token: string | null = null) => {
+    invalidarCacheOrdens(); // o que cada funcionário pode ler (custos) muda com quem entra
     setLiberacao(null);
     ultimaTelaPermitida.current = null;
     setOperador(op);
