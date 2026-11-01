@@ -1,6 +1,7 @@
 import React from 'react';
 import { DESTAQUES_HERO, DORES_E_SOLUCOES, ICONES, PASSOS, PERGUNTAS, RECURSOS } from './conteudo';
 import { MockupOS } from './MockupOS';
+import { NomeBancadaOS, SimboloBancadaOS } from '../../components/Marca';
 
 interface Props {
   onEntrar: () => void;
@@ -21,14 +22,11 @@ const Icone: React.FC<{ d: string; className?: string }> = ({ d, className = 'w-
 const Logo: React.FC = () => (
   <div className="flex items-center gap-3">
     <div className="w-9 h-9 rounded-xl overflow-hidden border border-blue-500/30 bg-[#0d131f] shrink-0">
-      <img
-        src="/logo-montec.png"
-        alt=""
-        className="w-full h-full object-cover"
-        onError={(e) => ((e.target as HTMLElement).style.display = 'none')}
-      />
+      <SimboloBancadaOS className="w-full h-full p-1" />
     </div>
-    <span className="font-extrabold text-white tracking-tight">Montec System</span>
+    <span className="font-extrabold text-white tracking-tight">
+      <NomeBancadaOS />
+    </span>
   </div>
 );
 
@@ -144,7 +142,7 @@ export const LandingPage: React.FC<Props> = ({ onEntrar, onCriarConta }) => (
           <div className="max-w-2xl">
             <Rotulo>O dia a dia da bancada</Rotulo>
             <h2 className="mt-3 text-3xl sm:text-4xl font-black text-white tracking-tight [text-wrap:balance]">
-              Os problemas que custam clientes — e como o Montec resolve.
+              Os problemas que custam clientes — e como o BancadaOS resolve.
             </h2>
           </div>
 
@@ -322,7 +320,7 @@ export const LandingPage: React.FC<Props> = ({ onEntrar, onCriarConta }) => (
         </nav>
       </div>
       <div className="border-t border-zinc-800/60">
-        <p className="max-w-6xl mx-auto px-4 sm:px-6 py-5 text-xs text-zinc-600">© {new Date().getFullYear()} Montec System</p>
+        <p className="max-w-6xl mx-auto px-4 sm:px-6 py-5 text-xs text-zinc-600">© {new Date().getFullYear()} BancadaOS</p>
       </div>
     </footer>
   </div>

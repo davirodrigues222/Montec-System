@@ -296,7 +296,7 @@ export const AbaLeisTermos: React.FC<Props> = ({ config, alterar, podeEditar }) 
           </div>
 
           <div className={cardCls}>
-            <h3 className="text-sm font-bold text-white">Termos de Uso do Montec System</h3>
+            <h3 className="text-sm font-bold text-white">Termos de Uso do BancadaOS</h3>
             <div className="space-y-4">
               <TermosDeUso />
             </div>

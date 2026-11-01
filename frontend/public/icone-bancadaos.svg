@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="262 262 556 556" role="img" aria-label="BancadaOS">
+  <rect x="264" y="264" width="552" height="552" rx="124" fill="#0C101A" stroke="#2563EB" stroke-opacity=".4" stroke-width="4"/>
+  <path fill="#3B82F6" fill-rule="evenodd" d="M433 410H563.5A53.5 53.5 0 0 1 563.5 517H576.5A52.5 52.5 0 0 1 576.5 622H433ZM493 445V481H552A18 18 0 0 0 552 445ZM493 540V587H563.5A23.5 23.5 0 0 0 563.5 540Z"/>
+  <rect x="386" y="623" width="243" height="47" rx="10" fill="#2563EB"/>
+  <rect x="647" y="623" width="48" height="47" rx="10" fill="#34D399"/>
+</svg>

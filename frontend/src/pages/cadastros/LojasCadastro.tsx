@@ -277,7 +277,7 @@ export const LojasCadastro: React.FC = () => {
         <Secao titulo="Identificação">
           <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
             <Campo label="Nome da loja" obrigatorio erro={erros.nome} className="md:col-span-5">
-              <input value={form.nome} onChange={(e) => atualizar('nome', e.target.value)} name="nome-loja" autoComplete="organization" placeholder="Ex: Montec Centro" className={inputCls(erros.nome)} />
+              <input value={form.nome} onChange={(e) => atualizar('nome', e.target.value)} name="nome-loja" autoComplete="organization" placeholder="Ex: Loja Centro" className={inputCls(erros.nome)} />
             </Campo>
             <Campo label="CNPJ" erro={erros.cnpj} className="md:col-span-3">
               <input value={form.cnpj} onChange={(e) => atualizar('cnpj', mascaraCnpj(e.target.value))} name="cnpj" autoComplete="off" inputMode="numeric" placeholder="00.000.000/0000-00" className={inputCls(erros.cnpj)} />

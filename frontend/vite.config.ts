@@ -20,7 +20,7 @@ const CSP = [
 ].join('; ')
 
 const politicaSeguranca = (): Plugin => ({
-  name: 'montec-csp',
+  name: 'bancadaos-csp',
   apply: 'build',
   transformIndexHtml: () => [
     { tag: 'meta', attrs: { 'http-equiv': 'Content-Security-Policy', content: CSP }, injectTo: 'head-prepend' },

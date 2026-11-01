@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { fazerLogin, cadastrarUsuario, recuperarSenha } from '../services/api';
 import { validarSenhaForte } from '../utils/formatadores';
 import { type DocumentoLegal, DocumentosLegais } from '../components/DocumentosLegais';
+import { NomeBancadaOS, SimboloBancadaOS } from '../components/Marca';
 
 interface Props {
   onLoginSuccess?: () => void;
@@ -155,21 +156,14 @@ export const Auth: React.FC<Props> = ({ onLoginSuccess, modoInicial = 'login', o
 
         <div className="absolute -top-32 -left-32 w-96 h-96 bg-blue-600/10 rounded-full blur-3xl pointer-events-none" />
 
-        {/* Topo: Logo Oficial Montec System */}
+        {/* Topo: Logo Oficial BancadaOS */}
         <div className="relative z-10 flex items-center space-x-3.5">
           <div className="relative w-12 h-12 rounded-xl overflow-hidden shadow-lg shadow-blue-500/25 shrink-0 border border-blue-500/30 bg-[#0d131f] flex items-center justify-center">
-            <img
-              src="/logo-montec.png"
-              alt="Montec System"
-              onError={(e) => {
-                (e.target as HTMLElement).style.display = 'none';
-              }}
-              className="w-full h-full object-cover"
-            />
+            <SimboloBancadaOS />
           </div>
           <div>
             <h1 className="text-base font-extrabold tracking-tight text-white leading-none">
-              Montec System
+              <NomeBancadaOS />
             </h1>
             <p className="text-xs text-blue-400 mt-1 font-semibold">Software de Gestão Técnica</p>
           </div>
@@ -219,7 +213,7 @@ export const Auth: React.FC<Props> = ({ onLoginSuccess, modoInicial = 'login', o
         {/* Rodapé do Painel Esquerdo */}
         <div className="relative z-10 pt-4">
           <p className="text-xs text-zinc-400 font-medium">
-            Montec System · Gestão Especializada para Assistências
+            BancadaOS · Gestão Especializada para Assistências
           </p>
         </div>
       </div>
@@ -240,21 +234,14 @@ export const Auth: React.FC<Props> = ({ onLoginSuccess, modoInicial = 'login', o
             </button>
           )}
 
-          {/* Topo Mobile: Logo Oficial Montec System */}
+          {/* Topo Mobile: Logo Oficial BancadaOS */}
           <div className="flex lg:hidden items-center space-x-3.5 mb-8">
             <div className="relative w-11 h-11 rounded-xl overflow-hidden shadow-lg shadow-blue-500/25 shrink-0 border border-blue-500/30 bg-[#0d131f] flex items-center justify-center">
-              <img
-                src="/logo-montec.png"
-                alt="Montec System"
-                onError={(e) => {
-                  (e.target as HTMLElement).style.display = 'none';
-                }}
-                className="w-full h-full object-cover"
-              />
+              <SimboloBancadaOS />
             </div>
             <div>
               <h1 className="text-base font-extrabold tracking-tight text-white leading-none">
-                Montec System
+                <NomeBancadaOS />
               </h1>
               <p className="text-xs text-blue-400 mt-1 font-semibold">Software de Gestão Técnica</p>
             </div>
@@ -389,7 +376,7 @@ export const Auth: React.FC<Props> = ({ onLoginSuccess, modoInicial = 'login', o
                       required
                       value={nomeAssistencia}
                       onChange={(e) => setNomeAssistencia(e.target.value)}
-                      placeholder="Ex: Montec Smart"
+                      placeholder="Ex: Smart Cell Assistência"
                       className="w-full px-3.5 py-2.5 bg-[#0d131f] border border-zinc-800 rounded-xl text-xs sm:text-sm text-white placeholder-zinc-400 focus:outline-none focus:border-blue-500 transition"
                     />
                   </div>
@@ -531,7 +518,7 @@ export const Auth: React.FC<Props> = ({ onLoginSuccess, modoInicial = 'login', o
 
         <div className="pt-6 text-center">
           <p className="text-[11px] text-zinc-400">
-            Montec System · Versão 2.4.0
+            BancadaOS · Versão 2.4.0
           </p>
         </div>
       </div>

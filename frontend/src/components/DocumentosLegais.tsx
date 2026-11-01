@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
 
-// Termos de Uso e Política de Privacidade do Montec System (LGPD, arts. 6º, 9º e 18; Marco Civil da Internet, art. 7º).
+// Termos de Uso e Política de Privacidade do BancadaOS (LGPD, arts. 6º, 9º e 18; Marco Civil da Internet, art. 7º).
 // Identificação do responsável pelo sistema: a LGPD (art. 9º, III) exige nome e contato do controlador.
 // Preencha os campos vazios; o documento mostra só os que estiverem preenchidos.
 const RESPONSAVEL = {
-  nome: 'Montec System',
+  nome: 'BancadaOS',
   razaoSocial: '',
   cnpj: '',
   emailPrivacidade: '',
@@ -23,7 +23,7 @@ const Secao: React.FC<{ titulo: string; children: React.ReactNode }> = ({ titulo
 const identificacao = [RESPONSAVEL.razaoSocial, RESPONSAVEL.cnpj && `CNPJ ${RESPONSAVEL.cnpj}`].filter(Boolean).join(', ');
 const contatoPrivacidade = RESPONSAVEL.emailPrivacidade
   ? `pelo e-mail ${RESPONSAVEL.emailPrivacidade}`
-  : 'pelos canais de atendimento do Montec System';
+  : 'pelos canais de atendimento do BancadaOS';
 
 export const TermosDeUso = () => (
   <>

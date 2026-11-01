@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="robots" content="noindex" />
-    <title>Pagamento recebido · Montec System</title>
+    <title>Pagamento recebido · BancadaOS</title>
     <!--
       Página de retorno da Cakto ("Redirecionar após o pagamento"). O checkout abre numa nova aba;
       quem libera o acesso é o webhook, e a aba original do sistema confirma sozinha
@@ -34,7 +34,7 @@
         border: 1px solid rgba(63, 63, 70, 0.8);
         text-align: center;
       }
-      .logo { width: 56px; height: 56px; border-radius: 14px; border: 1px solid rgba(59, 130, 246, 0.3); }
+      .logo { width: 56px; height: 56px; }
       .ok {
         width: 64px; height: 64px; margin: 20px auto 0; border-radius: 50%;
         display: flex; align-items: center; justify-content: center;
@@ -55,13 +55,13 @@
   </head>
   <body>
     <main class="card">
-      <img class="logo" src="/logo-montec.png" alt="Montec System" />
+      <img class="logo" src="/icone-bancadaos.svg" alt="BancadaOS" />
       <div class="ok" aria-hidden="true">
         <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
       </div>
       <h1>Pagamento recebido!</h1>
-      <p>Obrigado por assinar o Montec System. Seu acesso é liberado automaticamente em poucos instantes.</p>
-      <button class="botao" id="voltar" type="button">Voltar ao Montec System</button>
+      <p>Obrigado por assinar o BancadaOS. Seu acesso é liberado automaticamente em poucos instantes.</p>
+      <button class="botao" id="voltar" type="button">Voltar ao BancadaOS</button>
       <p class="dica">Se o sistema já estava aberto em outra aba, é só voltar para ela: a confirmação aparece sozinha.</p>
     </main>
     <script>

@@ -28,6 +28,7 @@ import {
   sairDoLoginFuncionario,
 } from '../services/loginFuncionario';
 import { Campo, inputCls } from '../components/cadastros/ui';
+import { NomeBancadaOS, SimboloBancadaOS } from '../components/Marca';
 import { validarSenhaForte } from '../utils/formatadores';
 
 type Modo = 'carregando' | 'entrar' | 'primeiro-admin' | 'solicitar' | 'proprietario' | 'erro';
@@ -323,11 +324,11 @@ export const AcessoFuncionario: React.FC<Props> = ({ session, contaAparelho, onE
             {loja.logoUrl ? (
               <img src={loja.logoUrl} alt={loja.nomeLoja} className="w-full h-full object-contain p-1" />
             ) : (
-              <img src="/logo-montec.png" alt="Montec System" className="w-full h-full object-cover" onError={(e) => ((e.target as HTMLElement).style.display = 'none')} />
+              <SimboloBancadaOS />
             )}
           </div>
           <div className="min-w-0">
-            <p className="font-extrabold text-white truncate">{nomeLojaExibido || 'Montec System'}</p>
+            <p className="font-extrabold text-white truncate">{nomeLojaExibido || <NomeBancadaOS />}</p>
             <p className="text-xs text-zinc-400 truncate">{emailConta}</p>
           </div>
         </div>

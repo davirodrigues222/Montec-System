@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Check, CircleCheck, Sparkles } from 'lucide-react';
+import { Check, CircleCheck, ShieldCheck, Sparkles } from 'lucide-react';
 import { JanelaCheckout } from './JanelaCheckout';
 import {
   LISTA_PLANOS,
@@ -43,7 +43,7 @@ const textoBotao = (plano: Plano, acao: AcaoPlano) => {
   return `Assinar ${nomeCurto(plano)} (${formatarPrecoPlano(plano.preco)})`;
 };
 
-const ERRO_LINK = 'O link de pagamento deste plano ainda não foi configurado. Fale com o suporte do Montec System.';
+const ERRO_LINK = 'O link de pagamento deste plano ainda não foi configurado. Fale com o suporte do BancadaOS.';
 
 /**
  * Os 2 planos lado a lado. "Assinar" abre o checkout da Cakto (já preenchido) numa nova aba — a Cakto
@@ -174,6 +174,15 @@ export const CardsPlanos: React.FC<Props> = ({ situacao, onErro }) => {
           </div>
         );
       })}
+    </div>
+    {/* O cliente sai do sistema para pagar: avisa antes que a página (e a fatura) vão mostrar "Cakto" */}
+    <div className="flex items-start gap-2.5 px-4 py-3 rounded-xl bg-zinc-900/60 border border-zinc-800/80">
+      <ShieldCheck className="w-5 h-5 shrink-0 text-emerald-400" />
+      <p className="text-xs leading-relaxed text-zinc-400">
+        <span className="font-semibold text-zinc-200">Pagamento seguro pela Cakto.</span> Ao assinar, você é levado
+        à página de pagamento da Cakto, a plataforma que processa os pagamentos do BancadaOS (PIX ou cartão). O nome
+        "Cakto" também pode aparecer na fatura do cartão.
+      </p>
     </div>
     </>
   );

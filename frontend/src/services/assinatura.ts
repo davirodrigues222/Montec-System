@@ -1,4 +1,4 @@
-// Planos do Montec System e assinatura da conta (pagamento pela Cakto).
+// Planos do BancadaOS e assinatura da conta (pagamento pela Cakto).
 //
 // A assinatura é da conta da loja: funcionários com login próprio herdam o plano do dono.
 // Quem libera o acesso é o servidor (Edge Function "cakto-webhook"), quando a Cakto confirma o

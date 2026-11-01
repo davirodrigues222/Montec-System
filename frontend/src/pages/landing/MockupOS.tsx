@@ -13,7 +13,7 @@ const CHECKLIST: [string, 'ok' | 'defeito'][] = [
 ];
 
 export const MockupOS: React.FC = () => (
-  <div className="relative" aria-label="Exemplo ilustrativo de uma ordem de serviço no Montec System" role="img">
+  <div className="relative" aria-label="Exemplo ilustrativo de uma ordem de serviço no BancadaOS" role="img">
     {/* Brilho de fundo */}
     <div className="absolute -inset-6 bg-gradient-to-tr from-blue-600/20 via-transparent to-emerald-500/10 blur-3xl rounded-[2rem] pointer-events-none" />
 

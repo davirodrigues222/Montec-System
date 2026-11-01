@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { LogOut, RefreshCw } from 'lucide-react';
 import { CardsPlanos } from './CardsPlanos';
+import { NomeBancadaOS, SimboloBancadaOS } from './Marca';
 import { useAssinatura } from '../contexts/AssinaturaContext';
 import { ASSINATURA_OBRIGATORIA, formatarDataAssinatura, type SituacaoAssinatura } from '../services/assinatura';
 
@@ -62,10 +63,12 @@ export const PaywallAssinatura: React.FC<Props> = ({ situacao, onVerificarPagame
       <div className="max-w-4xl mx-auto space-y-5 sm:space-y-8">
         <div className="flex items-center gap-3.5">
           <div className="w-12 h-12 rounded-xl overflow-hidden shadow-lg shadow-blue-500/25 shrink-0 border border-blue-500/30 bg-[#0d131f]">
-            <img src="/logo-montec.png" alt="Montec System" className="w-full h-full object-cover" />
+            <SimboloBancadaOS />
           </div>
           <div>
-            <h1 className="font-extrabold text-lg tracking-tight leading-tight">Montec System</h1>
+            <h1 className="font-extrabold text-lg tracking-tight leading-tight">
+              <NomeBancadaOS />
+            </h1>
             <p className="text-xs text-blue-400 font-semibold mt-0.5">Software de Gestão</p>
           </div>
         </div>

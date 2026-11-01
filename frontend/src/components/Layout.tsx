@@ -12,6 +12,7 @@ import { type AbaSistema, PERMISSAO_POR_SECAO, podeAcessar, podeAcessarAba } fro
 import { CARGOS, EVENTO_LOJAS_ATUALIZADAS, type Loja, listarLojas } from '../services/cadastros';
 import { useAssinatura } from '../contexts/AssinaturaContext';
 import { PLANOS, diasRestantes, ehCortesia, formatarPrecoPlano } from '../services/assinatura';
+import { NomeBancadaOS, SimboloBancadaOS } from './Marca';
 
 /** Selo compacto do plano no rodapé do menu; leva para Configurações › Plano & Assinatura. */
 const SeloPlano: React.FC<{ onAbrir: () => void }> = ({ onAbrir }) => {
@@ -300,32 +301,25 @@ export const Layout: React.FC<Props> = ({
         />
       )}
 
-      {/* ================= BARRA LATERAL (MONTEC SYSTEM) ================= */}
+      {/* ================= BARRA LATERAL (BANCADAOS) ================= */}
       <aside
         className={`fixed lg:static inset-y-0 left-0 z-50 w-72 sm:w-80 border-r border-zinc-800/60 bg-[#090d15] flex flex-col justify-between print:hidden transition-transform duration-300 ease-in-out shrink-0 ${
           menuAberto ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         }`}
       >
         <div className="overflow-y-auto flex-1">
-          {/* Topo da Sidebar: Plataforma Montec System com a Logo Oficial */}
+          {/* Topo da Sidebar: Plataforma BancadaOS com a Logo Oficial */}
           <div className="p-5 sm:p-6 border-b border-zinc-800/40 flex items-center justify-between">
             <div className="flex items-center space-x-3.5 min-w-0">
-              {/* Logo Oficial Montec System */}
+              {/* Logo Oficial BancadaOS */}
               <div className="relative w-11 h-11 sm:w-12 sm:h-12 rounded-xl overflow-hidden shadow-lg shadow-blue-500/25 shrink-0 border border-blue-500/30 bg-[#0d131f]">
-                <img
-                  src="/logo-montec.png"
-                  alt="Montec System"
-                  onError={(e) => {
-                    (e.target as HTMLElement).style.display = 'none';
-                  }}
-                  className="w-full h-full object-cover"
-                />
+                <SimboloBancadaOS />
                 <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-amber-500 rounded-full border-2 border-[#090d15]" />
               </div>
 
               <div className="flex-1 min-w-0">
                 <h1 className="font-extrabold text-base sm:text-lg truncate tracking-tight text-white leading-tight">
-                  Montec System
+                  <NomeBancadaOS />
                 </h1>
                 <p className="text-xs text-blue-400 truncate mt-0.5 font-semibold">
                   Software de Gestão
@@ -557,9 +551,9 @@ export const Layout: React.FC<Props> = ({
               </svg>
             </button>
 
-            {/* Breadcrumb Montec System */}
+            {/* Breadcrumb BancadaOS */}
             <div className="flex items-center space-x-1.5 sm:space-x-2 text-xs text-zinc-400 font-medium truncate">
-              <span className="font-bold text-zinc-300 hidden md:inline">Montec System</span>
+              <span className="font-bold text-zinc-300 hidden md:inline">BancadaOS</span>
               <span className="text-zinc-600 hidden md:inline">/</span>
               <span className="font-bold text-white text-xs sm:text-sm truncate">
                 {titulosAbas[activeTab] || 'Painel'}

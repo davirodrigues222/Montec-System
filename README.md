@@ -1,6 +1,6 @@
-# ⚡ Montec System — Software de Gestão para Assistência Técnica
+# ⚡ BancadaOS — Software de Gestão para Assistência Técnica
 
-**Montec System** é uma plataforma web *Full-Stack* (SaaS) moderna e especializada no gerenciamento completo de assistências técnicas e laboratórios de manutenção de smartphones e eletrônicos (Apple, Samsung, Xiaomi, Motorola, etc.).
+**BancadaOS** é uma plataforma web *Full-Stack* (SaaS) moderna e especializada no gerenciamento completo de assistências técnicas e laboratórios de manutenção de smartphones e eletrônicos (Apple, Samsung, Xiaomi, Motorola, etc.).
 
 Desenvolvido para atender desde a recepção no balcão até a bancada do técnico, o sistema reúne controle de ordens de serviço (OS), checklist de entrada, gestão financeira com cálculo de lucro real (descontando peças, fretes e garantias), simulador de taxas de maquineta e emissão formal de comprovantes e certidões de garantia para impressão térmica ou A4.
 
@@ -96,11 +96,11 @@ Montec-System/
 │   └── package.json
 └── frontend/
     ├── public/
-    │   └── logo-montec.png     # Logotipo e favicon oficial
+    │   └── marca-bancadaos.svg # Símbolo da marca (ícones do app: icone-*.png)
     ├── src/
     │   ├── components/
     │   │   ├── CertidaoGarantia.tsx  # Documento para impressão/PDF
-    │   │   ├── Layout.tsx            # Sidebar Montec e cabeçalho da oficina
+    │   │   ├── Layout.tsx            # Sidebar BancadaOS e cabeçalho da oficina
     │   │   ├── StarCard.tsx          # Card de métricas reutilizável
     │   │   └── StatusBadge.tsx       # Badges de status da bancada
     │   ├── pages/

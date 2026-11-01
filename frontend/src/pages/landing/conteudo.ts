@@ -93,7 +93,7 @@ export const PASSOS = [
 export const PERGUNTAS = [
   {
     pergunta: 'Preciso instalar alguma coisa?',
-    resposta: 'Não. O Montec System funciona direto no navegador do computador, do tablet ou do celular.',
+    resposta: 'Não. O BancadaOS funciona direto no navegador do computador, do tablet ou do celular.',
   },
   {
     pergunta: 'Funciona para mais de uma loja?',

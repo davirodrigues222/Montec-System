@@ -25,7 +25,7 @@ const pagamentoConfirmado = (antes: SituacaoAssinatura, agora: SituacaoAssinatur
 
 /**
  * "Aguardando pagamento": o checkout da Cakto abre numa nova aba (a Cakto não permite ser exibida
- * dentro de outro site) e o Montec System fica esperando. A situação da assinatura é consultada a
+ * dentro de outro site) e o BancadaOS fica esperando. A situação da assinatura é consultada a
  * cada poucos segundos e, quando o webhook libera o acesso, a janela fecha sozinha.
  */
 export const JanelaCheckout: React.FC<Props> = ({ plano, link, onFechar, onConfirmado }) => {
@@ -106,7 +106,10 @@ export const JanelaCheckout: React.FC<Props> = ({ plano, link, onFechar, onConfi
         <ol className="space-y-2 text-sm text-zinc-300 leading-snug">
           <li className="flex gap-2.5">
             <span className="shrink-0 w-5 h-5 rounded-full bg-zinc-800 text-[11px] font-bold flex items-center justify-center">1</span>
-            <span>Conclua o pagamento na página da Cakto que abriu (PIX ou cartão).</span>
+            <span>
+              Conclua o pagamento na página da <span className="font-semibold text-white">Cakto</span> que abriu (PIX ou
+              cartão). A Cakto é a plataforma de pagamento segura do BancadaOS.
+            </span>
           </li>
           <li className="flex gap-2.5">
             <span className="shrink-0 w-5 h-5 rounded-full bg-zinc-800 text-[11px] font-bold flex items-center justify-center">2</span>
