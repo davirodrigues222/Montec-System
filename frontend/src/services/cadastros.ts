@@ -1,4 +1,5 @@
 import { supabase } from './supabaseClient';
+import { buscarTodasAsLinhas } from './paginacao';
 import { MENSAGEM_SEM_PERMISSAO, ehRecusaDePermissao, exigirLinhaAfetada } from './errosBanco';
 import { contaDoUsuario } from './contaLogin';
 
@@ -104,7 +105,9 @@ export interface Cliente {
 }
 
 export async function listarClientes(): Promise<Cliente[]> {
-  const { data, error } = await supabase.from('clientes').select('*').order('nome', { ascending: true });
+  const { data, error } = await buscarTodasAsLinhas((de, ate) =>
+    supabase.from('clientes').select('*').order('nome', { ascending: true }).order('id_cliente').range(de, ate)
+  );
   if (error) tratarErro(error, 'clientes');
   return data || [];
 }
@@ -224,7 +227,9 @@ export interface Servico {
 }
 
 export async function listarServicos(): Promise<Servico[]> {
-  const { data, error } = await supabase.from('cad_servicos').select('*').order('nome', { ascending: true });
+  const { data, error } = await buscarTodasAsLinhas((de, ate) =>
+    supabase.from('cad_servicos').select('*').order('nome', { ascending: true }).order('id_servico').range(de, ate)
+  );
   if (error) tratarErro(error, 'cad_servicos');
   return (data || []).map((s: any) => ({ ...s, preco_sugerido: Number(s.preco_sugerido || 0) }));
 }
@@ -282,7 +287,9 @@ export interface Fornecedor {
 }
 
 export async function listarFornecedores(): Promise<Fornecedor[]> {
-  const { data, error } = await supabase.from('cad_fornecedores').select('*').order('nome', { ascending: true });
+  const { data, error } = await buscarTodasAsLinhas((de, ate) =>
+    supabase.from('cad_fornecedores').select('*').order('nome', { ascending: true }).order('id_fornecedor').range(de, ate)
+  );
   if (error) tratarErro(error, 'cad_fornecedores');
   return data || [];
 }

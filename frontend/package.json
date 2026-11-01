@@ -1,11 +1,11 @@
 {
-  "name": "sig-apple-frontend",
+  "name": "bancadaos",
   "private": true,
   "version": "0.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview"
   },

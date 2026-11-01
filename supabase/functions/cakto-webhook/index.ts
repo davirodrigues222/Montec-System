@@ -128,6 +128,12 @@ const avisoAutentico = async (req: Request, corpoCru: string, secretDoCorpo: unk
   return false;
 };
 
+/** E-mail parcial para os logs (dado pessoal): "jo***@gmail.com". O pedido completo fica na Cakto. */
+const mascararEmail = (email: string) => {
+  const [usuario, dominio] = email.split('@');
+  return `${(usuario || '').slice(0, 2)}***@${dominio || ''}`;
+};
+
 const paraNumero = (v: unknown) => {
   const n = typeof v === 'number' ? v : Number(String(v ?? '').replace(',', '.'));
   return Number.isFinite(n) ? n : null;
@@ -200,7 +206,7 @@ Deno.serve(async (req) => {
     }
     if (!contaId) {
       // Pagou com um e-mail que não é de nenhuma conta: fica registrado no log para liberar à mão
-      console.warn(`Pedido ${orderId} (${evento}): nenhuma conta com o e-mail ${email}.`);
+      console.warn(`Pedido ${orderId} (${evento}): nenhuma conta com o e-mail ${mascararEmail(email)}.`);
       resultados.push({ pedido: orderId, resultado: 'conta_nao_encontrada' });
       continue;
     }

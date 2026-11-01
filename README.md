@@ -9,18 +9,18 @@ Desenvolvido para atender desde a recepção no balcão até a bancada do técni
 ## 🚀 Tecnologias Utilizadas
 
 ### Frontend
-- **React 18** (Vite + TypeScript)
+- **React 19** (Vite + TypeScript)
 - **Tailwind CSS** (Design System escuro nativo no padrão Figma com temas *Escuro*, *Meia-noite* e *Claro*)
-- **Lucide / Heroicons** (Iconografia vetorial moderna)
-- **Supabase Client JS** (Integração direta com autenticação e banco em tempo real)
+- **Lucide** (Iconografia vetorial moderna)
+- **Supabase Client JS** (Integração direta com autenticação e banco)
 - **CSS Print** (`print:hidden` e `print:block` para emissão limpa de documentos)
 
-### Backend & Nuvem
-- **Node.js** com **Express.js** e **TypeScript**
-- **Supabase (PostgreSQL)** (Banco de dados relacional com JSONB e Row Level Security)
-- **Supabase Auth** (Autenticação segura com criptografia Bcrypt e sessões persistentes)
-- **Row Level Security (RLS)** (Isolamento total de dados por oficina/usuário)
-- **Dotenv & CORS** (Segurança e parametrização de ambiente)
+### Backend & Nuvem (sem servidor próprio)
+- **Supabase (PostgreSQL)** (Banco relacional com JSONB e Row Level Security)
+- **Supabase Auth** (Login, código de verificação por e-mail e sessões persistentes)
+- **Row Level Security (RLS)** (Isolamento total de dados por loja, permissões por funcionário e assinatura exigida para gravar)
+- **Edge Functions** (`cakto-webhook`: pagamentos da Cakto; `login-funcionario`: login próprio dos funcionários)
+- **Vercel** (Hospedagem do frontend, com cabeçalhos de segurança em `frontend/vercel.json`)
 
 ---
 
@@ -90,10 +90,10 @@ O sistema opera com o **Row Level Security (RLS)** ativo em todas as tabelas, va
 
 ```text
 Montec-System/
-├── backend/
-│   ├── server.ts               # Servidor Express integrado ao Supabase
-│   ├── database.ts             # Pool de conexão com TiDB/MySQL (legado/auxiliar)
-│   └── package.json
+├── supabase/
+│   ├── migrations/             # Banco: tabelas, regras de acesso (RLS) e funções (rodar em ordem)
+│   ├── functions/              # Edge Functions: cakto-webhook e login-funcionario
+│   └── templates/              # Modelos dos e-mails de código de verificação
 └── frontend/
     ├── public/
     │   └── marca-bancadaos.svg # Símbolo da marca (ícones do app: icone-*.png)
@@ -101,19 +101,19 @@ Montec-System/
     │   ├── components/
     │   │   ├── CertidaoGarantia.tsx  # Documento para impressão/PDF
     │   │   ├── Layout.tsx            # Sidebar BancadaOS e cabeçalho da oficina
-    │   │   ├── StarCard.tsx          # Card de métricas reutilizável
     │   │   └── StatusBadge.tsx       # Badges de status da bancada
     │   ├── pages/
-    │   │   ├── Auth.tsx              # Tela de Login e Cadastro (Figma)
+    │   │   ├── Auth.tsx              # Login, cadastro e códigos de verificação
     │   │   ├── Dashboard.tsx         # Painel operacional principal
     │   │   ├── Relatorios.tsx        # Análises financeiras e gráficos
     │   │   ├── HistoricoServicos.tsx # Listagem e modais de OS
     │   │   ├── NovaOS.tsx            # Abertura de ordens com simulador
     │   │   ├── Garantiaretorno.tsx   # Gestão de retornos e prejuízos
-    │   │   ├── Cadastro.tsx          # Gestão de Serviços, Fornecedores e Clientes
+    │   │   ├── cadastros/            # Clientes, serviços, fornecedores, lojas, funcionários e pagamentos
     │   │   └── Configuracoes.tsx     # Dados da loja, logo e termos legais
     │   ├── services/
     │   │   ├── api.ts                # Camada de serviços e regras de negócio
+    │   │   ├── paginacao.ts          # Busca paginada (o Supabase limita 1.000 linhas por consulta)
     │   │   └── supabaseClient.ts     # Instância do cliente Supabase
     │   ├── types/
     │   │   └── index.ts              # Tipagens TypeScript do sistema

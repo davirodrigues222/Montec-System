@@ -8,11 +8,6 @@
 // ==========================================
 import { supabase } from './supabaseClient';
 import { type Operador, montarOperador } from './acesso';
-
-/** Mesmo cálculo da Edge Function login-funcionario (e-mail interno, não recebe mensagens). */
-export const emailDoFuncionario = (contaId: string, codigo: string) =>
-  `f${codigo.trim().toLowerCase()}.${contaId.replace(/-/g, '')}@funcionarios.montec.app`;
-
 import { ehLoginDeFuncionario } from './contaLogin';
 
 export { contaDoUsuario, ehLoginDeFuncionario } from './contaLogin';

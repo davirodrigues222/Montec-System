@@ -13,24 +13,37 @@
 //   4. devolve o e-mail interno do login, para o sistema entrar com ele.
 //
 // O e-mail é interno (não recebe mensagens): f<código>.<conta>@funcionarios.montec.app
-// O mesmo cálculo está em frontend/src/services/loginFuncionario.ts.
+// O sistema reconhece o login de funcionário pelo app_metadata (frontend/src/services/contaLogin.ts).
 // =====================================================================
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 
-const CORS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-};
+// Só o sistema chama esta função pelo navegador. Para o domínio próprio (ou outro endereço), cadastre
+// a lista no segredo ORIGENS_PERMITIDAS, separada por vírgulas.
+const ORIGENS_PADRAO = ['https://bancadaos-system.vercel.app', 'http://localhost:5173'];
+const ORIGENS = (Deno.env.get('ORIGENS_PERMITIDAS') || ORIGENS_PADRAO.join(','))
+  .split(',')
+  .map((o) => o.trim().replace(/\/$/, ''))
+  .filter(Boolean);
 
-const resposta = (status: number, corpo: Record<string, unknown>) =>
-  new Response(JSON.stringify(corpo), { status, headers: { ...CORS, 'Content-Type': 'application/json' } });
+const cabecalhosCors = (req: Request) => {
+  const origem = req.headers.get('Origin') || '';
+  return {
+    'Access-Control-Allow-Origin': ORIGENS.includes(origem) ? origem : ORIGENS[0],
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    Vary: 'Origin',
+  };
+};
 
 export const emailDoFuncionario = (contaId: string, codigo: string) =>
   `f${codigo.trim().toLowerCase()}.${contaId.replace(/-/g, '')}@funcionarios.montec.app`;
 
 Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
+  const cors = cabecalhosCors(req);
+  const resposta = (status: number, corpo: Record<string, unknown>) =>
+    new Response(JSON.stringify(corpo), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
+
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   if (req.method !== 'POST') return resposta(405, { erro: 'Método não permitido.' });
 
   const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, {
