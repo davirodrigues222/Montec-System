@@ -230,19 +230,19 @@ export const Dashboard: React.FC<Props> = ({ onNavigate, session }) => {
     switch (status) {
       case 'RASCUNHO':
         return (
-          <span className="inline-flex items-center px-3 py-1 rounded-full text-[11px] font-semibold bg-amber-500/10 text-amber-300 border border-amber-500/30 border-dashed">
+          <span className="inline-flex items-center px-3 py-1 rounded-full text-[11px] font-semibold bg-white/5 text-zinc-300 border border-white/20 border-dashed">
             Rascunho
           </span>
         );
       case 'EM_MANUTENCAO':
         return (
-          <span className="inline-flex items-center px-3 py-1 rounded-full text-[11px] font-semibold bg-blue-500/15 text-blue-400 border border-blue-500/25">
+          <span className="inline-flex items-center px-3 py-1 rounded-full text-[11px] font-semibold bg-blue-600/25 text-blue-200 border border-blue-500/50">
             Em bancada
           </span>
         );
       case 'AGUARDANDO_PECA':
         return (
-          <span className="inline-flex items-center px-3 py-1 rounded-full text-[11px] font-semibold bg-amber-500/15 text-amber-400 border border-amber-500/25">
+          <span className="inline-flex items-center px-3 py-1 rounded-full text-[11px] font-semibold bg-blue-500/5 text-blue-300 border border-blue-400/40 border-dashed">
             Aguardando peça
           </span>
         );
@@ -255,7 +255,7 @@ export const Dashboard: React.FC<Props> = ({ onNavigate, session }) => {
       case 'EM_ANALISE':
       case 'AGUARDANDO_AVALIACAO':
         return (
-          <span className="inline-flex items-center px-3 py-1 rounded-full text-[11px] font-semibold bg-cyan-500/15 text-cyan-400 border border-cyan-500/25">
+          <span className="inline-flex items-center px-3 py-1 rounded-full text-[11px] font-semibold bg-blue-500/15 text-blue-400 border border-blue-500/25">
             Em diagnóstico
           </span>
         );
@@ -343,7 +343,7 @@ export const Dashboard: React.FC<Props> = ({ onNavigate, session }) => {
         <div className="bg-[#0c101a] border border-zinc-800/80 rounded-xl sm:rounded-2xl p-3 sm:p-5 relative overflow-hidden shadow-sm flex flex-col justify-between">
           <div className="flex items-center justify-between">
             <span className="text-[11px] sm:text-xs font-medium text-zinc-400 truncate">Na bancada</span>
-            <div className="p-1 sm:p-2 rounded-md sm:rounded-lg bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 shrink-0">
+            <div className="p-1 sm:p-2 rounded-md sm:rounded-lg bg-blue-500/10 text-blue-400 border border-blue-500/20 shrink-0">
               <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z" />
               </svg>
@@ -381,7 +381,7 @@ export const Dashboard: React.FC<Props> = ({ onNavigate, session }) => {
         <div className="bg-[#0c101a] border border-zinc-800/80 rounded-xl sm:rounded-2xl p-3 sm:p-5 relative overflow-hidden shadow-sm flex flex-col justify-between">
           <div className="flex items-center justify-between">
             <span className="text-[11px] sm:text-xs font-medium text-zinc-400 truncate">Aguard. peça</span>
-            <div className="p-1 sm:p-2 rounded-md sm:rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20 shrink-0">
+            <div className="p-1 sm:p-2 rounded-md sm:rounded-lg bg-blue-500/10 text-blue-400 border border-blue-500/20 shrink-0">
               <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                 <circle cx="12" cy="12" r="10" />
                 <polyline points="12 6 12 12 16 14" />
@@ -405,7 +405,7 @@ export const Dashboard: React.FC<Props> = ({ onNavigate, session }) => {
           <div className="bg-[#0c101a] border border-zinc-800/80 rounded-xl sm:rounded-2xl p-3 sm:p-5 relative overflow-hidden shadow-sm flex flex-col justify-between">
             <div className="flex items-center justify-between">
               <span className="text-[11px] sm:text-xs font-medium text-zinc-400 truncate">Faturamento (mês)</span>
-              <div className="p-1 sm:p-2 rounded-md sm:rounded-lg bg-purple-500/10 text-purple-400 border border-purple-500/20 shrink-0">
+              <div className="p-1 sm:p-2 rounded-md sm:rounded-lg bg-blue-500/10 text-blue-400 border border-blue-500/20 shrink-0">
                 <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                   <rect x="2" y="4" width="20" height="16" rx="2" />
                   <line x1="2" y1="10" x2="22" y2="10" />
@@ -423,7 +423,7 @@ export const Dashboard: React.FC<Props> = ({ onNavigate, session }) => {
           <div className="bg-[#0c101a] border border-zinc-800/80 rounded-xl sm:rounded-2xl p-3 sm:p-5 relative overflow-hidden shadow-sm flex flex-col justify-between">
             <div className="flex items-center justify-between">
               <span className="text-[11px] sm:text-xs font-medium text-zinc-400 truncate">Ordens (mês)</span>
-              <div className="p-1 sm:p-2 rounded-md sm:rounded-lg bg-purple-500/10 text-purple-400 border border-purple-500/20 shrink-0">
+              <div className="p-1 sm:p-2 rounded-md sm:rounded-lg bg-blue-500/10 text-blue-400 border border-blue-500/20 shrink-0">
                 <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
@@ -585,8 +585,8 @@ export const Dashboard: React.FC<Props> = ({ onNavigate, session }) => {
                 [
                   ['Entradas', entradasHoje, 'bg-blue-500', 'border-blue-500/20 text-blue-400'],
                   ['Finalizados', finalizadosHoje, 'bg-emerald-500', 'border-emerald-500/20 text-emerald-400'],
-                  ['Entregues', entreguesHoje, 'bg-purple-500', 'border-purple-500/20 text-purple-400'],
-                  ['Orçamentos pend.', orcamentosPendentes, 'bg-amber-500', 'border-amber-500/20 text-amber-400'],
+                  ['Entregues', entreguesHoje, 'bg-zinc-300', 'border-zinc-500/20 text-zinc-200'],
+                  ['Orçamentos pend.', orcamentosPendentes, 'bg-blue-500', 'border-blue-500/20 text-blue-400'],
                 ] as const
               ).map(([rotulo, valor, corPonto, corDestaque]) => (
                 <div
@@ -615,7 +615,7 @@ export const Dashboard: React.FC<Props> = ({ onNavigate, session }) => {
             <div className="bg-[#0c101a] border border-zinc-800/80 rounded-2xl overflow-hidden shadow-sm flex flex-col justify-between">
               <div className="px-5 py-4 border-b border-zinc-800/80 flex items-center justify-between gap-2">
                 <div className="flex items-center space-x-2.5 min-w-0">
-                  <div className="w-8 h-8 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-400 flex items-center justify-center shrink-0">
+                  <div className="w-8 h-8 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-400 flex items-center justify-center shrink-0">
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
                     </svg>
@@ -703,7 +703,7 @@ export const Dashboard: React.FC<Props> = ({ onNavigate, session }) => {
             /* Card operacional: andamento das ordens do mês, sem nenhum valor financeiro */
             <div className="bg-[#0c101a] border border-zinc-800/80 rounded-2xl overflow-hidden shadow-sm flex flex-col justify-between">
               <div className="px-5 py-4 border-b border-zinc-800/80 flex items-center space-x-2.5">
-                <div className="w-8 h-8 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-400 flex items-center justify-center shrink-0">
+                <div className="w-8 h-8 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-400 flex items-center justify-center shrink-0">
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>

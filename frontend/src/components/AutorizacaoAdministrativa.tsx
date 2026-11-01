@@ -129,9 +129,9 @@ export const AutorizacaoAdministrativa: React.FC<Props> = ({
 
   if (variante === 'compacta') {
     return (
-      <div className="space-y-3 p-4 bg-amber-500/5 border border-amber-500/20 rounded-xl">
+      <div className="space-y-3 p-4 bg-blue-500/5 border border-blue-500/20 rounded-xl">
         <div className="flex items-start gap-2.5">
-          <IconeEscudo className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+          <IconeEscudo className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
           <p className="text-xs text-zinc-300">
             Seu perfil não permite {recurso}. Um <strong className="text-white">administrador</strong> precisa autorizar
             com o ID e a senha dele.
@@ -145,7 +145,7 @@ export const AutorizacaoAdministrativa: React.FC<Props> = ({
   return (
     <div className="max-w-md mx-auto mt-6 sm:mt-14 bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-6 sm:p-7 shadow-sm">
       <div className="text-center space-y-3 mb-6">
-        <div className="w-14 h-14 mx-auto rounded-2xl bg-amber-500/10 border border-amber-500/25 text-amber-400 flex items-center justify-center">
+        <div className="w-14 h-14 mx-auto rounded-2xl bg-blue-500/10 border border-blue-500/25 text-blue-400 flex items-center justify-center">
           <IconeEscudo className="w-7 h-7" />
         </div>
         <h2 className="text-base sm:text-lg font-extrabold text-white leading-snug">

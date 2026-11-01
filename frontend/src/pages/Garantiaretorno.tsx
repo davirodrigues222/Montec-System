@@ -248,7 +248,7 @@ export const GarantiaRetorno: React.FC = () => {
                             ? 'text-emerald-400'
                             : validacao.codigo === 'SEM_GARANTIA'
                             ? 'text-rose-400'
-                            : 'text-amber-400'
+                            : 'text-blue-400'
                         }`}
                       >
                         {labelStatusGarantia}

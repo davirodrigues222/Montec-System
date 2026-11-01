@@ -88,7 +88,7 @@ export const CamposLegaisOS: React.FC<Props> = ({ valor, onChange }) => {
             onChange={(e) => alterar({ autorizacaoPeca: e.target.checked })}
             className="mt-0.5 rounded bg-[#0d131f] border-zinc-700 text-blue-600 focus:ring-blue-500"
           />
-          <span className={`text-xs ${faltaAutorizacaoPeca(valor) ? 'text-amber-300' : 'text-zinc-300'}`}>
+          <span className={`text-xs ${faltaAutorizacaoPeca(valor) ? 'text-blue-300' : 'text-zinc-300'}`}>
             O cliente autorizou o uso de peça {valor.tipoPeca === 'USADA' ? 'usada ou recondicionada' : 'não original'} neste
             reparo (CDC, arts. 21 e 70).
           </span>

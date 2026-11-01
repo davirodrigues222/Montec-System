@@ -10,7 +10,7 @@ import {
 import { AvisoTabelaAusente, Badge, Carregando } from '../../components/cadastros/ui';
 import { type PropsAbaEquipe, cardCls } from './tipos';
 
-const COR_CARGO = { ADMIN: 'roxo', GERENTE: 'azul', TECNICO: 'verde', ATENDENTE: 'ambar' } as const;
+const COR_CARGO = { ADMIN: 'azulForte', GERENTE: 'azul', TECNICO: 'verde', ATENDENTE: 'branco' } as const;
 
 /**
  * Visão da equipe real (tabela funcionarios). O cadastro, as permissões e as senhas continuam em

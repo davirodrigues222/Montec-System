@@ -520,8 +520,8 @@ export default function App() {
         ) : (
           <>
             {liberadaPorAdmin && (
-              <div className="mb-4 flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 bg-amber-500/10 border border-amber-500/25 rounded-xl text-xs print:hidden">
-                <span className="text-amber-300 font-semibold">
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 bg-blue-500/10 border border-blue-500/25 rounded-xl text-xs print:hidden">
+                <span className="text-blue-300 font-semibold">
                   🔓 Acesso liberado por {liberacao?.admin} somente para esta tela.
                 </span>
                 <button

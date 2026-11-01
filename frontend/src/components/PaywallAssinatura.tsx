@@ -74,7 +74,7 @@ export const PaywallAssinatura: React.FC<Props> = ({ situacao, onVerificarPagame
         </div>
 
         <div className="space-y-2">
-          <span className="inline-block px-2.5 py-1 rounded-lg border bg-amber-500/15 border-amber-500/30 text-amber-300 text-[11px] font-bold uppercase tracking-wider">
+          <span className="inline-block px-2.5 py-1 rounded-lg border bg-rose-500/15 border-rose-500/30 text-rose-300 text-[11px] font-bold uppercase tracking-wider">
             {eraTeste ? 'Período de avaliação encerrado' : 'Assinatura vencida'}
           </span>
           <h2 className="text-[22px] sm:text-3xl font-extrabold tracking-tight leading-tight">Seu período de acesso expirou</h2>
@@ -96,7 +96,7 @@ export const PaywallAssinatura: React.FC<Props> = ({ situacao, onVerificarPagame
         {mensagem && (
           <div
             className={`px-4 py-3 rounded-xl border text-xs font-semibold ${
-              mensagem.erro ? 'bg-amber-500/10 border-amber-500/25 text-amber-300' : 'bg-emerald-500/10 border-emerald-500/25 text-emerald-300'
+              mensagem.erro ? 'bg-rose-500/10 border-rose-500/25 text-rose-300' : 'bg-emerald-500/10 border-emerald-500/25 text-emerald-300'
             }`}
           >
             {mensagem.texto}

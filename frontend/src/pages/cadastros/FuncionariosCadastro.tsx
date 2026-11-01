@@ -79,10 +79,10 @@ const formVazio = () => ({
 type FormFuncionario = ReturnType<typeof formVazio>;
 type Erros = Partial<Record<keyof FormFuncionario, string>>;
 
-const COR_CARGO: Record<CargoFuncionario, 'roxo' | 'azul' | 'ambar' | 'verde'> = {
-  ADMIN: 'roxo',
+const COR_CARGO: Record<CargoFuncionario, 'azulForte' | 'azul' | 'branco' | 'verde'> = {
+  ADMIN: 'azulForte',
   GERENTE: 'azul',
-  TECNICO: 'ambar',
+  TECNICO: 'branco',
   ATENDENTE: 'verde',
 };
 
@@ -357,7 +357,7 @@ export const FuncionariosCadastro: React.FC = () => {
     ) : !f.ativo ? (
       <Badge cor="cinza">Inativo</Badge>
     ) : aguardandoLiberacao(f.cargo, f.permissoes) ? (
-      <Badge cor="ambar">Aguardando liberação</Badge>
+      <Badge cor="branco">Aguardando liberação</Badge>
     ) : (
       <Badge cor="verde">Ativo</Badge>
     );
@@ -686,7 +686,7 @@ export const FuncionariosCadastro: React.FC = () => {
                     {f.codigo_acesso}
                     {!REGEX_CODIGO_ACESSO.test(f.codigo_acesso) && (
                       <span className="ml-2 font-sans">
-                        <Badge cor="ambar">Edite: código precisa ser numérico</Badge>
+                        <Badge cor="branco">Edite: código precisa ser numérico</Badge>
                       </span>
                     )}
                   </p>

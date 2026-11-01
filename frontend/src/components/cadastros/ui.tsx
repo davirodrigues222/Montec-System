@@ -64,7 +64,7 @@ export const CardFormulario: React.FC<{
       <div className="flex items-center space-x-2.5">
         <div
           className={`w-7 h-7 rounded-lg border flex items-center justify-center text-xs font-bold shrink-0 ${
-            editando ? 'bg-amber-500/10 border-amber-500/30 text-amber-400' : 'bg-blue-500/10 border-blue-500/20 text-blue-400'
+            editando ? 'bg-blue-500/10 border-blue-500/30 text-blue-400' : 'bg-blue-500/10 border-blue-500/20 text-blue-400'
           }`}
         >
           {editando ? '✎' : '+'}
@@ -75,7 +75,7 @@ export const CardFormulario: React.FC<{
         </div>
       </div>
       {editando && (
-        <span className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-amber-500/10 text-amber-400 border border-amber-500/25 shrink-0">
+        <span className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-blue-500/10 text-blue-400 border border-blue-500/25 shrink-0">
           Editando
         </span>
       )}
@@ -169,9 +169,9 @@ export const Toggle: React.FC<{
 const CORES_BADGE = {
   verde: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/25',
   azul: 'bg-blue-500/10 text-blue-400 border-blue-500/25',
-  ambar: 'bg-amber-500/10 text-amber-400 border-amber-500/25',
+  branco: 'bg-white/5 text-zinc-200 border-white/15',
   vermelho: 'bg-red-500/10 text-red-400 border-red-500/25',
-  roxo: 'bg-purple-500/10 text-purple-400 border-purple-500/25',
+  azulForte: 'bg-blue-500/15 text-blue-300 border-blue-400/30',
   cinza: 'bg-zinc-800/50 text-zinc-400 border-zinc-700',
 };
 
@@ -291,7 +291,7 @@ export const AcoesLinha: React.FC<{ onVer: () => void; onEditar: () => void; onE
     {(
       [
         ['ver', 'Ver detalhes', onVer, 'hover:text-blue-400'],
-        ['editar', 'Editar', onEditar, 'hover:text-amber-400'],
+        ['editar', 'Editar', onEditar, 'hover:text-blue-400'],
         ['excluir', 'Excluir', onExcluir, 'hover:text-red-400'],
       ] as const
     ).map(([icone, titulo, acao, cor]) => (
@@ -405,12 +405,12 @@ export const ModalConfirmacao: React.FC<{
 );
 
 export const AvisoTabelaAusente: React.FC<{ modulo: string }> = ({ modulo }) => (
-  <div className="bg-[#0c101a] border border-amber-500/30 rounded-2xl p-6 flex items-start gap-3">
-    <svg className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+  <div className="bg-[#0c101a] border border-blue-500/30 rounded-2xl p-6 flex items-start gap-3">
+    <svg className="w-5 h-5 text-blue-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
     </svg>
     <div>
-      <p className="text-sm font-bold text-amber-400">O módulo {modulo} ainda não foi ativado no banco de dados</p>
+      <p className="text-sm font-bold text-blue-400">O módulo {modulo} ainda não foi ativado no banco de dados</p>
       <p className="text-xs text-zinc-400 mt-1 leading-relaxed">
         As tabelas deste cadastro ainda não existem no Supabase. Execute a migração{' '}
         <code className="px-1.5 py-0.5 rounded bg-zinc-800/80 text-zinc-200 text-[11px]">

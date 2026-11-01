@@ -161,10 +161,10 @@ type OpcaoPagamento = OpcaoPagamentoOS;
 const ESTILO_TIPO_PAGAMENTO: Record<TipoFormaPagamento, { icone: React.ElementType; ativo: string }> = {
   PIX: { icone: QrCode, ativo: 'border-emerald-500/60 bg-emerald-500/10 text-emerald-300' },
   CARTAO_CREDITO: { icone: CreditCard, ativo: 'border-blue-500/60 bg-blue-500/10 text-blue-300' },
-  CARTAO_DEBITO: { icone: Wallet, ativo: 'border-cyan-500/60 bg-cyan-500/10 text-cyan-300' },
-  DINHEIRO: { icone: Banknote, ativo: 'border-amber-500/60 bg-amber-500/10 text-amber-300' },
-  BOLETO: { icone: Receipt, ativo: 'border-violet-500/60 bg-violet-500/10 text-violet-300' },
-  TRANSFERENCIA: { icone: Landmark, ativo: 'border-sky-500/60 bg-sky-500/10 text-sky-300' },
+  CARTAO_DEBITO: { icone: Wallet, ativo: 'border-blue-500/60 bg-blue-500/10 text-blue-300' },
+  DINHEIRO: { icone: Banknote, ativo: 'border-blue-500/60 bg-blue-500/10 text-blue-300' },
+  BOLETO: { icone: Receipt, ativo: 'border-blue-500/60 bg-blue-500/10 text-blue-300' },
+  TRANSFERENCIA: { icone: Landmark, ativo: 'border-blue-500/60 bg-blue-500/10 text-blue-300' },
   OUTRO: { icone: CircleDollarSign, ativo: 'border-zinc-500/60 bg-zinc-500/10 text-zinc-200' },
 };
 
@@ -230,7 +230,7 @@ const BotoesFormaPagamento: React.FC<{ valor: string; onChange: (forma: string) 
 const ESTILO_CHECKLIST: Record<string, { curto: string; icone: React.ElementType; ativo: string }> = {
   OK: { curto: 'OK', icone: Check, ativo: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/50' },
   DEFEITO: { curto: 'Defeito', icone: X, ativo: 'bg-rose-500/15 text-rose-300 border-rose-500/50' },
-  'Com observação': { curto: 'Obs.', icone: MessageSquareText, ativo: 'bg-amber-500/15 text-amber-300 border-amber-500/50' },
+  'Com observação': { curto: 'Obs.', icone: MessageSquareText, ativo: 'bg-blue-500/15 text-blue-300 border-blue-500/50' },
   'NÃO TESTADO': { curto: 'N/T', icone: Minus, ativo: 'bg-zinc-700/50 text-zinc-200 border-zinc-600' },
 };
 
@@ -1107,13 +1107,13 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
               <Rotulo>Senha de desbloqueio</Rotulo>
-              <ComIcone icone={Lock} corIcone="text-amber-400/80">
+              <ComIcone icone={Lock} corIcone="text-blue-400/80">
                 <input
                   type="text"
                   value={senhaAparelho}
                   onChange={(e) => setSenhaAparelho(e.target.value)}
                   placeholder="Senha ou padrão, para os testes"
-                  className={`${inputCls} pl-9 bg-amber-500/[0.04] border-amber-500/20 focus:border-amber-500 focus:ring-amber-500/15`}
+                  className={`${inputCls} pl-9 bg-blue-500/[0.04] border-blue-500/20 focus:border-blue-500 focus:ring-blue-500/15`}
                 />
               </ComIcone>
             </div>
@@ -1414,7 +1414,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
                     Math.abs(saldoRestante) < 0.01 && numValorPg1 > 0 && numValorPg2 > 0
                       ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
                       : saldoRestante > 0
-                      ? 'bg-amber-500/10 border-amber-500/30 text-amber-300'
+                      ? 'bg-blue-500/10 border-blue-500/30 text-blue-300'
                       : 'bg-rose-500/10 border-rose-500/30 text-rose-300'
                   }`}
                 >
@@ -1425,7 +1425,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
                   {Math.abs(saldoRestante) < 0.01 && numValorPg1 > 0 && numValorPg2 > 0 ? (
                     <span className="font-bold text-emerald-400">✓ 100% distribuído</span>
                   ) : saldoRestante > 0 ? (
-                    <span className="font-bold text-amber-400">Falta distribuir: R$ {formatarValor(saldoRestante)}</span>
+                    <span className="font-bold text-blue-400">Falta distribuir: R$ {formatarValor(saldoRestante)}</span>
                   ) : (
                     <span className="font-bold text-rose-400">Excedeu o total em: R$ {formatarValor(Math.abs(saldoRestante))}</span>
                   )}
@@ -1516,7 +1516,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
                   {/* Bloco 2: 2ª Forma de Pagamento */}
                   <div className="bg-[#080c14] border border-zinc-800 rounded-xl p-4 space-y-3.5">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <span className="text-xs font-bold text-purple-400">2ª forma de pagamento</span>
+                      <span className="text-xs font-bold text-blue-400">2ª forma de pagamento</span>
                       <span className="text-[11px] text-zinc-400">
                         Líquido: <strong className="text-emerald-400">R$ {formatarValor(liquidoPg2)}</strong>
                       </span>
@@ -1643,7 +1643,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
                   { rotulo: 'Desconto concedido', valor: `− R$ ${formatarValor(descontoCalculado)}`, cor: 'text-rose-400' },
                   { rotulo: 'Taxa da maquineta', valor: `− R$ ${formatarValor(totalTaxaMaquineta)}`, cor: 'text-rose-400' },
                   { rotulo: 'Líquido recebido', valor: `R$ ${formatarValor(liquidoRecebido)}`, cor: 'text-zinc-200' },
-                  { rotulo: 'Custos (peça + frete)', valor: `− R$ ${formatarValor(numCustoPeca + numFreteReal)}`, cor: 'text-amber-400' },
+                  { rotulo: 'Custos (peça + frete)', valor: `− R$ ${formatarValor(numCustoPeca + numFreteReal)}`, cor: 'text-zinc-200' },
                 ].map((linha) => (
                   <div key={linha.rotulo} className="flex items-center justify-between gap-3 border-b border-dashed border-zinc-800/80 pb-2 last:border-0 last:pb-0">
                     <dt className="text-zinc-500">{linha.rotulo}</dt>
@@ -1653,9 +1653,9 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
               </dl>
 
               <div className="grid grid-cols-2 lg:grid-cols-1 lg:w-64 border-t lg:border-t-0 lg:border-l border-zinc-800/80">
-                <div className="p-4 bg-cyan-500/[0.05]">
-                  <span className="block text-[10px] font-bold text-cyan-400/80 uppercase tracking-wider">Total ao cliente</span>
-                  <p className="text-xl sm:text-2xl font-black text-cyan-300 tabular-nums mt-0.5">R$ {formatarValor(valorCobrado)}</p>
+                <div className="p-4 bg-blue-500/[0.05]">
+                  <span className="block text-[10px] font-bold text-blue-400/80 uppercase tracking-wider">Total ao cliente</span>
+                  <p className="text-xl sm:text-2xl font-black text-blue-300 tabular-nums mt-0.5">R$ {formatarValor(valorCobrado)}</p>
                 </div>
                 {/* Lucro e margem só para quem tem acesso financeiro (Análises e relatórios) */}
                 {veCustos && (
@@ -1809,7 +1809,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
                 type="button"
                 onClick={finalizarNoCelular}
                 disabled={carregando}
-                className="flex-1 min-w-0 flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 disabled:opacity-50 text-white text-xs font-bold transition shadow-lg shadow-sky-500/20"
+                className="flex-1 min-w-0 flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-400 hover:to-blue-500 disabled:opacity-50 text-white text-xs font-bold transition shadow-lg shadow-blue-500/20"
               >
                 {carregando ? (
                   <>
@@ -1826,7 +1826,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
             type="button"
             onClick={handleSalvarRascunho}
             disabled={carregando}
-            className="w-full py-2 inline-flex items-center justify-center gap-1.5 text-xs font-semibold text-amber-300/90 hover:text-amber-200 disabled:opacity-50 transition"
+            className="w-full py-2 inline-flex items-center justify-center gap-1.5 text-xs font-semibold text-blue-300/90 hover:text-blue-200 disabled:opacity-50 transition"
           >
             <Save className="w-3.5 h-3.5" />
             Salvar como rascunho
@@ -1852,7 +1852,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
               type="button"
               onClick={handleSalvarRascunho}
               disabled={carregando}
-              className="inline-flex items-center gap-1.5 px-5 py-2.5 bg-amber-500/10 hover:bg-amber-500/20 active:bg-amber-500/30 text-amber-300 border border-amber-500/30 rounded-xl text-xs font-semibold transition"
+              className="inline-flex items-center gap-1.5 px-5 py-2.5 bg-blue-500/10 hover:bg-blue-500/20 active:bg-blue-500/30 text-blue-300 border border-blue-500/30 rounded-xl text-xs font-semibold transition"
             >
               <Save className="w-3.5 h-3.5" />
               Salvar rascunho
@@ -1861,7 +1861,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
             <button
               type="submit"
               disabled={carregando}
-              className="inline-flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 disabled:opacity-50 text-white font-bold rounded-xl text-xs transition shadow-lg shadow-sky-500/20"
+              className="inline-flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-400 hover:to-blue-500 disabled:opacity-50 text-white font-bold rounded-xl text-xs transition shadow-lg shadow-blue-500/20"
             >
               {carregando ? (
                 <>

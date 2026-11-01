@@ -79,9 +79,9 @@ const CardLei: React.FC<{
         </div>
 
         {lei.atencao && (
-          <div className="flex gap-2.5 rounded-xl bg-amber-500/[0.07] border border-amber-500/20 p-3.5">
-            <TriangleAlert className="w-4 h-4 shrink-0 text-amber-400 mt-0.5" />
-            <p className="text-xs text-amber-100/90 leading-relaxed">{lei.atencao}</p>
+          <div className="flex gap-2.5 rounded-xl bg-blue-500/[0.07] border border-blue-500/20 p-3.5">
+            <TriangleAlert className="w-4 h-4 shrink-0 text-blue-400 mt-0.5" />
+            <p className="text-xs text-blue-100/90 leading-relaxed">{lei.atencao}</p>
           </div>
         )}
 

@@ -16,7 +16,7 @@ const BADGES: Record<SituacaoAssinatura['status'], { rotulo: string; cls: string
   ativa: { rotulo: 'Ativa', cls: 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300' },
   trial: { rotulo: 'Período de avaliação', cls: 'bg-blue-500/15 border-blue-500/30 text-blue-300' },
   vencida: { rotulo: 'Vencida', cls: 'bg-rose-500/15 border-rose-500/30 text-rose-300' },
-  cancelada: { rotulo: 'Cancelada', cls: 'bg-amber-500/15 border-amber-500/30 text-amber-300' },
+  cancelada: { rotulo: 'Cancelada', cls: 'bg-blue-500/15 border-blue-500/30 text-blue-300' },
 };
 
 /** Texto da validade: "Renova em", "Teste até", "Acesso até" ou "Venceu em". */
@@ -68,7 +68,7 @@ export const StatusAssinaturaCard: React.FC<{ situacao: SituacaoAssinatura; onAt
     {
       rotulo: 'Dias restantes',
       valor: cortesia ? 'Ilimitado' : situacao.acessoLiberado ? `${dias} ${dias === 1 ? 'dia' : 'dias'}` : 'Acesso expirado',
-      cls: !cortesia && dias <= 5 ? 'text-amber-300' : 'text-white',
+      cls: !cortesia && dias <= 5 ? 'text-blue-300' : 'text-white',
     },
   ];
 

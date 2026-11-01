@@ -871,7 +871,7 @@ export const HistoricoServicos: React.FC = () => {
               <div className="flex items-center space-x-2">
                 <button
                   onClick={() => abrirEdicao(osSelecionada)}
-                  className="px-3 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-lg text-xs font-semibold transition flex items-center space-x-1"
+                  className="px-3 py-1.5 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded-lg text-xs font-semibold transition flex items-center space-x-1"
                 >
                   <span>✏️</span>
                   <span>Editar OS</span>
@@ -1000,7 +1000,7 @@ export const HistoricoServicos: React.FC = () => {
                       <span className="text-zinc-500 block uppercase text-[10px] font-bold">
                         Forma de Pagamento
                       </span>
-                      <p className="font-semibold text-amber-400">
+                      <p className="font-semibold text-blue-400">
                         {osSelecionada.formaPagamento || "PIX"}{" "}
                         {osSelecionada.formaPagamento ===
                         "Cartão de crédito"
@@ -1130,11 +1130,11 @@ export const HistoricoServicos: React.FC = () => {
                         ).toFixed(2)}
                       </p>
                     </div>
-                    <div className="p-4 bg-zinc-950 border border-purple-500/30 rounded-xl">
-                      <span className="text-purple-400 uppercase text-[10px] font-bold block">
+                    <div className="p-4 bg-zinc-950 border border-blue-500/30 rounded-xl">
+                      <span className="text-blue-400 uppercase text-[10px] font-bold block">
                         Valor Líquido (Caixa)
                       </span>
-                      <p className="text-xl font-black text-purple-400 mt-1">
+                      <p className="text-xl font-black text-blue-400 mt-1">
                         R${" "}
                         {Number(
                           osSelecionada.valorLiquido ||
@@ -1166,7 +1166,7 @@ export const HistoricoServicos: React.FC = () => {
                                 ? "bg-emerald-500/20 text-emerald-400"
                                 : status === "DEFEITO"
                                   ? "bg-rose-500/20 text-rose-400"
-                                  : "bg-amber-500/20 text-amber-400"
+                                  : "bg-blue-500/20 text-blue-400"
                             }`}
                           >
                             {status}
@@ -1447,7 +1447,7 @@ export const HistoricoServicos: React.FC = () => {
                 <div className="space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                     <div>
-                      <label className="text-zinc-400 block mb-1 font-bold text-amber-400">
+                      <label className="text-zinc-400 block mb-1 font-bold text-blue-400">
                         Forma de Pagto
                       </label>
                       <select
@@ -1460,7 +1460,7 @@ export const HistoricoServicos: React.FC = () => {
                           setEditParcelas(parcelas);
                           recalcularValorLiquido(editValorTotal, editTipoDesconto, editDesconto, forma, parcelas);
                         }}
-                        className="w-full bg-zinc-950 border border-amber-500/50 rounded-lg p-2.5 text-amber-400 font-bold outline-none"
+                        className="w-full bg-zinc-950 border border-blue-500/50 rounded-lg p-2.5 text-blue-400 font-bold outline-none"
                       >
                         {!opcaoDaForma(editFormaPagamento) && (
                           <option value={editFormaPagamento}>Manter: {editFormaPagamento}</option>
@@ -1530,7 +1530,7 @@ export const HistoricoServicos: React.FC = () => {
                     </div>
 
                     <div>
-                      <label className="text-zinc-400 block mb-1 font-bold text-purple-400">
+                      <label className="text-zinc-400 block mb-1 font-bold text-blue-400">
                         Valor Líquido Final (R$)
                       </label>
                       <input
@@ -1538,7 +1538,7 @@ export const HistoricoServicos: React.FC = () => {
                         placeholder="0.00"
                         value={editValorLiquido}
                         onChange={(e) => setEditValorLiquido(e.target.value)}
-                        className="w-full bg-zinc-950 border border-purple-500/50 rounded-lg p-2.5 text-purple-400 font-bold outline-none"
+                        className="w-full bg-zinc-950 border border-blue-500/50 rounded-lg p-2.5 text-blue-400 font-bold outline-none"
                       />
                     </div>
                   </div>
@@ -1678,9 +1678,9 @@ export const HistoricoServicos: React.FC = () => {
                           <p className="text-sm font-black text-emerald-400 mt-1">R$ {fmt(valorComDesconto)}</p>
                         </div>
                         {veCustos && (
-                          <div className="p-3 bg-zinc-950 border border-purple-500/30 rounded-xl">
-                            <span className="text-purple-400 uppercase text-[10px] font-bold block">Lucro Líquido Estimado</span>
-                            <p className={`text-sm font-black mt-1 ${lucro >= 0 ? "text-purple-400" : "text-red-400"}`}>
+                          <div className="p-3 bg-zinc-950 border border-blue-500/30 rounded-xl">
+                            <span className="text-blue-400 uppercase text-[10px] font-bold block">Lucro Líquido Estimado</span>
+                            <p className={`text-sm font-black mt-1 ${lucro >= 0 ? "text-blue-400" : "text-red-400"}`}>
                               R$ {fmt(lucro)}
                             </p>
                           </div>

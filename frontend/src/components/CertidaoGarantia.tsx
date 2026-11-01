@@ -87,7 +87,7 @@ export const CertidaoGarantia: React.FC<Props> = ({ os, onClose }) => {
                 <span className="truncate">{rotuloItemChecklist(item)}</span>
                 <span
                   className={`font-semibold ${
-                    status === 'OK' ? 'text-emerald-700' : status === 'DEFEITO' ? 'text-rose-700' : 'text-amber-700'
+                    status === 'OK' ? 'text-emerald-700' : status === 'DEFEITO' ? 'text-rose-700' : 'text-blue-700'
                   }`}
                 >
                   {status}

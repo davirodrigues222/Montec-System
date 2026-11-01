@@ -644,7 +644,7 @@ export const Relatorios: React.FC = () => {
             <span className="text-[10px] sm:text-[11px] font-bold text-zinc-400 uppercase tracking-wider truncate">
               CUSTOS
             </span>
-            <div className="p-1 sm:p-2 rounded-md sm:rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20 shrink-0">
+            <div className="p-1 sm:p-2 rounded-md sm:rounded-lg bg-blue-500/10 text-blue-400 border border-blue-500/20 shrink-0">
               <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                 <rect x="2" y="4" width="20" height="16" rx="2" />
                 <line x1="2" y1="10" x2="22" y2="10" />
@@ -685,7 +685,7 @@ export const Relatorios: React.FC = () => {
             <span className="text-[10px] sm:text-[11px] font-bold text-zinc-400 uppercase tracking-wider truncate">
               TICKET MÉDIO
             </span>
-            <div className="p-1 sm:p-2 rounded-md sm:rounded-lg bg-purple-500/10 text-purple-400 border border-purple-500/20 shrink-0">
+            <div className="p-1 sm:p-2 rounded-md sm:rounded-lg bg-blue-500/10 text-blue-400 border border-blue-500/20 shrink-0">
               <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
@@ -821,7 +821,7 @@ export const Relatorios: React.FC = () => {
                                 <td className="py-2.5 px-4 text-right text-rose-400/90">
                                   {valorTaxasOS(os) > 0 ? `- R$ ${formatarValor(valorTaxasOS(os))}` : '—'}
                                 </td>
-                                <td className="py-2.5 px-4 text-right text-amber-400/90">
+                                <td className="py-2.5 px-4 text-right text-zinc-200">
                                   {custosOS(os) > 0 ? `- R$ ${formatarValor(custosOS(os))}` : '—'}
                                 </td>
                                 <td className={`py-2.5 px-4 text-right font-semibold ${lucroOS >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
@@ -847,7 +847,7 @@ export const Relatorios: React.FC = () => {
                                 </td>
                                 <td className="py-3 px-4 text-right text-white">R$ {formatarValor(bruto)}</td>
                                 <td className="py-3 px-4 text-right text-rose-400">- R$ {formatarValor(taxas)}</td>
-                                <td className="py-3 px-4 text-right text-amber-400">- R$ {formatarValor(custos)}</td>
+                                <td className="py-3 px-4 text-right text-zinc-200">- R$ {formatarValor(custos)}</td>
                                 <td className={`py-3 px-4 text-right ${lucro >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                                   R$ {formatarValor(lucro)}
                                 </td>
@@ -885,7 +885,7 @@ export const Relatorios: React.FC = () => {
                     { rotulo: 'Faturamento bruto', valor: faturamentoBruto, sinal: '', cor: 'text-white', dica: 'Cobrado dos clientes' },
                     { rotulo: 'Taxas de maquininha', valor: totalTaxas, sinal: '−', cor: 'text-rose-400', dica: 'Retido pelas operadoras' },
                     { rotulo: 'Líquido recebido', valor: faturamentoLiquido, sinal: '=', cor: 'text-blue-400', dica: 'O que entrou na conta' },
-                    { rotulo: 'Custos', valor: custosTotais, sinal: '−', cor: 'text-amber-400', dica: 'Peças, fretes e garantias' },
+                    { rotulo: 'Custos', valor: custosTotais, sinal: '−', cor: 'text-zinc-200', dica: 'Peças, fretes e garantias' },
                     { rotulo: 'Lucro líquido real', valor: lucroLiquido, sinal: '=', cor: lucroLiquido >= 0 ? 'text-emerald-400' : 'text-rose-400', dica: 'O que sobrou' },
                   ].map((etapa) => (
                     <div key={etapa.rotulo} className="p-3 sm:p-4 bg-[#080c14] border border-zinc-800/80 rounded-xl min-w-0">
@@ -987,7 +987,7 @@ export const Relatorios: React.FC = () => {
           </div>
           <div className="p-3 sm:p-4 bg-[#080c14] border border-zinc-800/80 rounded-xl min-w-0">
             <span className="text-[10px] sm:text-[11px] font-bold text-zinc-400 uppercase tracking-wider">Valor restante</span>
-            <p className="text-sm sm:text-lg font-extrabold text-amber-400 mt-1 truncate">R$ {formatarValor(valorRestanteMeta)}</p>
+            <p className="text-sm sm:text-lg font-extrabold text-blue-400 mt-1 truncate">R$ {formatarValor(valorRestanteMeta)}</p>
           </div>
         </div>
 
@@ -1083,7 +1083,7 @@ export const Relatorios: React.FC = () => {
                 </div>
               </div>
 
-              {/* Item 2: Fretes (Roxo) */}
+              {/* Item 2: Fretes (Azul claro) */}
               <div>
                 <div className="flex items-center justify-between text-xs mb-2">
                   <span className="font-medium text-zinc-300">Fretes</span>
@@ -1096,13 +1096,13 @@ export const Relatorios: React.FC = () => {
                 </div>
                 <div className="w-full bg-zinc-800/80 rounded-full h-2.5 overflow-hidden">
                   <div
-                    className="bg-purple-600 h-full rounded-full transition-all duration-500"
+                    className="bg-blue-400 h-full rounded-full transition-all duration-500"
                     style={{ width: `${percentFretes}%` }}
                   />
                 </div>
               </div>
 
-              {/* Item 3: Garantias e Retornos (Laranja/Âmbar) */}
+              {/* Item 3: Garantias e Retornos (Branco) */}
               <div>
                 <div className="flex items-center justify-between text-xs mb-2">
                   <span className="font-medium text-zinc-300">Garantias e retornos</span>
@@ -1115,7 +1115,7 @@ export const Relatorios: React.FC = () => {
                 </div>
                 <div className="w-full bg-zinc-800/80 rounded-full h-2.5 overflow-hidden">
                   <div
-                    className="bg-amber-500 h-full rounded-full transition-all duration-500"
+                    className="bg-zinc-300 h-full rounded-full transition-all duration-500"
                     style={{ width: `${percentGarantias}%` }}
                   />
                 </div>

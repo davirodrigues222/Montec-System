@@ -133,7 +133,7 @@ export const AbaOperacional: React.FC<PropsAba> = ({ config, alterar }) => {
           </div>
         </Secao>
         {ativos.length === 0 && (
-          <p className="text-[11px] text-amber-400">Nenhum item ativo: a Nova OS vai mostrar todos os itens.</p>
+          <p className="text-[11px] text-blue-400">Nenhum item ativo: a Nova OS vai mostrar todos os itens.</p>
         )}
       </div>
     </div>

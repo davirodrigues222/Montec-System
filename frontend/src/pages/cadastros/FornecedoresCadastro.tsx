@@ -297,7 +297,7 @@ export const FornecedoresCadastro: React.FC = () => {
                     {f.email && <p className="text-[11px] text-zinc-500 mt-0.5">{f.email}</p>}
                   </td>
                   <td className="px-4 sm:px-5 py-3">
-                    {f.categoria ? <Badge cor="ambar">{f.categoria}</Badge> : <span className="text-zinc-500">—</span>}
+                    {f.categoria ? <Badge cor="branco">{f.categoria}</Badge> : <span className="text-zinc-500">—</span>}
                   </td>
                   <td className="px-4 sm:px-5 py-3 whitespace-nowrap">
                     {f.contato ? (
@@ -332,7 +332,7 @@ export const FornecedoresCadastro: React.FC = () => {
       {detalhe && (
         <ModalDetalhes
           titulo={detalhe.nome}
-          subtitulo={<Badge cor="ambar">{detalhe.categoria || 'Fornecedor'}</Badge>}
+          subtitulo={<Badge cor="branco">{detalhe.categoria || 'Fornecedor'}</Badge>}
           itens={[
             ['Telefone / WhatsApp', detalhe.contato ? mascaraTelefone(detalhe.contato) : ''],
             ['E-mail', detalhe.email || ''],

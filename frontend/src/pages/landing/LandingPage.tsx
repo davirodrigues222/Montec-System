@@ -153,7 +153,7 @@ export const LandingPage: React.FC<Props> = ({ onEntrar, onCriarConta }) => (
                 className="grid md:grid-cols-[1fr_auto_1fr] items-center gap-3 md:gap-5 p-4 sm:p-5 rounded-2xl border border-zinc-800/80 bg-[#0c101a]"
               >
                 <p className="flex items-start gap-3 text-sm sm:text-base text-zinc-400">
-                  <span className="mt-0.5 w-6 h-6 shrink-0 rounded-full bg-rose-500/10 text-rose-400 flex items-center justify-center">
+                  <span className="mt-0.5 w-6 h-6 shrink-0 rounded-full bg-white/5 text-zinc-500 flex items-center justify-center">
                     <Icone d={ICONES.x} className="w-3.5 h-3.5" />
                   </span>
                   {item.dor}

@@ -40,7 +40,7 @@ const SeloPlano: React.FC<{ onAbrir: () => void }> = ({ onAbrir }) => {
   } else if (pago) {
     titulo = 'Assinatura cancelada';
     detalhe = `Acesso até ${dataCurta}`;
-    cls = 'border-amber-500/25 bg-amber-500/5 text-amber-300';
+    cls = 'border-blue-500/25 bg-blue-500/5 text-blue-300';
   } else if (situacao.acessoLiberado) {
     titulo = 'Período de avaliação';
     detalhe = `${dias} ${dias === 1 ? 'dia restante' : 'dias restantes'} • Assinar plano`;
@@ -48,7 +48,7 @@ const SeloPlano: React.FC<{ onAbrir: () => void }> = ({ onAbrir }) => {
   } else {
     titulo = 'Assinar Plano';
     detalhe = `${formatarPrecoPlano(PLANOS.mensal.preco)}/mês`;
-    cls = 'border-rose-500/25 bg-rose-500/5 text-rose-300';
+    cls = 'border-blue-500/40 bg-blue-500/10 text-blue-300';
   }
 
   return (
@@ -314,7 +314,7 @@ export const Layout: React.FC<Props> = ({
               {/* Logo Oficial BancadaOS */}
               <div className="relative w-11 h-11 sm:w-12 sm:h-12 rounded-xl overflow-hidden shadow-lg shadow-blue-500/25 shrink-0 border border-blue-500/30 bg-[#0d131f]">
                 <SimboloBancadaOS />
-                <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-amber-500 rounded-full border-2 border-[#090d15]" />
+                <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-blue-500 rounded-full border-2 border-[#090d15]" />
               </div>
 
               <div className="flex-1 min-w-0">
