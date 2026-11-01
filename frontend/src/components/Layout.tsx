@@ -291,7 +291,8 @@ export const Layout: React.FC<Props> = ({
   };
 
   return (
-    <div className="min-h-screen flex bg-[#070a12] text-zinc-100 font-sans print:bg-white print:text-black overflow-x-hidden">
+    // Altura da tela: a barra lateral fica parada e só o conteúdo (main) rola. Na impressão volta ao fluxo normal.
+    <div className="h-dvh flex bg-[#070a12] text-zinc-100 font-sans print:bg-white print:text-black overflow-hidden print:h-auto print:overflow-visible">
       {/* ================= BACKDROP OVERLAY PARA MOBILE ================= */}
       {menuAberto && (
         <div
@@ -307,9 +308,9 @@ export const Layout: React.FC<Props> = ({
           menuAberto ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         }`}
       >
-        <div className="overflow-y-auto flex-1">
+        <div className="flex-1 min-h-0 flex flex-col">
           {/* Topo da Sidebar: Plataforma BancadaOS com a Logo Oficial */}
-          <div className="p-5 sm:p-6 border-b border-zinc-800/40 flex items-center justify-between">
+          <div className="p-5 sm:p-6 border-b border-zinc-800/40 flex items-center justify-between shrink-0">
             <div className="flex items-center space-x-3.5 min-w-0">
               {/* Logo Oficial BancadaOS */}
               <div className="relative w-11 h-11 sm:w-12 sm:h-12 rounded-xl overflow-hidden shadow-lg shadow-blue-500/25 shrink-0 border border-blue-500/30 bg-[#0d131f]">
@@ -339,8 +340,8 @@ export const Layout: React.FC<Props> = ({
             </button>
           </div>
 
-          {/* Navegação */}
-          <nav className="p-4 space-y-6">
+          {/* Navegação: única parte da barra lateral que rola, se os itens não couberem */}
+          <nav className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 space-y-6">
             <div>
               <span className="block px-3 text-xs font-bold text-zinc-400 tracking-wider uppercase mb-2.5">
                 OPERAÇÃO
@@ -498,7 +499,7 @@ export const Layout: React.FC<Props> = ({
           </nav>
         </div>
 
-        {/* Rodapé: Operador Logado */}
+        {/* Rodapé fixo no fim da barra: plano e operador logado */}
         <div className="p-4 border-t border-zinc-800/60 shrink-0">
           <SeloPlano onAbrir={() => abrirSecaoConfiguracao('assinatura')} />
           <div className="flex items-center justify-between">
@@ -536,7 +537,7 @@ export const Layout: React.FC<Props> = ({
       </aside>
 
       {/* ================= ÁREA DE CONTEÚDO ================= */}
-      <div className="flex-1 flex flex-col min-w-0 w-full overflow-hidden max-w-full">
+      <div className="flex-1 flex flex-col min-w-0 min-h-0 w-full overflow-hidden max-w-full print:overflow-visible">
         {/* Cabeçalho Superior Adaptativo */}
         <header className="h-16 border-b border-zinc-800/60 bg-[#090d15]/90 backdrop-blur-md flex items-center justify-between px-3.5 sm:px-6 lg:px-8 print:hidden shrink-0 z-30 w-full max-w-full">
           <div className="flex items-center space-x-3 min-w-0">
@@ -660,7 +661,7 @@ export const Layout: React.FC<Props> = ({
         </header>
 
         {/* Área Principal com Rolagem Independente */}
-        <main className="flex-1 p-3 sm:p-6 lg:p-8 overflow-y-auto overflow-x-hidden print:p-0 min-w-0 w-full max-w-full">
+        <main className="flex-1 min-h-0 p-3 sm:p-6 lg:p-8 overflow-y-auto overflow-x-hidden print:p-0 print:overflow-visible min-w-0 w-full max-w-full">
           {children}
         </main>
       </div>
