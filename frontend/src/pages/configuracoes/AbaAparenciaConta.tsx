@@ -29,6 +29,7 @@ const celulaCsv = (v: unknown) => {
 };
 
 export const AbaAparenciaConta: React.FC<Props> = ({ config, emailConta, onSelecionarTema, onLogoUpload, onRemoverLogo }) => {
+  const [senhaAtual, setSenhaAtual] = useState('');
   const [novaSenha, setNovaSenha] = useState('');
   const [confirmarSenha, setConfirmarSenha] = useState('');
   const [salvandoSenha, setSalvandoSenha] = useState(false);
@@ -37,13 +38,15 @@ export const AbaAparenciaConta: React.FC<Props> = ({ config, emailConta, onSelec
 
   const trocarSenha = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!senhaAtual) return setMsgSenha({ ok: false, texto: 'Informe a senha atual.' });
     const erroSenha = validarSenhaForte(novaSenha);
     if (erroSenha) return setMsgSenha({ ok: false, texto: erroSenha });
     if (novaSenha !== confirmarSenha) return setMsgSenha({ ok: false, texto: 'As senhas não conferem.' });
     setSalvandoSenha(true);
     setMsgSenha(null);
     try {
-      await alterarSenhaConta(novaSenha);
+      await alterarSenhaConta(senhaAtual, novaSenha);
+      setSenhaAtual('');
       setNovaSenha('');
       setConfirmarSenha('');
       setMsgSenha({ ok: true, texto: 'Senha da conta alterada.' });
@@ -181,6 +184,18 @@ export const AbaAparenciaConta: React.FC<Props> = ({ config, emailConta, onSelec
               Conta conectada: <strong className="text-zinc-200">{emailConta || '—'}</strong>. Esta é a senha de login da conta,
               não a dos funcionários.
             </p>
+          </div>
+          {/* Mesma largura do campo "Nova senha" */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Campo label="Senha atual">
+              <input
+                type="password"
+                value={senhaAtual}
+                onChange={(e) => setSenhaAtual(e.target.value)}
+                autoComplete="current-password"
+                className={inputCls()}
+              />
+            </Campo>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Campo label="Nova senha">

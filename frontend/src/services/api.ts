@@ -1,4 +1,4 @@
-import { supabase } from './supabaseClient';
+import { supabase, criarClienteVerificacao } from './supabaseClient';
 import { buscarTodasAsLinhas } from './paginacao';
 import { validarSenhaForte } from '../utils/formatadores';
 import { GARANTIA_LEGAL_DIAS, STATUS_APAGAM_SENHA } from '../utils/conformidade';
@@ -1262,10 +1262,27 @@ export async function redefinirSenhaComCodigo(email: string, codigo: string, nov
   if (data?.user) sincronizarSessaoConfiguracoesLoja(data.user);
 }
 
-/** Troca a senha da conta autenticada (Supabase Auth). */
-export async function alterarSenhaConta(novaSenha: string): Promise<void> {
+/** Troca a senha da conta autenticada (Supabase Auth), conferindo antes a senha atual. */
+export async function alterarSenhaConta(senhaAtual: string, novaSenha: string): Promise<void> {
+  if (!senhaAtual) throw new Error('Informe a senha atual.');
   const erroSenha = validarSenhaForte(novaSenha || '');
   if (erroSenha) throw new Error(erroSenha);
+  if (novaSenha === senhaAtual) throw new Error('A nova senha precisa ser diferente da atual.');
+
+  const { data: authData } = await supabase.auth.getUser();
+  const email = authData?.user?.email;
+  if (!email) throw new Error('Sessão expirada. Saia e entre novamente na conta.');
+
+  // Confere a senha atual num cliente à parte: o login aberto no sistema não é trocado
+  const verificacao = criarClienteVerificacao();
+  const { error: erroAtual } = await verificacao.auth.signInWithPassword({ email, password: senhaAtual });
+  if (erroAtual) {
+    const msg = erroAtual.message || '';
+    if (/rate limit|too many/i.test(msg)) throw new Error('Muitas tentativas. Aguarde alguns minutos e tente de novo.');
+    throw new Error('Senha atual incorreta.');
+  }
+  await verificacao.auth.signOut({ scope: 'local' }).catch(() => undefined);
+
   const { error } = await supabase.auth.updateUser({ password: novaSenha });
   if (error) {
     const msg = error.message || '';
