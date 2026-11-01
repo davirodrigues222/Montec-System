@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
   buscarOrdensServico,
   calcularResumoMetaFinanceira,
@@ -181,11 +182,11 @@ const MenuListagens: React.FC<{ atual: Detalhamento; onEscolher: (d: Detalhament
       </button>
 
       {aberto && (
-        <div role="menu" className="absolute left-0 sm:left-auto sm:right-0 top-full mt-2 w-64 max-w-[calc(100vw-2rem)] z-30 py-1.5 bg-[#0c101a] border border-zinc-700/80 rounded-xl shadow-2xl shadow-black/50">
+        <div role="menu" className="absolute left-0 origin-top-left sm:left-auto sm:right-0 sm:origin-top-right top-full mt-2 w-64 max-w-[calc(100vw-2rem)] z-30 py-1.5 bg-[#0c101a] border border-zinc-700/80 rounded-xl shadow-2xl shadow-black/50">
           {GRUPOS_LISTAGEM.map((grupo, i) => {
             const expandido = grupoAberto === grupo.id;
             return (
-              <div key={grupo.id} className="relative" onMouseEnter={() => setGrupoAberto(grupo.id)}>
+              <div key={grupo.id}>
                 <button
                   type="button"
                   onClick={() => setGrupoAberto(expandido ? null : grupo.id)}
@@ -201,16 +202,16 @@ const MenuListagens: React.FC<{ atual: Detalhamento; onEscolher: (d: Detalhament
                     <span className="text-zinc-500 font-mono mr-1.5">{i}</span>
                     {grupo.rotulo}
                   </span>
-                  <svg className={`w-3 h-3 shrink-0 text-zinc-400 transition-transform ${expandido ? 'rotate-90 sm:rotate-0' : ''}`} fill="currentColor" viewBox="0 0 24 24">
+                  <svg className={`w-3 h-3 shrink-0 text-zinc-400 transition-transform ${expandido ? 'rotate-90' : ''}`} fill="currentColor" viewBox="0 0 24 24">
                     <path d="M8 5l8 7-8 7z" />
                   </svg>
                 </button>
 
-                {/* Submenu: ao lado no desktop (abre para a esquerda, o botão fica na borda direita); embaixo no celular */}
+                {/* Submenu embaixo do grupo, dentro do próprio menu: nunca sai da tela */}
                 {expandido && (
                   <div
                     role="menu"
-                    className="py-1 bg-[#080c14] border-y border-zinc-800/80 sm:absolute sm:right-full sm:top-0 sm:mr-1.5 sm:w-64 sm:py-1.5 sm:bg-[#0c101a] sm:border sm:border-zinc-700/80 sm:rounded-xl sm:shadow-2xl sm:shadow-black/50"
+                    className="py-1 bg-[#080c14] border-y border-zinc-800/80"
                   >
                     {grupo.itens.map((item) => (
                       <button
@@ -218,7 +219,7 @@ const MenuListagens: React.FC<{ atual: Detalhamento; onEscolher: (d: Detalhament
                         type="button"
                         role="menuitem"
                         onClick={() => escolher(item)}
-                        className={`w-full flex items-center gap-2 pl-10 sm:pl-3.5 pr-3.5 py-2.5 text-left text-[13px] transition ${
+                        className={`w-full flex items-center gap-2 pl-10 pr-3.5 py-2.5 text-left text-[13px] transition ${
                           atual === item ? 'text-blue-300 font-semibold' : 'text-zinc-300 hover:bg-zinc-800/50'
                         }`}
                       >
@@ -231,24 +232,6 @@ const MenuListagens: React.FC<{ atual: Detalhamento; onEscolher: (d: Detalhament
               </div>
             );
           })}
-
-          {atual !== 'NENHUM' && (
-            <>
-              <div className="my-1.5 border-t border-zinc-800/80" />
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => escolher('NENHUM')}
-                onMouseEnter={() => setGrupoAberto(null)}
-                className="w-full flex items-center gap-3 px-3.5 py-2.5 text-left text-[13px] text-zinc-400 hover:text-white hover:bg-zinc-800/50 transition"
-              >
-                <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-                Ocultar listagem
-              </button>
-            </>
-          )}
         </div>
       )}
     </div>
@@ -311,6 +294,22 @@ const ROTULO_PERIODO_ANTERIOR: Record<FiltroPeriodo, string> = {
   ANO_ATUAL: 'ano anterior',
   PERSONALIZADO: 'período anterior',
   TODOS: '',
+};
+
+/** Nome do período escolhido no cabeçalho, mostrado na janela da listagem. */
+const ROTULO_PERIODO: Record<Exclude<FiltroPeriodo, 'PERSONALIZADO'>, string> = {
+  HOJE: 'Hoje',
+  ATUAL: 'Mês atual',
+  ANTERIOR: 'Mês anterior',
+  ANO_ATUAL: 'Este ano',
+  TODOS: 'Todo o histórico',
+};
+
+/** Dica do campo de busca de cada listagem. */
+const PLACEHOLDER_BUSCA: Record<Exclude<Detalhamento, 'NENHUM'>, string> = {
+  ORDENS: 'Buscar OS, cliente, aparelho, serviço...',
+  PAGAMENTO: 'Buscar forma de pagamento...',
+  FLUXO: 'Buscar indicador...',
 };
 
 export const Relatorios: React.FC = () => {
@@ -482,10 +481,10 @@ export const Relatorios: React.FC = () => {
 
   // Auditoria: ordens que compõem os totais do período, da mais recente para a mais antiga
   const [detalhamento, setDetalhamento] = useState<Detalhamento>('NENHUM');
-  const [buscaOrdens, setBuscaOrdens] = useState('');
+  const [buscaListagem, setBuscaListagem] = useState('');
   const [linhasVisiveis, setLinhasVisiveis] = useState(LINHAS_POR_PAGINA);
   const ordensAuditoria = useMemo(() => {
-    const termo = buscaOrdens.trim().toLowerCase();
+    const termo = buscaListagem.trim().toLowerCase();
     return [...ordensFiltradas]
       .filter(
         (os) =>
@@ -498,11 +497,40 @@ export const Relatorios: React.FC = () => {
           (b.data_abertura ? new Date(b.data_abertura).getTime() : 0) -
           (a.data_abertura ? new Date(a.data_abertura).getTime() : 0)
       );
-  }, [ordensFiltradas, buscaOrdens]);
+  }, [ordensFiltradas, buscaListagem]);
 
   useEffect(() => {
     setLinhasVisiveis(LINHAS_POR_PAGINA);
-  }, [buscaOrdens]);
+  }, [buscaListagem]);
+
+  /** Fecha a janela da listagem e limpa a busca. */
+  const fecharListagem = () => {
+    setDetalhamento('NENHUM');
+    setBuscaListagem('');
+  };
+
+  // Esc fecha a janela da listagem
+  useEffect(() => {
+    if (detalhamento === 'NENHUM') return;
+    const aoTeclar = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') fecharListagem();
+    };
+    document.addEventListener('keydown', aoTeclar);
+    return () => document.removeEventListener('keydown', aoTeclar);
+  }, [detalhamento]);
+
+  // Formas de pagamento que batem com a busca da listagem
+  const modalidadesVisiveis = useMemo(() => {
+    const termo = buscaListagem.trim().toLowerCase();
+    return termo ? porModalidade.filter(([modalidade]) => modalidade.toLowerCase().includes(termo)) : porModalidade;
+  }, [porModalidade, buscaListagem]);
+
+  const rotuloPeriodo =
+    mesSelecionado === 'PERSONALIZADO'
+      ? `De ${dataInicioPersonalizada ? new Date(`${dataInicioPersonalizada}T12:00:00`).toLocaleDateString('pt-BR') : '…'} até ${
+          dataFimPersonalizada ? new Date(`${dataFimPersonalizada}T12:00:00`).toLocaleDateString('pt-BR') : '…'
+        }`
+      : ROTULO_PERIODO[mesSelecionado];
 
   const custosTotais = custoPecas + custoFretes + custoGarantias;
 
@@ -623,7 +651,13 @@ export const Relatorios: React.FC = () => {
 
         {/* Controles: Listagens, Meta Financeira, Seletor de Período, Intervalo Personalizado e Botão de Exportação */}
         <div className="flex flex-wrap items-center gap-2 shrink-0">
-          <MenuListagens atual={detalhamento} onEscolher={setDetalhamento} />
+          <MenuListagens
+            atual={detalhamento}
+            onEscolher={(d) => {
+              setBuscaListagem('');
+              setDetalhamento(d);
+            }}
+          />
           <PopoverMeta>
             <h3 className="text-sm font-bold text-white">Meta Financeira — {resumoMeta.rotuloCompetencia}</h3>
             <p className="text-[11px] text-zinc-400 mt-0.5">Meta mensal exibida no Painel. O progresso reinicia a cada novo mês.</p>
@@ -847,33 +881,63 @@ export const Relatorios: React.FC = () => {
         </div>
       </div>
 
-      {/* ================= DETALHAMENTO SOB DEMANDA ================= */}
-      {/* Aberto pelo botão "Listagens" do cabeçalho */}
-      {detalhamento !== 'NENHUM' && (
-      <div className="bg-[#0c101a] border border-zinc-800/80 rounded-2xl shadow-sm min-w-0">
-          <div>
-            <div className="flex items-center justify-between gap-3 px-4 sm:px-5 pt-4">
-              <div className="min-w-0">
-                <p className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider truncate">
-                  {ROTULOS_DETALHAMENTO[detalhamento]}
-                </p>
-                {foraDoFaturamento > 0 && (
-                  <p className="text-[11px] text-zinc-500 mt-0.5">Rascunhos e ordens canceladas não entram nos totais.</p>
-                )}
+      {/* ================= LISTAGEM EM JANELA (MODAL) ================= */}
+      {/* Aberta pelo botão "Listagens" do cabeçalho; vai para o <body> para cobrir a tela toda */}
+      {detalhamento !== 'NENHUM' &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/60 backdrop-blur-sm"
+            onMouseDown={(e) => {
+              if (e.target === e.currentTarget) fecharListagem(); // clique fora da janela
+            }}
+          >
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-label={ROTULOS_DETALHAMENTO[detalhamento]}
+              className="w-full max-w-6xl max-h-[90vh] flex flex-col bg-[#0c101a] border border-zinc-700/80 rounded-2xl shadow-2xl shadow-black/60 min-w-0"
+            >
+              {/* Cabeçalho fixo: título, busca e fechar */}
+              <div className="shrink-0 flex flex-col sm:flex-row sm:items-center gap-3 px-4 sm:px-5 py-4 border-b border-zinc-800/80">
+                <div className="min-w-0 flex-1">
+                  <h3 className="text-sm sm:text-base font-bold text-white truncate">{ROTULOS_DETALHAMENTO[detalhamento]}</h3>
+                  <p className="text-[11px] text-zinc-500 mt-0.5 truncate">
+                    {rotuloPeriodo}
+                    {foraDoFaturamento > 0 && ' · Rascunhos e ordens canceladas não entram nos totais.'}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="search"
+                    value={buscaListagem}
+                    onChange={(e) => setBuscaListagem(e.target.value)}
+                    placeholder={PLACEHOLDER_BUSCA[detalhamento]}
+                    autoFocus
+                    className="w-full sm:w-72 px-3.5 py-2 rounded-xl bg-[#080c14] border border-zinc-800 text-xs text-white placeholder-zinc-500 outline-none focus:border-blue-500/60"
+                  />
+                  <button
+                    type="button"
+                    onClick={fecharListagem}
+                    aria-label="Fechar listagem (Esc)"
+                    title="Fechar (Esc)"
+                    className="shrink-0 w-9 h-9 flex items-center justify-center rounded-xl text-zinc-400 hover:text-white hover:bg-zinc-800 transition"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
               </div>
-              <button
-                type="button"
-                onClick={() => setDetalhamento('NENHUM')}
-                className="text-xs font-semibold text-zinc-400 hover:text-white shrink-0"
-              >
-                Ocultar listagem ▲
-              </button>
-            </div>
+
+              {/* Conteúdo com rolagem própria: o painel ao fundo não se move */}
+              <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
 
             {/* ---------- Por forma de pagamento ---------- */}
             {detalhamento === 'PAGAMENTO' &&
-              (porModalidade.length === 0 ? (
-                <p className="p-8 text-center text-xs text-zinc-500">Nenhuma ordem no período selecionado.</p>
+              (modalidadesVisiveis.length === 0 ? (
+                <p className="p-8 text-center text-xs text-zinc-500">
+                  {buscaListagem.trim() ? 'Nenhuma forma de pagamento corresponde à busca.' : 'Nenhuma ordem no período selecionado.'}
+                </p>
               ) : (
                 <div className="overflow-x-auto p-4 sm:px-5 pt-3">
                   <table className="w-full text-left text-xs min-w-[560px]">
@@ -888,7 +952,7 @@ export const Relatorios: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-zinc-800/40">
-                      {porModalidade.map(([modalidade, g]) => (
+                      {modalidadesVisiveis.map(([modalidade, g]) => (
                         <tr key={modalidade}>
                           <td className="py-2 px-3 text-zinc-200 font-medium">{modalidade}</td>
                           <td className="py-2 px-3 text-right text-zinc-400">{g.quantidade}</td>
@@ -908,18 +972,9 @@ export const Relatorios: React.FC = () => {
             {/* ---------- Ordens do período ---------- */}
             {detalhamento === 'ORDENS' && (
               <>
-                <div className="px-4 sm:px-5 pt-3">
-                  <input
-                    type="search"
-                    value={buscaOrdens}
-                    onChange={(e) => setBuscaOrdens(e.target.value)}
-                    placeholder="Buscar por OS, cliente, aparelho, serviço ou pagamento..."
-                    className="w-full sm:max-w-md px-3.5 py-2 rounded-xl bg-[#080c14] border border-zinc-800 text-xs text-white placeholder-zinc-500 outline-none focus:border-blue-500/60"
-                  />
-                </div>
                 {ordensAuditoria.length === 0 ? (
                   <p className="p-8 text-center text-xs text-zinc-500">
-                    {buscaOrdens.trim() ? 'Nenhuma ordem corresponde à busca.' : 'Nenhuma ordem no período selecionado.'}
+                    {buscaListagem.trim() ? 'Nenhuma ordem corresponde à busca.' : 'Nenhuma ordem no período selecionado.'}
                   </p>
                 ) : (
                   <>
@@ -975,7 +1030,7 @@ export const Relatorios: React.FC = () => {
                         <tfoot className="border-t border-zinc-700/80 bg-[#090d15] font-bold">
                           {(() => {
                             // Com busca, soma só as ordens encontradas; sem busca, são os mesmos totais dos cards
-                            const filtrando = buscaOrdens.trim() !== '';
+                            const filtrando = buscaListagem.trim() !== '';
                             const bruto = filtrando ? somar(ordensAuditoria, valorBrutoOS) : faturamentoBruto;
                             const taxas = filtrando ? somar(ordensAuditoria, valorTaxasOS) : totalTaxas;
                             const custos = filtrando ? somar(ordensAuditoria, custosOS) : custosTotais;
@@ -1028,7 +1083,9 @@ export const Relatorios: React.FC = () => {
                     { rotulo: 'Líquido recebido', valor: faturamentoLiquido, sinal: '=', cor: 'text-blue-400', dica: 'O que entrou na conta' },
                     { rotulo: 'Custos', valor: custosTotais, sinal: '−', cor: 'text-zinc-200', dica: 'Peças, fretes e garantias' },
                     { rotulo: 'Lucro líquido real', valor: lucroLiquido, sinal: '=', cor: lucroLiquido >= 0 ? 'text-emerald-400' : 'text-rose-400', dica: 'O que sobrou' },
-                  ].map((etapa) => (
+                  ]
+                    .filter((etapa) => etapa.rotulo.toLowerCase().includes(buscaListagem.trim().toLowerCase()))
+                    .map((etapa) => (
                     <div key={etapa.rotulo} className="p-3 sm:p-4 bg-[#080c14] border border-zinc-800/80 rounded-xl min-w-0">
                       <span className="text-[10px] sm:text-[11px] font-bold text-zinc-400 uppercase tracking-wider block truncate">
                         {etapa.sinal && <span className="text-zinc-500 mr-1">{etapa.sinal}</span>}
@@ -1041,9 +1098,11 @@ export const Relatorios: React.FC = () => {
                 </div>
               </div>
             )}
-          </div>
-      </div>
-      )}
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
 
       {/* ================= BLOCO DE GRÁFICOS E COMPOSIÇÃO ================= */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 items-stretch min-w-0 w-full">
