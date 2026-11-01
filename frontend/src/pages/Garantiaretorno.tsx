@@ -9,6 +9,7 @@ import {
 import type { OrdemServico } from '../types';
 import { AvisoErroCarregamento } from '../components/AvisoErroCarregamento';
 import { formatarDataOS } from '../utils/formatadores';
+import { TriangleAlert } from 'lucide-react';
 
 export const GarantiaRetorno: React.FC = () => {
   const [ordens, setOrdens] = useState<OrdemServico[]>([]);
@@ -313,8 +314,9 @@ export const GarantiaRetorno: React.FC = () => {
 
               {/* Banner caso a OS selecionada seja inelegível */}
               {!validacaoSelecionada.elegivel && (
-                <div className="p-4 bg-rose-500/10 border border-rose-500/30 rounded-xl text-xs text-rose-300 font-semibold">
-                  ⚠️ {validacaoSelecionada.motivo}
+                <div className="flex items-start gap-2 p-4 bg-rose-500/10 border border-rose-500/30 rounded-xl text-xs text-rose-300 font-semibold">
+                  <TriangleAlert className="w-4 h-4 shrink-0" />
+                  <span>{validacaoSelecionada.motivo}</span>
                 </div>
               )}
 

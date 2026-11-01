@@ -44,6 +44,7 @@ import {
   sessaoSalvaEhDeFuncionario,
 } from './services/loginFuncionario';
 import type { SecaoCadastro, SecaoConfiguracao } from './types';
+import { LockOpen } from 'lucide-react';
 
 // Marca que este navegador já entrou no sistema: na próxima visita vai direto ao login
 const CHAVE_JA_ACESSOU = 'montec_ja_acessou';
@@ -522,7 +523,8 @@ export default function App() {
             {liberadaPorAdmin && (
               <div className="mb-4 flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 bg-blue-500/10 border border-blue-500/25 rounded-xl text-xs print:hidden">
                 <span className="text-blue-300 font-semibold">
-                  🔓 Acesso liberado por {liberacao?.admin} somente para esta tela.
+                  <LockOpen className="inline w-3.5 h-3.5 mr-1.5 -mt-0.5" />
+                  Acesso liberado por {liberacao?.admin} somente para esta tela.
                 </span>
                 <button
                   type="button"

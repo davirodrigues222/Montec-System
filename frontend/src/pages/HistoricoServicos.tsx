@@ -60,6 +60,7 @@ import {
 import type { OrdemServico, StatusOS } from "../types";
 import { ITENS_CHECKLIST, OPCOES_CHECKLIST, itensVisiveisChecklist, rotuloItemChecklist } from "../utils/checklist";
 import { formatarDataOS, formatarValor } from "../utils/formatadores";
+import { Pencil, Printer, RotateCcw, Save, Smartphone, TriangleAlert, User } from 'lucide-react';
 
 // ================= FILTROS DA LISTAGEM =================
 type FiltroData = "TODAS" | "DIA" | "MES" | "ANO";
@@ -873,7 +874,7 @@ export const HistoricoServicos: React.FC = () => {
                   onClick={() => abrirEdicao(osSelecionada)}
                   className="px-3 py-1.5 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded-lg text-xs font-semibold transition flex items-center space-x-1"
                 >
-                  <span>✏️</span>
+                  <Pencil className="w-3.5 h-3.5" />
                   <span>Editar OS</span>
                 </button>
 
@@ -883,7 +884,7 @@ export const HistoricoServicos: React.FC = () => {
                       onClick={() => handleImprimir(osSelecionada)}
                       className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg text-xs transition flex items-center space-x-1 shadow-md"
                     >
-                      <span>🖨️</span>
+                      <Printer className="w-3.5 h-3.5" />
                       <span>Imprimir / Salvar PDF</span>
                     </button>
                   )}
@@ -954,7 +955,7 @@ export const HistoricoServicos: React.FC = () => {
                   {osSelecionada.garantia && (
                     <div className="p-3.5 bg-rose-500/10 border border-rose-500/30 rounded-xl text-rose-400 space-y-1">
                       <div className="flex items-center space-x-2 font-bold text-xs uppercase">
-                        <span>🔄</span>
+                        <RotateCcw className="w-4 h-4 shrink-0" />
                         <span>Serviço com Retorno em Garantia Acionado</span>
                       </div>
                       <p className="text-[11px] text-zinc-300">
@@ -1032,7 +1033,8 @@ export const HistoricoServicos: React.FC = () => {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-zinc-950 border border-zinc-800 rounded-xl">
                     <div className="space-y-1">
                       <span className="text-blue-400 block uppercase text-[10px] font-bold">
-                        👤 Informações do Cliente
+                        <User className="inline w-3.5 h-3.5 mr-1 -mt-0.5" />
+                        Informações do Cliente
                       </span>
                       <p className="font-bold text-white text-sm">
                         {osSelecionada.cliente?.nome}
@@ -1049,7 +1051,8 @@ export const HistoricoServicos: React.FC = () => {
 
                     <div className="space-y-1 border-t md:border-t-0 md:border-l border-zinc-800 pt-3 md:pt-0 md:pl-4">
                       <span className="text-blue-400 block uppercase text-[10px] font-bold">
-                        📱 Informações do Aparelho
+                        <Smartphone className="inline w-3.5 h-3.5 mr-1 -mt-0.5" />
+                        Informações do Aparelho
                       </span>
                       <p className="font-bold text-white text-sm">
                         {osSelecionada.aparelho?.modelo}
@@ -1737,7 +1740,12 @@ export const HistoricoServicos: React.FC = () => {
                 disabled={salvandoEdicao}
                 className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-bold rounded-xl text-xs transition"
               >
-                {salvandoEdicao ? "Salvando..." : "💾 Salvar Alterações"}
+                {salvandoEdicao ? "Salvando..." : (
+                  <span className="inline-flex items-center gap-1.5">
+                    <Save className="w-3.5 h-3.5" />
+                    Salvar Alterações
+                  </span>
+                )}
               </button>
             </div>
           </div>
@@ -1749,7 +1757,7 @@ export const HistoricoServicos: React.FC = () => {
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 print:hidden">
           <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 w-full max-w-md space-y-5 shadow-2xl">
             <div className="flex items-center space-x-3 text-red-400">
-              <span className="text-2xl">⚠️</span>
+              <TriangleAlert className="w-6 h-6 shrink-0" />
               <h3 className="text-lg font-bold text-white">
                 Excluir Ordem de Serviço?
               </h3>

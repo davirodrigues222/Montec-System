@@ -769,7 +769,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
     try {
       const resultado = await criarOrdemServico({ ...montarPayload(), status_os: 'RASCUNHO' });
 
-      alert(`✅ Rascunho da OS ${resultado.numeroOs} salvo com sucesso!\n\nEle está disponível na aba "Rascunhos / Em Definição" no histórico de ordens.`);
+      alert(`Rascunho da OS ${resultado.numeroOs} salvo com sucesso!\n\nEle está disponível na aba "Rascunhos / Em Definição" no histórico de ordens.`);
       handleLimparFormulario();
       onNavigate?.('historico');
     } catch (err: any) {
