@@ -1,5 +1,5 @@
 -- =====================================================================
--- Montec System — Colunas opcionais dos cadastros existentes
+-- BancadaOS — Colunas opcionais dos cadastros existentes
 --
 -- As telas de Clientes e Fornecedores têm campos que hoje NÃO são salvos porque as
 -- colunas não existem no banco (o app salva o resto e avisa o que ficou de fora).

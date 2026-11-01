@@ -89,7 +89,7 @@ O sistema opera com o **Row Level Security (RLS)** ativo em todas as tabelas, va
 ## 📁 Estrutura de Pastas
 
 ```text
-Montec-System/
+BancadaOS/
 ├── supabase/
 │   ├── migrations/             # Banco: tabelas, regras de acesso (RLS) e funções (rodar em ordem)
 │   ├── functions/              # Edge Functions: cakto-webhook e login-funcionario

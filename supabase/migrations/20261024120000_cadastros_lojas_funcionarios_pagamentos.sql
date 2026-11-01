@@ -1,5 +1,5 @@
 -- =====================================================================
--- Montec System — Submódulos de Cadastro: Lojas, Funcionários e Formas de Pagamento
+-- BancadaOS — Submódulos de Cadastro: Lojas, Funcionários e Formas de Pagamento
 --
 -- NÃO ALTERA nenhuma tabela existente (ordens_servico, clientes, aparelhos_cliente,
 -- cad_fornecedores, cad_servicos). Apenas cria tabelas novas, isoladas por conta (user_id)

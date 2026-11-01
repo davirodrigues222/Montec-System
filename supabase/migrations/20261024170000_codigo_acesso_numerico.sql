@@ -1,5 +1,5 @@
 -- =====================================================================
--- Montec System — Código de acesso do funcionário somente numérico
+-- BancadaOS — Código de acesso do funcionário somente numérico
 --
 -- Troca a regra antiga (3 a 30 caracteres com letras, ponto e hífen) por:
 -- número inteiro de 1 a 15 dígitos, sem vírgula, ponto, sinal ou letras.
