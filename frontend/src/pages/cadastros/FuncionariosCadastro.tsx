@@ -151,6 +151,14 @@ export const FuncionariosCadastro: React.FC = () => {
 
   const nomeLoja = (id: string) => lojas.find((l) => l.id_loja === id)?.nome || 'Loja removida';
   const precisaSenha = !editandoId || etapaSenha === 'liberado';
+  // Regra: o primeiro funcionário da conta é sempre o Administrador, ativo e com acesso total
+  // (o banco confere o mesmo, migração 20261101090000)
+  const primeiroFuncionario = !carregando && !tabelaAusente && !editandoId && funcionarios.length === 0;
+  useEffect(() => {
+    if (primeiroFuncionario && (form.cargo !== 'ADMIN' || !form.ativo)) {
+      setForm((f) => ({ ...f, cargo: 'ADMIN', permissoes: { ...CARGOS.ADMIN.permissoes }, ativo: true }));
+    }
+  }, [primeiroFuncionario, form.cargo, form.ativo]);
 
   const fecharRedefinicao = () => {
     setEtapaSenha('fechado');
@@ -285,7 +293,13 @@ export const FuncionariosCadastro: React.FC = () => {
       if (precisaSenha && form.senha && contaId) {
         await sincronizarLoginFuncionario(contaId, form.codigo_acesso, form.senha).catch(() => undefined);
       }
-      feedback.sucesso(editandoId ? 'Funcionário atualizado.' : 'Funcionário cadastrado com acesso liberado.');
+      feedback.sucesso(
+        editandoId
+          ? 'Funcionário atualizado.'
+          : primeiroFuncionario
+          ? 'Administrador cadastrado. A partir de agora, ao abrir o sistema, será pedido o código de acesso e a senha.'
+          : 'Funcionário cadastrado com acesso liberado.'
+      );
       limpar();
       await carregar();
     } catch (err: any) {
@@ -552,18 +566,27 @@ export const FuncionariosCadastro: React.FC = () => {
               onChange={(v) => atualizar('ativo', v)}
               label="Acesso ativo"
               descricao="Funcionários inativos não conseguem entrar no sistema."
+              disabled={primeiroFuncionario}
             />
           </div>
         </Secao>
 
         <Secao titulo="Cargo e permissões">
+          {primeiroFuncionario && (
+            <div className="px-3.5 py-3 rounded-xl border text-xs leading-relaxed bg-blue-500/10 border-blue-500/30 text-blue-300">
+              <span className="font-bold">O primeiro funcionário é o Administrador</span>, com acesso total ao sistema.
+              Depois dele, o sistema passa a pedir o código de acesso e a senha ao entrar, e você pode cadastrar os
+              demais funcionários com os cargos e telas que quiser.
+            </div>
+          )}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             {(Object.keys(CARGOS) as CargoFuncionario[]).map((c) => (
               <button
                 key={c}
                 type="button"
                 onClick={() => trocarCargo(c)}
-                className={`p-3 rounded-xl border text-left transition ${
+                disabled={primeiroFuncionario && c !== 'ADMIN'}
+                className={`p-3 rounded-xl border text-left transition disabled:opacity-40 disabled:cursor-not-allowed ${
                   form.cargo === c ? 'border-blue-500 bg-blue-500/10 ring-1 ring-blue-500/30' : 'border-zinc-800/80 bg-[#080c14] hover:border-zinc-700'
                 }`}
               >

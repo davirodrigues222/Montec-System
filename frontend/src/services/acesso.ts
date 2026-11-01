@@ -4,7 +4,8 @@ import type { SecaoCadastro } from '../types';
 
 // ==========================================
 // Acesso por funcionário (operador) dentro da conta já autenticada.
-// Depois do login da conta, o sistema SEMPRE pede código + senha do funcionário.
+// Funcionários são opcionais: sem nenhum cadastrado, o dono entra direto com acesso total.
+// Com funcionários, depois do login da conta o sistema pede código + senha do funcionário.
 // O operador vale para a aba atual: o F5 mantém a identificação; fechar a aba, voltar de outro
 // site ou sair da conta pede código e senha de novo (ver CHAVE_OPERADOR_SESSAO em App.tsx).
 //
@@ -203,6 +204,20 @@ const operadorProprietario = (nome: string): Operador => ({
   lojas: [],
   proprietario: true,
 });
+
+/**
+ * Conta sem funcionários: o dono entra direto, com acesso total, sem código nem senha
+ * (migração 20261101090000). Devolve null se a conta já tem funcionários ou sem a migração.
+ */
+export async function entrarSemFuncionarios(nome: string): Promise<{ operador: Operador; token: string } | null> {
+  const { data, error } = await supabase.rpc('entrar_proprietario_sem_funcionarios');
+  if (error) {
+    if (funcaoAusente(error, 'entrar_proprietario_sem_funcionarios')) return null;
+    throw new Error(error.message || 'Não foi possível entrar.');
+  }
+  const linha = Array.isArray(data) ? data[0] : data;
+  return linha?.token ? { operador: operadorProprietario(linha.nome || nome), token: linha.token } : null;
+}
 
 /** Encerra a sessão do funcionário no banco (sair do funcionário / trocar de funcionário). */
 export async function encerrarSessaoFuncionario(token: string): Promise<void> {

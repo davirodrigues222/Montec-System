@@ -10,7 +10,13 @@ import {
   somenteDigitosCodigo,
   sugerirProximoCodigoAcesso,
 } from '../services/cadastros';
-import { type Operador, entrarComoProprietario, entrarFuncionario, primeiraAbaPermitida } from '../services/acesso';
+import {
+  type Operador,
+  entrarComoProprietario,
+  entrarFuncionario,
+  entrarSemFuncionarios,
+  primeiraAbaPermitida,
+} from '../services/acesso';
 import { fazerLogout, obterConfiguracoesLojaSincrono } from '../services/api';
 import {
   type ContaAparelho,
@@ -43,6 +49,7 @@ interface Props {
 /**
  * Tela exibida depois do login da conta e sempre que o sistema é aberto de novo (o F5 não pede outra vez):
  * identifica qual funcionário vai usar o sistema e, com isso, quais telas ele pode ver.
+ * Conta sem funcionários não passa por aqui: o dono entra direto, com acesso total.
  * Com o login próprio (segurança nível 3), o aparelho passa a ficar logado como o funcionário.
  */
 export const AcessoFuncionario: React.FC<Props> = ({ session, contaAparelho, onEntrar, onUsarLoginDono, onEsquecerAparelho }) => {
@@ -76,7 +83,15 @@ export const AcessoFuncionario: React.FC<Props> = ({ session, contaAparelho, onE
     }
     try {
       const total = await contarFuncionarios();
-      if (total === 0) setCodigo('1'); // primeiro administrador: código 1 sugerido
+      if (total === 0) {
+        // Funcionários são opcionais: sem nenhum, o dono entra direto com acesso total
+        const direto = await entrarSemFuncionarios(nomeResponsavel);
+        if (direto) {
+          onEntrar(direto.operador, direto.token);
+          return;
+        }
+        setCodigo('1'); // sem a migração 20261101090000: cadastro do primeiro administrador (como antes)
+      }
       setModo(total === 0 ? 'primeiro-admin' : 'entrar');
     } catch (e: any) {
       if (e instanceof TabelaAusenteError) {
