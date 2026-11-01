@@ -4,8 +4,8 @@ import type { SecaoCadastro } from '../types';
 
 // ==========================================
 // Acesso por funcionário (operador) dentro da conta já autenticada.
-// Funcionários são opcionais: sem nenhum cadastrado, o dono entra direto com acesso total.
-// Com funcionários, depois do login da conta o sistema pede código + senha do funcionário.
+// Funcionários são opcionais: o dono, logado com o e-mail da conta, entra direto com acesso total.
+// Código + senha do funcionário são pedidos em "Trocar funcionário" e no aparelho sem o login do dono.
 // O operador vale para a aba atual: o F5 mantém a identificação; fechar a aba, voltar de outro
 // site ou sair da conta pede código e senha de novo (ver CHAVE_OPERADOR_SESSAO em App.tsx).
 //
@@ -206,13 +206,13 @@ const operadorProprietario = (nome: string): Operador => ({
 });
 
 /**
- * Conta sem funcionários: o dono entra direto, com acesso total, sem código nem senha
- * (migração 20261101090000). Devolve null se a conta já tem funcionários ou sem a migração.
+ * Dono logado com o e-mail da conta: entra direto, com acesso total, sem código nem senha de
+ * funcionário (migração 20261101090000). Devolve null para funcionário com login próprio ou sem a migração.
  */
-export async function entrarSemFuncionarios(nome: string): Promise<{ operador: Operador; token: string } | null> {
-  const { data, error } = await supabase.rpc('entrar_proprietario_sem_funcionarios');
+export async function entrarComoDono(nome: string): Promise<{ operador: Operador; token: string } | null> {
+  const { data, error } = await supabase.rpc('entrar_como_dono');
   if (error) {
-    if (funcaoAusente(error, 'entrar_proprietario_sem_funcionarios')) return null;
+    if (funcaoAusente(error, 'entrar_como_dono')) return null;
     throw new Error(error.message || 'Não foi possível entrar.');
   }
   const linha = Array.isArray(data) ? data[0] : data;

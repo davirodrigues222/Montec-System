@@ -6,18 +6,20 @@
 -- Antes: logo depois do login da conta, o sistema obrigava a cadastrar um administrador (código
 -- e senha) para conseguir usar qualquer tela.
 -- Agora:
---   1. Conta SEM funcionários: o dono entra direto, com acesso total. O banco abre uma sessão de
---      proprietário sem pedir senha, mas só enquanto nenhum funcionário da conta tiver senha
---      (conta_em_configuracao) e só para o dono (nunca para um funcionário com login próprio).
+--   1. O dono, logado com o e-mail e a senha da conta, entra direto com acesso total (com ou sem
+--      funcionários). O banco abre uma sessão de proprietário sem pedir a senha de novo, só para o
+--      dono (nunca para um funcionário com login próprio). Código e senha de funcionário passam a
+--      ser pedidos só em "Trocar funcionário" e no login próprio do funcionário.
 --   2. Quem quiser usar funcionários cadastra em Cadastros › Funcionários. O PRIMEIRO precisa ser
---      Administrador e ativo; depois dele o sistema passa a pedir código e senha ao entrar, e os
---      demais seguem as regras de sempre.
+--      Administrador e ativo; os demais seguem as regras de sempre.
 -- =====================================================================
 
 -- ---------------------------------------------------------------------
--- 1. Entrada do dono sem funcionários
+-- 1. Entrada direta do dono
 -- ---------------------------------------------------------------------
-create or replace function public.entrar_proprietario_sem_funcionarios()
+drop function if exists public.entrar_proprietario_sem_funcionarios(); -- versão anterior deste arquivo
+
+create or replace function public.entrar_como_dono()
 returns table (token text, nome text)
 language plpgsql
 security definer
@@ -27,8 +29,8 @@ declare
   v_nome text;
   t      text;
 begin
-  if auth.uid() is null or public.conta_atual() <> auth.uid() or not public.conta_em_configuracao() then
-    return; -- funcionário com login próprio ou conta que já tem funcionários: identificação normal
+  if auth.uid() is null or public.conta_atual() <> auth.uid() then
+    return; -- funcionário com login próprio: identificação normal
   end if;
 
   select coalesce(nullif(u.raw_user_meta_data ->> 'nome_responsavel', ''), 'Proprietário')
@@ -46,8 +48,8 @@ begin
 end;
 $$;
 
-revoke all on function public.entrar_proprietario_sem_funcionarios() from public, anon;
-grant execute on function public.entrar_proprietario_sem_funcionarios() to authenticated;
+revoke all on function public.entrar_como_dono() from public, anon;
+grant execute on function public.entrar_como_dono() to authenticated;
 
 -- ---------------------------------------------------------------------
 -- 2. O primeiro funcionário da conta é sempre um Administrador ativo

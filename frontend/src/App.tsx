@@ -124,6 +124,27 @@ const lerSessaoOperador = (): SessaoOperador | null => {
 // Lido uma única vez, quando a página carrega
 const sessaoOperadorRestaurada = lerSessaoOperador();
 
+// "Trocar funcionário" nesta aba: a identificação aparece em vez da entrada direta do dono
+// (guardado na aba para o F5 na tela de identificação não entrar como dono)
+const CHAVE_PEDIR_IDENTIFICACAO = 'montec_pedir_identificacao';
+
+const lerPedirIdentificacao = () => {
+  try {
+    return sessionStorage.getItem(CHAVE_PEDIR_IDENTIFICACAO) === '1';
+  } catch {
+    return false;
+  }
+};
+
+const gravarPedirIdentificacao = (pedir: boolean) => {
+  try {
+    if (pedir) sessionStorage.setItem(CHAVE_PEDIR_IDENTIFICACAO, '1');
+    else sessionStorage.removeItem(CHAVE_PEDIR_IDENTIFICACAO);
+  } catch {
+    /* armazenamento indisponível: o F5 na identificação entra como dono */
+  }
+};
+
 export default function App() {
   const [session, setSession] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -137,6 +158,11 @@ export default function App() {
   // Funcionário que está operando o sistema e o token da sessão dele no banco
   const [operador, setOperador] = useState<Operador | null>(null);
   const [tokenOperador, setTokenOperador] = useState<string | null>(null);
+  const [pedirIdentificacao, setPedirIdentificacao] = useState(lerPedirIdentificacao);
+  const mudarPedirIdentificacao = (pedir: boolean) => {
+    gravarPedirIdentificacao(pedir);
+    setPedirIdentificacao(pedir);
+  };
   // Após F5: restaura o funcionário pelo banco antes de mostrar a tela de identificação
   // (sessão do dono com token, ou login próprio do funcionário)
   const [restaurandoOperador, setRestaurandoOperador] = useState(() => !!sessaoOperadorRestaurada || sessaoSalvaEhDeFuncionario());
@@ -161,6 +187,8 @@ export default function App() {
     if (userId && contaDoOperador.current === userId) return;
     const primeiraCarga = !jaCarregouSessao.current;
     jaCarregouSessao.current = true;
+    // Outro login nesta aba (sair da conta, entrar com o e-mail do dono): volta a entrar direto
+    if (!primeiraCarga) mudarPedirIdentificacao(false);
     contaDoOperador.current = userId ?? null;
     setOperador(null);
     setTokenOperador(null);
@@ -292,6 +320,7 @@ export default function App() {
 
   const entrarComoOperador = (op: Operador, token: string | null = null) => {
     invalidarCacheOrdens(); // o que cada funcionário pode ler (custos) muda com quem entra
+    mudarPedirIdentificacao(false);
     setLiberacao(null);
     ultimaTelaPermitida.current = null;
     setOperador(op);
@@ -411,6 +440,7 @@ export default function App() {
         session={session}
         contaAparelho={contaAparelho}
         onEntrar={entrarComoOperador}
+        entrarDireto={!pedirIdentificacao}
         onUsarLoginDono={() => setUsarLoginDono(true)}
         onEsquecerAparelho={() => {
           esquecerContaAparelho();
@@ -452,6 +482,7 @@ export default function App() {
         operador,
         pode: (chave) => podeAcessar(operador, chave),
         trocarFuncionario: () => {
+          mudarPedirIdentificacao(true);
           setLiberacao(null);
           sairDoFuncionario();
         },

@@ -297,7 +297,7 @@ export const FuncionariosCadastro: React.FC = () => {
         editandoId
           ? 'Funcionário atualizado.'
           : primeiroFuncionario
-          ? 'Administrador cadastrado. A partir de agora, ao abrir o sistema, será pedido o código de acesso e a senha.'
+          ? 'Administrador cadastrado. Para usar o sistema como um funcionário, clique em "Trocar funcionário".'
           : 'Funcionário cadastrado com acesso liberado.'
       );
       limpar();
@@ -575,8 +575,8 @@ export const FuncionariosCadastro: React.FC = () => {
           {primeiroFuncionario && (
             <div className="px-3.5 py-3 rounded-xl border text-xs leading-relaxed bg-blue-500/10 border-blue-500/30 text-blue-300">
               <span className="font-bold">O primeiro funcionário é o Administrador</span>, com acesso total ao sistema.
-              Depois dele, o sistema passa a pedir o código de acesso e a senha ao entrar, e você pode cadastrar os
-              demais funcionários com os cargos e telas que quiser.
+              Depois dele, você pode cadastrar os demais funcionários com os cargos e telas que quiser. Cada um entra
+              com o próprio código e senha em "Trocar funcionário".
             </div>
           )}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">

@@ -14,7 +14,7 @@ import {
   type Operador,
   entrarComoProprietario,
   entrarFuncionario,
-  entrarSemFuncionarios,
+  entrarComoDono,
   primeiraAbaPermitida,
 } from '../services/acesso';
 import { fazerLogout, obterConfiguracoesLojaSincrono } from '../services/api';
@@ -44,15 +44,18 @@ interface Props {
   onUsarLoginDono?: () => void;
   /** Aparelho sem login: deixar de lembrar a loja neste aparelho. */
   onEsquecerAparelho?: () => void;
+  /** Login do dono: entra direto com acesso total (false em "Trocar funcionário"). */
+  entrarDireto?: boolean;
 }
 
 /**
  * Tela exibida depois do login da conta e sempre que o sistema é aberto de novo (o F5 não pede outra vez):
  * identifica qual funcionário vai usar o sistema e, com isso, quais telas ele pode ver.
- * Conta sem funcionários não passa por aqui: o dono entra direto, com acesso total.
+ * O dono logado com o e-mail da conta não passa por aqui (entra direto, com acesso total), a não ser
+ * em "Trocar funcionário" (`entrarDireto` = false).
  * Com o login próprio (segurança nível 3), o aparelho passa a ficar logado como o funcionário.
  */
-export const AcessoFuncionario: React.FC<Props> = ({ session, contaAparelho, onEntrar, onUsarLoginDono, onEsquecerAparelho }) => {
+export const AcessoFuncionario: React.FC<Props> = ({ session, contaAparelho, onEntrar, onUsarLoginDono, onEsquecerAparelho, entrarDireto = true }) => {
   const [modo, setModo] = useState<Modo>('carregando');
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -82,16 +85,17 @@ export const AcessoFuncionario: React.FC<Props> = ({ session, contaAparelho, onE
       return;
     }
     try {
-      const total = await contarFuncionarios();
-      if (total === 0) {
-        // Funcionários são opcionais: sem nenhum, o dono entra direto com acesso total
-        const direto = await entrarSemFuncionarios(nomeResponsavel);
+      // Funcionários são opcionais: o dono entra direto com acesso total ("Trocar funcionário" pede o código)
+      if (entrarDireto) {
+        const direto = await entrarComoDono(nomeResponsavel);
         if (direto) {
           onEntrar(direto.operador, direto.token);
           return;
         }
-        setCodigo('1'); // sem a migração 20261101090000: cadastro do primeiro administrador (como antes)
       }
+      // Sem a migração 20261101090000 (ou em "Trocar funcionário"): identificação, como antes
+      const total = await contarFuncionarios();
+      if (total === 0) setCodigo('1'); // primeiro administrador: código 1 sugerido
       setModo(total === 0 ? 'primeiro-admin' : 'entrar');
     } catch (e: any) {
       if (e instanceof TabelaAusenteError) {
