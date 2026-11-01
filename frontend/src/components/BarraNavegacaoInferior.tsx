@@ -9,9 +9,9 @@ interface Props {
 
 const ITENS: { aba: AbaSistema; rotulo: string; Icone: LucideIcon }[] = [
   { aba: 'dashboard', rotulo: 'Painel', Icone: House },
-  { aba: 'relatorios', rotulo: 'Análises', Icone: ChartColumn },
+  { aba: 'relatorios', rotulo: 'Financeiro', Icone: ChartColumn },
   { aba: 'garantia-retorno', rotulo: 'Garantias', Icone: ShieldCheck },
-  { aba: 'configuracoes', rotulo: 'Configurações', Icone: Settings },
+  { aba: 'configuracoes', rotulo: 'Ajustes', Icone: Settings },
 ];
 
 /**
@@ -27,13 +27,14 @@ export const BarraNavegacaoInferior: React.FC<Props> = ({ activeTab, onNavegar }
         type="button"
         onClick={() => onNavegar(aba)}
         aria-current={ativo ? 'page' : undefined}
-        aria-label={rotulo}
-        title={rotulo}
-        className={`flex-1 min-w-0 flex items-center justify-center py-2 transition ${
+        className={`flex-1 min-w-0 flex flex-col items-center justify-center gap-1 transition ${
           ativo ? 'text-blue-400' : 'text-zinc-400 active:text-white'
         }`}
       >
-        <Icone className="w-6 h-6" strokeWidth={ativo ? 2.4 : 2} />
+        <span className={`flex items-center justify-center w-11 h-7 rounded-full transition ${ativo ? 'bg-blue-500/15' : ''}`}>
+          <Icone className="w-[22px] h-[22px]" strokeWidth={ativo ? 2.4 : 2} />
+        </span>
+        <span className="text-[10px] leading-none font-semibold tracking-tight whitespace-nowrap">{rotulo}</span>
       </button>
     );
   };
@@ -49,7 +50,7 @@ export const BarraNavegacaoInferior: React.FC<Props> = ({ activeTab, onNavegar }
         {ITENS.slice(0, 2).map(item)}
 
         {/* Botão central destacado: Nova ordem de serviço */}
-        <div className="flex-1 flex items-start justify-center">
+        <div className="w-16 shrink-0 flex items-start justify-center">
           <button
             type="button"
             onClick={() => onNavegar('nova-os')}

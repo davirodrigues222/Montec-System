@@ -98,7 +98,8 @@ const PopoverMeta: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   }, [aberto]);
 
   return (
-    <div ref={ref} className="relative shrink-0">
+    // No celular o painel se ancora na linha de controles (pai relative) e ocupa a largura dela; sem top, fica logo abaixo do botão
+    <div ref={ref} className="sm:relative shrink-0">
       <button
         type="button"
         onClick={() => setAberto((v) => !v)}
@@ -123,7 +124,7 @@ const PopoverMeta: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         <div
           role="dialog"
           aria-label="Meta Financeira"
-          className="absolute left-0 sm:left-auto sm:right-0 top-full mt-2 w-[22rem] max-w-[calc(100vw-2rem)] z-30 p-4 bg-[#0c101a] border border-zinc-700/80 rounded-xl shadow-2xl shadow-black/50"
+          className="absolute inset-x-0 sm:left-auto sm:right-0 sm:top-full mt-2 sm:w-[22rem] max-w-[calc(100vw-2rem)] z-30 p-4 bg-[#0c101a] border border-zinc-700/80 rounded-xl shadow-2xl shadow-black/50"
         >
           {children}
         </div>
@@ -650,7 +651,7 @@ export const Relatorios: React.FC = () => {
         </div>
 
         {/* Controles: Listagens, Meta Financeira, Seletor de Período, Intervalo Personalizado e Botão de Exportação */}
-        <div className="flex flex-wrap items-center gap-2 shrink-0">
+        <div className="relative flex flex-wrap items-center gap-2 shrink-0">
           <MenuListagens
             atual={detalhamento}
             onEscolher={(d) => {
