@@ -21,6 +21,8 @@ export { contaDoUsuario, ehLoginDeFuncionario } from './contaLogin';
 // Aparelho: lembra a loja para a tela de identificação funcionar sem nenhum login salvo.
 // Não guarda senha nem token: só o id da conta, o e-mail do dono (para "Entrar como proprietário")
 // e o nome da loja exibido na tela.
+// Só passa a lembrar depois que um funcionário se identifica no aparelho: no aparelho usado só pelo
+// dono (funcionários são opcionais), o login vencido volta para a tela de e-mail e senha da conta.
 // ---------------------------------------------------------------------------------------------
 const CHAVE_APARELHO = 'montec_conta_aparelho';
 
@@ -33,22 +35,29 @@ export interface ContaAparelho {
 export function lerContaAparelho(): ContaAparelho | null {
   try {
     const salvo = JSON.parse(localStorage.getItem(CHAVE_APARELHO) || 'null');
-    return salvo?.contaId ? salvo : null;
+    // Sem a marca de funcionário: lembrado por versões antigas no login do dono, não vale mais
+    return salvo?.contaId && salvo.usadoPorFuncionario ? salvo : null;
   } catch {
     return null;
   }
 }
 
-export function lembrarContaAparelho(dados: Partial<ContaAparelho> & { contaId: string }) {
+/** Atualiza a loja lembrada; `porFuncionario` = um funcionário acabou de se identificar no aparelho. */
+export function lembrarContaAparelho(dados: Partial<ContaAparelho> & { contaId: string }, porFuncionario = false) {
   try {
     const atual = lerContaAparelho();
     const mesmaConta = atual?.contaId === dados.contaId;
+    if (!porFuncionario && !mesmaConta) {
+      localStorage.removeItem(CHAVE_APARELHO); // dono de outra loja (ou só o dono usa o aparelho)
+      return;
+    }
     localStorage.setItem(
       CHAVE_APARELHO,
       JSON.stringify({
         contaId: dados.contaId,
         emailDono: dados.emailDono || (mesmaConta ? atual?.emailDono : '') || '',
         nomeLoja: dados.nomeLoja || (mesmaConta ? atual?.nomeLoja : '') || '',
+        usadoPorFuncionario: true,
       })
     );
   } catch {

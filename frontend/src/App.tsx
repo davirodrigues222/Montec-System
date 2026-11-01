@@ -221,7 +221,7 @@ export default function App() {
           if (!ativo) return;
           if (op && primeiraAbaPermitida(op)) {
             setOperador(op);
-            lembrarContaAparelho({ contaId: contaDoUsuario(session.user) || '' });
+            lembrarContaAparelho({ contaId: contaDoUsuario(session.user) || '' }, true);
           } else {
             await sairDoLoginFuncionario(); // inativo ou sem telas liberadas: volta para a identificação
           }
@@ -325,6 +325,18 @@ export default function App() {
     ultimaTelaPermitida.current = null;
     setOperador(op);
     setTokenOperador(token);
+    // Funcionário identificado: o aparelho passa a lembrar a loja (identificação sem o login do dono)
+    const contaId = contaDoUsuario(session?.user) || contaAparelho?.contaId;
+    if (!op.proprietario && contaId) {
+      const dono = session?.user && !ehLoginDeFuncionario(session.user) ? session.user : null;
+      lembrarContaAparelho(
+        dono
+          ? { contaId, emailDono: dono.email || '', nomeLoja: obterConfiguracoesLojaSincrono(dono).nomeLoja }
+          : { contaId },
+        true
+      );
+      setContaAparelho(lerContaAparelho());
+    }
     const inicial = primeiraAbaPermitida(op);
     if (inicial) {
       if (inicial.secao) setSecaoCadastro(inicial.secao);
