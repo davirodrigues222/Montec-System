@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="robots" content="noindex" />
+    <title>Pagamento recebido · Montec System</title>
+    <!--
+      Página de retorno da Cakto ("Redirecionar após o pagamento"). O checkout abre numa nova aba;
+      quem libera o acesso é o webhook, e a aba original do sistema confirma sozinha
+      (frontend/src/components/JanelaCheckout.tsx). Aqui só avisamos e levamos o cliente de volta.
+    -->
+    <style>
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        min-height: 100dvh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px 16px max(24px, env(safe-area-inset-bottom));
+        background: #080c14;
+        color: #f4f4f5;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+      .card {
+        width: 100%;
+        max-width: 420px;
+        padding: 28px 22px;
+        border-radius: 20px;
+        background: #0c101a;
+        border: 1px solid rgba(63, 63, 70, 0.8);
+        text-align: center;
+      }
+      .logo { width: 56px; height: 56px; border-radius: 14px; border: 1px solid rgba(59, 130, 246, 0.3); }
+      .ok {
+        width: 64px; height: 64px; margin: 20px auto 0; border-radius: 50%;
+        display: flex; align-items: center; justify-content: center;
+        background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.35);
+      }
+      h1 { margin: 18px 0 8px; font-size: 22px; font-weight: 800; letter-spacing: -0.02em; }
+      p { margin: 0; font-size: 14px; line-height: 1.55; color: #a1a1aa; }
+      .botao {
+        display: flex; align-items: center; justify-content: center;
+        width: 100%; min-height: 48px; margin-top: 22px; padding: 0 16px;
+        border: 0; border-radius: 12px; background: #2563eb; color: #fff;
+        font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; text-decoration: none;
+        box-shadow: 0 10px 24px -10px rgba(37, 99, 235, 0.6);
+      }
+      .botao:hover { background: #3b82f6; }
+      .dica { margin-top: 14px; font-size: 12px; color: #71717a; }
+    </style>
+  </head>
+  <body>
+    <main class="card">
+      <img class="logo" src="/logo-montec.png" alt="Montec System" />
+      <div class="ok" aria-hidden="true">
+        <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
+      </div>
+      <h1>Pagamento recebido!</h1>
+      <p>Obrigado por assinar o Montec System. Seu acesso é liberado automaticamente em poucos instantes.</p>
+      <button class="botao" id="voltar" type="button">Voltar ao Montec System</button>
+      <p class="dica">Se o sistema já estava aberto em outra aba, é só voltar para ela: a confirmação aparece sozinha.</p>
+    </main>
+    <script>
+      // Esta aba foi aberta pelo sistema: fecha e o cliente volta para a aba original.
+      // Se o navegador não deixar fechar (aba aberta de outro jeito), abre o sistema aqui mesmo.
+      document.getElementById('voltar').addEventListener('click', function () {
+        window.close();
+        setTimeout(function () { window.location.href = '/'; }, 300);
+      });
+    </script>
+  </body>
+</html>
