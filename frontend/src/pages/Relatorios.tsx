@@ -76,6 +76,61 @@ const GRUPOS_LISTAGEM: { id: string; rotulo: string; icone: string; itens: Exclu
   },
 ];
 
+/** Botão "Meta Financeira" do cabeçalho: abre um painel suspenso com o resumo da meta do mês. */
+const PopoverMeta: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [aberto, setAberto] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!aberto) return;
+    const fecharFora = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setAberto(false);
+    };
+    // Esc no campo de valor só cancela a edição; fora dele fecha o painel
+    const fecharEsc = (e: KeyboardEvent) => e.key === 'Escape' && !(e.target instanceof HTMLInputElement) && setAberto(false);
+    document.addEventListener('mousedown', fecharFora);
+    document.addEventListener('keydown', fecharEsc);
+    return () => {
+      document.removeEventListener('mousedown', fecharFora);
+      document.removeEventListener('keydown', fecharEsc);
+    };
+  }, [aberto]);
+
+  return (
+    <div ref={ref} className="relative shrink-0">
+      <button
+        type="button"
+        onClick={() => setAberto((v) => !v)}
+        aria-haspopup="dialog"
+        aria-expanded={aberto}
+        className={`flex items-center gap-2 px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl border text-xs font-semibold shadow-sm transition ${
+          aberto ? 'bg-blue-600/15 border-blue-500/40 text-blue-300' : 'bg-[#0c101a] border-zinc-800 text-white hover:border-zinc-700'
+        }`}
+      >
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="9" />
+          <circle cx="12" cy="12" r="5" />
+          <circle cx="12" cy="12" r="1" />
+        </svg>
+        Meta Financeira
+        <svg className={`w-3.5 h-3.5 transition-transform ${aberto ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {aberto && (
+        <div
+          role="dialog"
+          aria-label="Meta Financeira"
+          className="absolute left-0 sm:left-auto sm:right-0 top-full mt-2 w-[22rem] max-w-[calc(100vw-2rem)] z-30 p-4 bg-[#0c101a] border border-zinc-700/80 rounded-xl shadow-2xl shadow-black/50"
+        >
+          {children}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const MenuListagens: React.FC<{ atual: Detalhamento; onEscolher: (d: Detalhamento) => void }> = ({ atual, onEscolher }) => {
   const [aberto, setAberto] = useState(false);
   const [grupoAberto, setGrupoAberto] = useState<string | null>(null);
@@ -110,10 +165,10 @@ const MenuListagens: React.FC<{ atual: Detalhamento; onEscolher: (d: Detalhament
         }}
         aria-haspopup="menu"
         aria-expanded={aberto}
-        className={`flex items-center gap-2 px-3.5 py-2 rounded-xl border text-xs font-semibold transition ${
+        className={`flex items-center gap-2 px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl border text-xs font-semibold shadow-sm transition ${
           aberto || atual !== 'NENHUM'
             ? 'bg-blue-600/15 border-blue-500/40 text-blue-300'
-            : 'bg-[#080c14] border-zinc-800 text-zinc-300 hover:text-white hover:border-zinc-700'
+            : 'bg-[#0c101a] border-zinc-800 text-white hover:border-zinc-700'
         }`}
       >
         <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
@@ -126,7 +181,7 @@ const MenuListagens: React.FC<{ atual: Detalhamento; onEscolher: (d: Detalhament
       </button>
 
       {aberto && (
-        <div role="menu" className="absolute right-0 top-full mt-2 w-64 z-30 py-1.5 bg-[#0c101a] border border-zinc-700/80 rounded-xl shadow-2xl shadow-black/50">
+        <div role="menu" className="absolute left-0 sm:left-auto sm:right-0 top-full mt-2 w-64 max-w-[calc(100vw-2rem)] z-30 py-1.5 bg-[#0c101a] border border-zinc-700/80 rounded-xl shadow-2xl shadow-black/50">
           {GRUPOS_LISTAGEM.map((grupo, i) => {
             const expandido = grupoAberto === grupo.id;
             return (
@@ -390,6 +445,10 @@ export const Relatorios: React.FC = () => {
     return { texto: `${pctTexto} vs. ${rotulo}`, badge: pctTexto, cor };
   }, [ordensFaturaveis, mesSelecionado, dataInicioPersonalizada, dataFimPersonalizada, faturamentoBruto]);
 
+  // No mês corrente a comparação só aparece a partir do dia 16: antes disso o mês ainda está no começo
+  // e a queda contra o mês anterior inteiro (ex.: -100%) não diz nada
+  const exibirVariacao = mesSelecionado !== 'ATUAL' || new Date().getDate() >= 16;
+
   const corTextoVariacao = { alta: 'text-emerald-400', queda: 'text-rose-400', neutra: 'text-zinc-400' }[variacaoFaturamento.cor];
   const corBadgeVariacao = {
     alta: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20',
@@ -562,8 +621,94 @@ export const Relatorios: React.FC = () => {
           </p>
         </div>
 
-        {/* Controles: Seletor de Período, Intervalo Personalizado e Botão de Exportação */}
+        {/* Controles: Listagens, Meta Financeira, Seletor de Período, Intervalo Personalizado e Botão de Exportação */}
         <div className="flex flex-wrap items-center gap-2 shrink-0">
+          <MenuListagens atual={detalhamento} onEscolher={setDetalhamento} />
+          <PopoverMeta>
+            <h3 className="text-sm font-bold text-white">Meta Financeira — {resumoMeta.rotuloCompetencia}</h3>
+            <p className="text-[11px] text-zinc-400 mt-0.5">Meta mensal exibida no Painel. O progresso reinicia a cada novo mês.</p>
+
+            <div className="grid grid-cols-2 gap-2 mt-4">
+              <div className="p-3 bg-[#080c14] border border-zinc-800/80 rounded-xl min-w-0">
+                <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Meta definida</span>
+                <p className="text-sm font-extrabold text-white mt-1 truncate">R$ {formatarValor(metaFinanceira)}</p>
+              </div>
+              <div className="p-3 bg-[#080c14] border border-zinc-800/80 rounded-xl min-w-0">
+                <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Valor alcançado</span>
+                <p className="text-sm font-extrabold text-emerald-400 mt-1 truncate">R$ {formatarValor(valorAlcancadoMeta)}</p>
+              </div>
+              <div className="p-3 bg-[#080c14] border border-zinc-800/80 rounded-xl min-w-0">
+                <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Progresso</span>
+                <p className="text-sm font-extrabold text-blue-400 mt-1 truncate">
+                  {percentualMetaReal.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 1 })}%
+                </p>
+              </div>
+              <div className="p-3 bg-[#080c14] border border-zinc-800/80 rounded-xl min-w-0">
+                <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Valor restante</span>
+                <p className="text-sm font-extrabold text-blue-400 mt-1 truncate">R$ {formatarValor(valorRestanteMeta)}</p>
+              </div>
+            </div>
+
+            <div className="w-full bg-zinc-800/80 rounded-full h-2 mt-4 overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all duration-500 ${percentualMetaReal >= 100 ? 'bg-emerald-600' : 'bg-blue-600'}`}
+                style={{ width: `${larguraBarraMeta}%` }}
+              />
+            </div>
+
+            {erroMeta && <p className="text-xs font-bold text-red-400 mt-3">{erroMeta}</p>}
+            {metaSalvaFeedback && <p className="text-xs font-bold text-emerald-400 mt-3">✓ Meta salva e aplicada no Painel!</p>}
+
+            {editandoMeta ? (
+              <div className="flex items-center gap-2 mt-4">
+                <div className="flex-1 min-w-0 flex items-center bg-[#080c14] border border-zinc-800 rounded-xl px-3 py-2 focus-within:border-blue-500">
+                  <span className="text-xs font-bold text-zinc-400 mr-1.5">R$</span>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={metaInput}
+                    onChange={(e) => {
+                      setMetaInput(e.target.value);
+                      setErroMeta(null);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault(); // salva a meta em vez de pular para o próximo campo
+                        handleSalvarMeta();
+                      }
+                      if (e.key === 'Escape') setEditandoMeta(false);
+                    }}
+                    placeholder="8.000,00"
+                    autoFocus
+                    className="w-full min-w-0 bg-transparent text-xs text-white font-bold outline-none"
+                  />
+                </div>
+                <button
+                  onClick={handleSalvarMeta}
+                  disabled={salvandoMeta}
+                  className="px-3.5 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white font-bold rounded-xl text-xs transition shadow-md shadow-blue-600/20 shrink-0"
+                >
+                  {salvandoMeta ? 'Salvando...' : 'Salvar'}
+                </button>
+                <button
+                  onClick={() => {
+                    setEditandoMeta(false);
+                    setErroMeta(null);
+                  }}
+                  className="px-2 py-2 text-xs font-semibold text-zinc-400 hover:text-white transition shrink-0"
+                >
+                  Cancelar
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={iniciarEdicaoMeta}
+                className="w-full mt-4 px-4 py-2 bg-[#080c14] hover:bg-zinc-800 border border-zinc-700/80 text-white rounded-xl text-xs font-semibold transition shadow-sm"
+              >
+                Editar meta
+              </button>
+            )}
+          </PopoverMeta>
           <select
             value={mesSelecionado}
             onChange={(e) => setMesSelecionado(e.target.value as FiltroPeriodo)}
@@ -633,9 +778,11 @@ export const Relatorios: React.FC = () => {
           <h3 className="text-base sm:text-2xl lg:text-3xl font-extrabold text-white mt-1 sm:mt-3 tracking-tight truncate">
             R$ {formatarValor(faturamentoBruto)}
           </h3>
+          {exibirVariacao && (
           <p className={`text-[10px] sm:text-[11px] mt-1 sm:mt-2 font-semibold flex items-center truncate ${corTextoVariacao}`}>
             <span className="truncate" title={variacaoFaturamento.texto}>{variacaoFaturamento.texto}</span>
           </p>
+          )}
         </div>
 
         {/* Card 2: Custos Operacionais */}
@@ -701,25 +848,19 @@ export const Relatorios: React.FC = () => {
       </div>
 
       {/* ================= DETALHAMENTO SOB DEMANDA ================= */}
-      {/* Sem overflow-hidden: o menu de listagens precisa sair por cima do card */}
+      {/* Aberto pelo botão "Listagens" do cabeçalho */}
+      {detalhamento !== 'NENHUM' && (
       <div className="bg-[#0c101a] border border-zinc-800/80 rounded-2xl shadow-sm min-w-0">
-        <div className="p-4 sm:p-5 flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <h3 className="text-sm font-bold text-white">O que você deseja visualizar?</h3>
-            <p className="text-xs text-zinc-400 mt-0.5">
-              Abra uma listagem do período selecionado quando precisar conferir os números.
-              {foraDoFaturamento > 0 && ' Rascunhos e ordens canceladas não entram nos totais.'}
-            </p>
-          </div>
-          <MenuListagens atual={detalhamento} onEscolher={setDetalhamento} />
-        </div>
-
-        {detalhamento !== 'NENHUM' && (
-          <div className="border-t border-zinc-800/80">
+          <div>
             <div className="flex items-center justify-between gap-3 px-4 sm:px-5 pt-4">
-              <p className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider truncate">
-                {ROTULOS_DETALHAMENTO[detalhamento]}
-              </p>
+              <div className="min-w-0">
+                <p className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider truncate">
+                  {ROTULOS_DETALHAMENTO[detalhamento]}
+                </p>
+                {foraDoFaturamento > 0 && (
+                  <p className="text-[11px] text-zinc-500 mt-0.5">Rascunhos e ordens canceladas não entram nos totais.</p>
+                )}
+              </div>
               <button
                 type="button"
                 onClick={() => setDetalhamento('NENHUM')}
@@ -901,103 +1042,8 @@ export const Relatorios: React.FC = () => {
               </div>
             )}
           </div>
-        )}
       </div>
-
-      {/* ================= CARD: META FINANCEIRA ================= */}
-      <div className="bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-4 sm:p-6 shadow-sm min-w-0">
-        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-          <div className="min-w-0">
-            <h3 className="text-sm font-bold text-white">Meta Financeira — {resumoMeta.rotuloCompetencia}</h3>
-            <p className="text-xs text-zinc-400 mt-0.5">
-              Meta mensal exibida no Painel. O progresso reinicia a cada novo mês.
-            </p>
-          </div>
-
-          {editandoMeta ? (
-            <div className="flex flex-wrap items-center gap-2 shrink-0">
-              <div className="flex items-center bg-[#080c14] border border-zinc-800 rounded-xl px-3 py-2 focus-within:border-blue-500">
-                <span className="text-xs font-bold text-zinc-400 mr-1.5">R$</span>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  value={metaInput}
-                  onChange={(e) => {
-                    setMetaInput(e.target.value);
-                    setErroMeta(null);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault(); // salva a meta em vez de pular para o próximo campo
-                      handleSalvarMeta();
-                    }
-                    if (e.key === 'Escape') setEditandoMeta(false);
-                  }}
-                  placeholder="8.000,00"
-                  autoFocus
-                  className="w-28 bg-transparent text-xs text-white font-bold outline-none"
-                />
-              </div>
-              <button
-                onClick={handleSalvarMeta}
-                disabled={salvandoMeta}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white font-bold rounded-xl text-xs transition shadow-md shadow-blue-600/20"
-              >
-                {salvandoMeta ? 'Salvando...' : 'Salvar meta'}
-              </button>
-              <button
-                onClick={() => {
-                  setEditandoMeta(false);
-                  setErroMeta(null);
-                }}
-                className="px-3 py-2 text-xs font-semibold text-zinc-400 hover:text-white transition"
-              >
-                Cancelar
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={iniciarEdicaoMeta}
-              className="px-4 py-2 bg-[#080c14] hover:bg-zinc-800 border border-zinc-700/80 text-white rounded-xl text-xs font-semibold transition shadow-sm shrink-0"
-            >
-              Editar meta
-            </button>
-          )}
-        </div>
-
-        {erroMeta && <p className="text-xs font-bold text-red-400 mt-2">{erroMeta}</p>}
-        {metaSalvaFeedback && (
-          <p className="text-xs font-bold text-emerald-400 mt-2">✓ Meta salva e aplicada no Painel!</p>
-        )}
-
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4 mt-5">
-          <div className="p-3 sm:p-4 bg-[#080c14] border border-zinc-800/80 rounded-xl min-w-0">
-            <span className="text-[10px] sm:text-[11px] font-bold text-zinc-400 uppercase tracking-wider">Meta definida</span>
-            <p className="text-sm sm:text-lg font-extrabold text-white mt-1 truncate">R$ {formatarValor(metaFinanceira)}</p>
-          </div>
-          <div className="p-3 sm:p-4 bg-[#080c14] border border-zinc-800/80 rounded-xl min-w-0">
-            <span className="text-[10px] sm:text-[11px] font-bold text-zinc-400 uppercase tracking-wider">Valor alcançado</span>
-            <p className="text-sm sm:text-lg font-extrabold text-emerald-400 mt-1 truncate">R$ {formatarValor(valorAlcancadoMeta)}</p>
-          </div>
-          <div className="p-3 sm:p-4 bg-[#080c14] border border-zinc-800/80 rounded-xl min-w-0">
-            <span className="text-[10px] sm:text-[11px] font-bold text-zinc-400 uppercase tracking-wider">Progresso</span>
-            <p className="text-sm sm:text-lg font-extrabold text-blue-400 mt-1 truncate">
-              {percentualMetaReal.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 1 })}%
-            </p>
-          </div>
-          <div className="p-3 sm:p-4 bg-[#080c14] border border-zinc-800/80 rounded-xl min-w-0">
-            <span className="text-[10px] sm:text-[11px] font-bold text-zinc-400 uppercase tracking-wider">Valor restante</span>
-            <p className="text-sm sm:text-lg font-extrabold text-blue-400 mt-1 truncate">R$ {formatarValor(valorRestanteMeta)}</p>
-          </div>
-        </div>
-
-        <div className="w-full bg-zinc-800/80 rounded-full h-2.5 mt-5 overflow-hidden">
-          <div
-            className={`h-full rounded-full transition-all duration-500 ${percentualMetaReal >= 100 ? 'bg-emerald-600' : 'bg-blue-600'}`}
-            style={{ width: `${larguraBarraMeta}%` }}
-          />
-        </div>
-      </div>
+      )}
 
       {/* ================= BLOCO DE GRÁFICOS E COMPOSIÇÃO ================= */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 items-stretch min-w-0 w-full">
@@ -1009,12 +1055,14 @@ export const Relatorios: React.FC = () => {
                 <h3 className="text-sm font-bold text-white">Receita por semana</h3>
                 <p className="text-xs text-zinc-400 mt-0.5">{subtituloGrafico}</p>
               </div>
+              {exibirVariacao && (
               <span
                 title={variacaoFaturamento.texto}
                 className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold border shrink-0 ${corBadgeVariacao}`}
               >
                 {variacaoFaturamento.badge}
               </span>
+              )}
             </div>
 
             {/* Visualizador de Barras e Curva com Linha Suave */}
