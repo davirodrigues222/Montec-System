@@ -27,12 +27,13 @@ export const BarraNavegacaoInferior: React.FC<Props> = ({ activeTab, onNavegar }
         type="button"
         onClick={() => onNavegar(aba)}
         aria-current={ativo ? 'page' : undefined}
-        className={`flex-1 min-w-0 flex flex-col items-center justify-center gap-1 py-2 text-[10px] font-semibold transition ${
+        aria-label={rotulo}
+        title={rotulo}
+        className={`flex-1 min-w-0 flex items-center justify-center py-2 transition ${
           ativo ? 'text-blue-400' : 'text-zinc-400 active:text-white'
         }`}
       >
-        <Icone className="w-5 h-5" strokeWidth={ativo ? 2.4 : 2} />
-        <span className="truncate max-w-full">{rotulo}</span>
+        <Icone className="w-6 h-6" strokeWidth={ativo ? 2.4 : 2} />
       </button>
     );
   };

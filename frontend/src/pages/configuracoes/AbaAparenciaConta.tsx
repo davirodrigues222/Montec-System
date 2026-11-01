@@ -223,7 +223,7 @@ export const AbaAparenciaConta: React.FC<Props> = ({ config, emailConta, onSelec
               {msgSenha.texto}
             </p>
           )}
-          <div className="flex justify-end">
+          <div className="flex justify-center">
             <button
               type="submit"
               disabled={salvandoSenha}
