@@ -13,6 +13,7 @@ import { CARGOS, EVENTO_LOJAS_ATUALIZADAS, type Loja, listarLojas } from '../ser
 import { useAssinatura } from '../contexts/AssinaturaContext';
 import { PLANOS, diasRestantes, ehCortesia, formatarPrecoPlano } from '../services/assinatura';
 import { NomeBancadaOS, SimboloBancadaOS } from './Marca';
+import { BarraNavegacaoInferior } from './BarraNavegacaoInferior';
 
 /** Selo compacto do plano no rodapé do menu; leva para Configurações › Plano & Assinatura. */
 const SeloPlano: React.FC<{ onAbrir: () => void }> = ({ onAbrir }) => {
@@ -661,9 +662,12 @@ export const Layout: React.FC<Props> = ({
         </header>
 
         {/* Área Principal com Rolagem Independente */}
-        <main className="flex-1 min-h-0 p-3 sm:p-6 lg:p-8 overflow-y-auto overflow-x-hidden print:p-0 print:overflow-visible min-w-0 w-full max-w-full">
+        {/* No celular, espaço embaixo do tamanho da barra de navegação inferior (+ área de gestos) */}
+        <main className="flex-1 min-h-0 p-3 sm:p-6 lg:p-8 max-md:pb-[calc(6rem+env(safe-area-inset-bottom))]! overflow-y-auto overflow-x-hidden print:p-0 print:overflow-visible min-w-0 w-full max-w-full">
           {children}
         </main>
+
+        <BarraNavegacaoInferior activeTab={activeTab} onNavegar={mudarAba} />
       </div>
     </div>
   );

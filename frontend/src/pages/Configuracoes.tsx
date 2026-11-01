@@ -226,7 +226,7 @@ export const Configuracoes: React.FC<Props> = ({ secao, onAbrirCadastro }) => {
 
       {/* Barra de salvamento: aparece nas abas de formulário ou sempre que houver alteração pendente */}
       {(abaComFormulario || alterado) && (
-        <div className="sticky bottom-0 z-20 -mx-1 px-1">
+        <div className="sticky bottom-0 max-md:bottom-[calc(4rem+env(safe-area-inset-bottom))] z-20 -mx-1 px-1">
           <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 bg-[#0c101a]/95 backdrop-blur border border-zinc-800/80 rounded-2xl shadow-lg">
             <span className={`text-xs font-semibold ${alterado ? 'text-blue-400' : 'text-zinc-500'}`}>
               {alterado ? 'Há alterações não salvas.' : 'Nenhuma alteração pendente.'}

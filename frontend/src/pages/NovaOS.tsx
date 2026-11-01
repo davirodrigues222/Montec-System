@@ -1780,7 +1780,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
         </div>
 
         {/* ================= NAVEGAÇÃO DAS ETAPAS (SOMENTE CELULAR) ================= */}
-        <div className="md:hidden sticky bottom-0 z-20 -mx-3 px-3 pt-3 pb-3 bg-[#080c14]/95 backdrop-blur border-t border-zinc-800/80 space-y-2">
+        <div className="md:hidden sticky bottom-[calc(4rem+env(safe-area-inset-bottom))] z-20 -mx-3 px-3 pt-3 pb-3 bg-[#080c14]/95 backdrop-blur border-t border-zinc-800/80 space-y-2">
           <div className="flex items-center gap-2">
             {etapa > 1 && (
               <button
