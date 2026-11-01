@@ -142,6 +142,30 @@ html[data-theme="light"] .bg-\[\#070b14\]:not([data-theme-preview="true"]):not([
   background-color: #f1f5f9 !important;
 }
 
+/* Variações com transparência de fundos escuros (ex.: bg-zinc-800/20, bg-[#080c14]/50) que as regras
+   exatas abaixo não listam. O espaço antes de "bg-" deixa de fora os "hover:bg-..." (só no passar do mouse).
+   As regras exatas vêm depois e têm prioridade. */
+html[data-theme="light"] :is([class^="bg-zinc-800/"], [class*=" bg-zinc-800/"], [class^="bg-zinc-700/"], [class*=" bg-zinc-700/"], [class^="bg-slate-800/"], [class*=" bg-slate-800/"]):not([data-theme-preview="true"]):not([data-theme-preview="true"] *) {
+  background-color: #f1f5f9 !important;
+}
+
+html[data-theme="light"] :is([class^="bg-zinc-900/"], [class*=" bg-zinc-900/"], [class^="bg-zinc-950/"], [class*=" bg-zinc-950/"], [class^="bg-[#0"], [class*=" bg-[#0"]):not([data-theme-preview="true"]):not([data-theme-preview="true"] *) {
+  background-color: #f8fafc !important;
+}
+
+/* Degradês que terminam (ou passam) no fundo escuro dos cards: no tema claro terminam em branco */
+html[data-theme="light"] :is(.to-\[\#0c101a\], .to-\[\#080c14\]):not([data-theme-preview="true"] *) {
+  --tw-gradient-to: #ffffff !important;
+}
+
+html[data-theme="light"] :is(.via-\[\#0c101a\]):not([data-theme-preview="true"] *) {
+  --tw-gradient-via: #ffffff !important;
+}
+
+html[data-theme="light"] :is(.from-\[\#0b1424\]):not([data-theme-preview="true"] *) {
+  --tw-gradient-from: #eff6ff !important;
+}
+
 /* Sub-blocos, caixas internas e inputs com fundo #080c14 */
 html[data-theme="light"] .bg-\[\#080c14\]:not([data-theme-preview="true"]):not([data-theme-preview="true"] *),
 html[data-theme="light"] .bg-\[\#080c14\]\/60:not([data-theme-preview="true"]):not([data-theme-preview="true"] *),
