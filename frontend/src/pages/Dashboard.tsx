@@ -9,6 +9,7 @@ import {
   diaLocalDaData,
 } from '../services/api';
 import { AvisoErroCarregamento } from '../components/AvisoErroCarregamento';
+import { FundoBancada } from '../components/FundoBancada';
 import type { OrdemServico, StatusOS } from '../types';
 import type { AbaSistema } from '../services/acesso';
 import { formatarValor } from '../utils/formatadores';
@@ -472,7 +473,8 @@ export const Dashboard: React.FC<Props> = ({ onNavigate, session }) => {
           </div>
 
           {ordensEmAndamento.length === 0 ? (
-            <div className="flex-1 flex flex-col items-center justify-center p-10 sm:p-14 text-center">
+            <div className="relative isolate flex-1 flex flex-col items-center justify-center p-10 sm:p-14 text-center overflow-hidden min-h-[320px]">
+              <FundoBancada />
               <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center mb-3 shadow-inner">
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />

@@ -369,3 +369,30 @@ html[data-theme="light"] .divide-slate-800 > :not([hidden]) ~ :not([hidden]) {
     print-color-adjust: exact;
   }
 }
+
+/* ================= FUNDO ANIMADO DOS ESTADOS VAZIOS (components/FundoBancada.tsx) ================= */
+@keyframes fundo-bancada-flutuar {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-14px) rotate(6deg); }
+}
+
+@keyframes fundo-bancada-pulso {
+  0%, 100% { opacity: 0.6; transform: translate(-50%, -50%) scale(1); }
+  50% { opacity: 1; transform: translate(-50%, -50%) scale(1.12); }
+}
+
+.fundo-bancada-item {
+  animation: fundo-bancada-flutuar ease-in-out infinite;
+}
+
+.fundo-bancada-pulso {
+  animation: fundo-bancada-pulso 8s ease-in-out infinite;
+}
+
+/* Quem pede menos movimento no sistema operacional vê o fundo parado */
+@media (prefers-reduced-motion: reduce) {
+  .fundo-bancada-item,
+  .fundo-bancada-pulso {
+    animation: none;
+  }
+}
