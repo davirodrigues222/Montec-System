@@ -1,5 +1,12 @@
-import React, { useState } from 'react';
-import { fazerLogin, cadastrarUsuario, recuperarSenha } from '../services/api';
+import React, { useEffect, useState } from 'react';
+import {
+  fazerLogin,
+  cadastrarUsuario,
+  confirmarCadastroComCodigo,
+  enviarCodigoRecuperacao,
+  redefinirSenhaComCodigo,
+  reenviarCodigoCadastro,
+} from '../services/api';
 import { validarSenhaForte } from '../utils/formatadores';
 import { type DocumentoLegal, DocumentosLegais } from '../components/DocumentosLegais';
 import { NomeBancadaOS, SimboloBancadaOS } from '../components/Marca';
@@ -12,8 +19,23 @@ interface Props {
   onVoltar?: () => void;
 }
 
+/**
+ * login | cadastro | verificar: código do e-mail que confirma o cadastro
+ * recuperar: pede o código de troca de senha | redefinir: código + nova senha
+ */
+type ModoAuth = 'login' | 'cadastro' | 'verificar' | 'recuperar' | 'redefinir';
+
+// Espera entre dois envios de código (o Supabase também limita: 1 e-mail por minuto)
+const ESPERA_REENVIO_S = 60;
+
+const inputCls =
+  'w-full px-4 py-3 bg-[#0d131f] border border-zinc-800 rounded-xl text-sm text-white placeholder-zinc-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition';
+const labelCls = 'block text-[11px] font-bold text-zinc-400 uppercase tracking-wider mb-2';
+const botaoPrincipalCls =
+  'w-full py-3.5 px-4 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-bold text-sm rounded-xl shadow-lg shadow-blue-600/30 transition duration-200 mt-2';
+
 export const Auth: React.FC<Props> = ({ onLoginSuccess, modoInicial = 'login', onVoltar }) => {
-  const [modo, setModo] = useState<'login' | 'cadastro'>(modoInicial);
+  const [modo, setModo] = useState<ModoAuth>(modoInicial);
   const [loading, setLoading] = useState(false);
   const [mensagem, setMensagem] = useState<{ tipo: 'sucesso' | 'erro'; texto: string } | null>(null);
 
@@ -32,6 +54,43 @@ export const Auth: React.FC<Props> = ({ onLoginSuccess, modoInicial = 'login', o
   const [concordouTermos, setConcordouTermos] = useState(false);
   const [documentoAberto, setDocumentoAberto] = useState<DocumentoLegal | null>(null);
 
+  // Código de verificação (cadastro e recuperação de senha)
+  const [emailCodigo, setEmailCodigo] = useState('');
+  const [codigo, setCodigo] = useState('');
+  const [novaSenha, setNovaSenha] = useState('');
+  const [confirmarNovaSenha, setConfirmarNovaSenha] = useState('');
+  const [reenviarEm, setReenviarEm] = useState(0);
+
+  useEffect(() => {
+    if (reenviarEm <= 0) return;
+    const id = window.setTimeout(() => setReenviarEm((s) => s - 1), 1000);
+    return () => window.clearTimeout(id);
+  }, [reenviarEm]);
+
+  const trocarModo = (m: ModoAuth) => {
+    setModo(m);
+    setMensagem(null);
+  };
+
+  /** Abre a tela do código já com o aviso de envio. */
+  const irParaCodigo = (m: 'verificar' | 'redefinir', email: string, texto: string) => {
+    setEmailCodigo(email.trim());
+    setCodigo('');
+    setNovaSenha('');
+    setConfirmarNovaSenha('');
+    setReenviarEm(ESPERA_REENVIO_S);
+    setModo(m);
+    setMensagem({ tipo: 'sucesso', texto });
+  };
+
+  const codigoValido = () => {
+    if (!/^\d{6,10}$/.test(codigo.trim())) {
+      setMensagem({ tipo: 'erro', texto: 'Digite o código de 6 dígitos que chegou no seu e-mail.' });
+      return false;
+    }
+    return true;
+  };
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setMensagem(null);
@@ -48,11 +107,17 @@ export const Auth: React.FC<Props> = ({ onLoginSuccess, modoInicial = 'login', o
       if (data.user) onLoginSuccess?.();
     } catch (err: any) {
       console.error('Erro de autenticação:', err);
-      let erroTexto = 'E-mail ou senha inválidos.';
       if (err.message && err.message.toLowerCase().includes('email not confirmed')) {
-        erroTexto = 'Por favor, confirme seu e-mail antes de acessar.';
+        // Cadastro ainda sem confirmação: manda um código novo e já abre a tela para digitá-lo
+        await reenviarCodigoCadastro(loginEmail).catch(() => undefined);
+        irParaCodigo(
+          'verificar',
+          loginEmail,
+          `Seu e-mail ainda não foi confirmado. Enviamos um código de verificação para ${loginEmail.trim()}.`
+        );
+        return;
       }
-      setMensagem({ tipo: 'erro', texto: erroTexto });
+      setMensagem({ tipo: 'erro', texto: 'E-mail ou senha inválidos.' });
     } finally {
       setLoading(false);
     }
@@ -85,8 +150,8 @@ export const Auth: React.FC<Props> = ({ onLoginSuccess, modoInicial = 'login', o
 
     setLoading(true);
     try {
-      await cadastrarUsuario({
-        email: cadEmail,
+      const data = await cadastrarUsuario({
+        email: cadEmail.trim(),
         password: cadSenha,
         nomeResponsavel,
         nomeAssistencia,
@@ -94,15 +159,13 @@ export const Auth: React.FC<Props> = ({ onLoginSuccess, modoInicial = 'login', o
         cpfCnpj,
       });
 
-      setMensagem({
-        tipo: 'sucesso',
-        texto: 'Conta criada com sucesso! Verifique seu e-mail para confirmação se necessário.',
-      });
-
-      setTimeout(() => {
-        setModo('login');
-        setLoginEmail(cadEmail);
-      }, 2000);
+      // Confirmação de e-mail desligada no Supabase: a conta já entra logada
+      if (data?.session) {
+        onLoginSuccess?.();
+        return;
+      }
+      setLoginEmail(cadEmail.trim());
+      irParaCodigo('verificar', cadEmail, `Conta criada! Enviamos um código de verificação para ${cadEmail.trim()}.`);
     } catch (err: any) {
       console.error('Erro de cadastro:', err);
       let erroTexto = err.message || 'Falha ao registrar conta.';
@@ -115,24 +178,83 @@ export const Auth: React.FC<Props> = ({ onLoginSuccess, modoInicial = 'login', o
     }
   };
 
-  const handleRecuperar = async () => {
-    if (!loginEmail) {
-      setMensagem({
-        tipo: 'erro',
-        texto: 'Digite seu e-mail no campo acima para receber o link de redefinição de senha.',
-      });
-      return;
-    }
-
+  /** Cadastro: confere o código e entra na conta. */
+  const handleVerificar = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setMensagem(null);
+    if (!codigoValido()) return;
     setLoading(true);
     try {
-      await recuperarSenha(loginEmail);
-      setMensagem({
-        tipo: 'sucesso',
-        texto: 'Link de recuperação enviado para o seu e-mail com sucesso.',
-      });
+      await confirmarCadastroComCodigo(emailCodigo, codigo);
+      onLoginSuccess?.();
     } catch (err: any) {
-      setMensagem({ tipo: 'erro', texto: err.message || 'Falha ao solicitar recuperação.' });
+      setMensagem({ tipo: 'erro', texto: err.message });
+      setCodigo('');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /** Esqueci minha senha: envia o código para o e-mail. */
+  const handleRecuperar = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setMensagem(null);
+    if (!/^\S+@\S+\.\S+$/.test(loginEmail.trim())) {
+      setMensagem({ tipo: 'erro', texto: 'Informe o e-mail da sua conta.' });
+      return;
+    }
+    setLoading(true);
+    try {
+      await enviarCodigoRecuperacao(loginEmail);
+      irParaCodigo(
+        'redefinir',
+        loginEmail,
+        `Se houver uma conta com ${loginEmail.trim()}, enviamos um código para redefinir a senha. Confira também o spam.`
+      );
+    } catch (err: any) {
+      setMensagem({ tipo: 'erro', texto: err.message });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /** Recuperação: confere o código, grava a nova senha e entra na conta. */
+  const handleRedefinir = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setMensagem(null);
+    if (!codigoValido()) return;
+    const erroSenha = validarSenhaForte(novaSenha);
+    if (erroSenha) {
+      setMensagem({ tipo: 'erro', texto: erroSenha });
+      return;
+    }
+    if (novaSenha !== confirmarNovaSenha) {
+      setMensagem({ tipo: 'erro', texto: 'As senhas digitadas não coincidem.' });
+      return;
+    }
+    setLoading(true);
+    try {
+      await redefinirSenhaComCodigo(emailCodigo, codigo, novaSenha);
+      onLoginSuccess?.();
+    } catch (err: any) {
+      setMensagem({ tipo: 'erro', texto: err.message });
+      setCodigo('');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleReenviar = async () => {
+    if (reenviarEm > 0 || loading) return;
+    setMensagem(null);
+    setLoading(true);
+    try {
+      if (modo === 'verificar') await reenviarCodigoCadastro(emailCodigo);
+      else await enviarCodigoRecuperacao(emailCodigo);
+      setReenviarEm(ESPERA_REENVIO_S);
+      setMensagem({ tipo: 'sucesso', texto: `Enviamos um novo código para ${emailCodigo}.` });
+    } catch (err: any) {
+      setMensagem({ tipo: 'erro', texto: err.message });
     } finally {
       setLoading(false);
     }
@@ -298,10 +420,10 @@ export const Auth: React.FC<Props> = ({ onLoginSuccess, modoInicial = 'login', o
                     </label>
                     <button
                       type="button"
-                      onClick={handleRecuperar}
+                      onClick={() => trocarModo('recuperar')}
                       className="text-xs font-medium text-blue-400 hover:text-blue-300 transition"
                     >
-                      Recuperar
+                      Esqueci minha senha
                     </button>
                   </div>
                   <input
@@ -338,7 +460,7 @@ export const Auth: React.FC<Props> = ({ onLoginSuccess, modoInicial = 'login', o
                 </p>
               </div>
             </div>
-          ) : (
+          ) : modo === 'cadastro' ? (
             <div>
               <div className="mb-6">
                 <span className="text-xs font-bold tracking-widest text-blue-400 uppercase">
@@ -511,6 +633,133 @@ export const Auth: React.FC<Props> = ({ onLoginSuccess, modoInicial = 'login', o
                     Voltar para o login
                   </button>
                 </p>
+              </div>
+            </div>
+          ) : modo === 'recuperar' ? (
+            <div>
+              <div className="mb-8">
+                <span className="text-xs font-bold tracking-widest text-blue-400 uppercase">RECUPERAR ACESSO</span>
+                <h3 className="text-2xl sm:text-3xl font-extrabold text-white mt-1.5 tracking-tight">Esqueceu a senha?</h3>
+                <p className="text-zinc-400 text-xs sm:text-sm mt-1">
+                  Informe o e-mail da conta. Vamos enviar um código para você criar uma senha nova.
+                </p>
+              </div>
+
+              <form onSubmit={handleRecuperar} className="space-y-5">
+                <div>
+                  <label className={labelCls}>E-MAIL DA CONTA</label>
+                  <input
+                    type="email"
+                    autoComplete="email"
+                    autoFocus
+                    value={loginEmail}
+                    onChange={(e) => setLoginEmail(e.target.value)}
+                    placeholder="gestor@suaassistencia.com.br"
+                    className={inputCls}
+                  />
+                </div>
+                <button type="submit" disabled={loading} className={botaoPrincipalCls}>
+                  {loading ? 'Enviando...' : 'Enviar código'}
+                </button>
+              </form>
+
+              <button
+                type="button"
+                onClick={() => trocarModo('login')}
+                className="mt-8 block mx-auto text-xs font-bold text-blue-400 hover:text-blue-300 transition"
+              >
+                Voltar para o login
+              </button>
+            </div>
+          ) : (
+            // verificar (cadastro) | redefinir (nova senha): código de 6 dígitos enviado por e-mail
+            <div>
+              <div className="mb-8">
+                <span className="text-xs font-bold tracking-widest text-blue-400 uppercase">
+                  {modo === 'verificar' ? 'CONFIRMAR E-MAIL' : 'NOVA SENHA'}
+                </span>
+                <h3 className="text-2xl sm:text-3xl font-extrabold text-white mt-1.5 tracking-tight">
+                  {modo === 'verificar' ? 'Digite o código' : 'Crie uma senha nova'}
+                </h3>
+                <p className="text-zinc-400 text-xs sm:text-sm mt-1">
+                  Enviamos um código de 6 dígitos para <span className="font-semibold text-zinc-200">{emailCodigo}</span>.
+                  Ele vale por pouco tempo. Não encontrou? Confira a <span className="font-semibold text-zinc-200">caixa de spam</span>.
+                </p>
+              </div>
+
+              <form onSubmit={modo === 'verificar' ? handleVerificar : handleRedefinir} className="space-y-5" noValidate>
+                <div>
+                  <label className={labelCls}>CÓDIGO DE VERIFICAÇÃO</label>
+                  <input
+                    value={codigo}
+                    onChange={(e) => setCodigo(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    autoFocus
+                    placeholder="000000"
+                    aria-label="Código de verificação"
+                    className={`${inputCls} text-center font-mono text-2xl tracking-[0.5em] placeholder-zinc-600`}
+                  />
+                </div>
+
+                {modo === 'redefinir' && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                    <div>
+                      <label className={labelCls}>NOVA SENHA</label>
+                      <input
+                        type="password"
+                        autoComplete="new-password"
+                        value={novaSenha}
+                        onChange={(e) => setNovaSenha(e.target.value)}
+                        placeholder="8+ caracteres, letras e números"
+                        className={inputCls}
+                      />
+                    </div>
+                    <div>
+                      <label className={labelCls}>CONFIRMAR SENHA</label>
+                      <input
+                        type="password"
+                        autoComplete="new-password"
+                        value={confirmarNovaSenha}
+                        onChange={(e) => setConfirmarNovaSenha(e.target.value)}
+                        placeholder="Repita a senha"
+                        className={inputCls}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <button type="submit" disabled={loading} className={botaoPrincipalCls}>
+                  {loading ? 'Verificando...' : modo === 'verificar' ? 'Confirmar e entrar' : 'Salvar nova senha e entrar'}
+                </button>
+              </form>
+
+              <div className="mt-6 space-y-3 text-center">
+                <p className="text-xs text-zinc-400">
+                  Não recebeu? Confira o spam ou{' '}
+                  <button
+                    type="button"
+                    onClick={handleReenviar}
+                    disabled={reenviarEm > 0 || loading}
+                    className="font-bold text-blue-400 hover:text-blue-300 disabled:text-zinc-500 disabled:cursor-not-allowed transition"
+                  >
+                    {reenviarEm > 0 ? `reenvie em ${reenviarEm}s` : 'reenviar código'}
+                  </button>
+                </p>
+                <button
+                  type="button"
+                  onClick={() => trocarModo(modo === 'verificar' ? 'cadastro' : 'recuperar')}
+                  className="text-xs text-zinc-500 hover:text-zinc-300 transition"
+                >
+                  Usar outro e-mail
+                </button>
+                <button
+                  type="button"
+                  onClick={() => trocarModo('login')}
+                  className="block mx-auto text-xs font-bold text-blue-400 hover:text-blue-300 transition"
+                >
+                  Voltar para o login
+                </button>
               </div>
             </div>
           )}

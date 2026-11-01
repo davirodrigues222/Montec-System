@@ -38,6 +38,10 @@ begin
     from auth.users u
    where u.id = auth.uid();
 
+  if not found then -- login antigo de um usuário que foi excluído
+    raise exception 'Sua sessão não é mais válida. Clique em "Sair da conta" e entre novamente.';
+  end if;
+
   delete from public.sessoes_operador where expira_em < now();
 
   t := encode(extensions.gen_random_bytes(32), 'hex');

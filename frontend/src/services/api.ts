@@ -1168,6 +1168,10 @@ export async function cadastrarUsuario(dados: {
     },
   });
   if (error) throw error;
+  // E-mail que já tem conta confirmada: o Supabase não acusa erro (para não revelar contas) e não envia código
+  if (data?.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+    throw new Error('Este e-mail já está cadastrado. Entre com sua senha ou use "Esqueci minha senha".');
+  }
 
   if (data?.user?.id) {
     const configComOwner: ConfiguracoesLojaIsolada = {
@@ -1205,10 +1209,56 @@ export async function cadastrarUsuario(dados: {
   return data;
 }
 
-export async function recuperarSenha(email: string) {
-  const { data, error } = await supabase.auth.resetPasswordForEmail(email);
-  if (error) throw error;
+// ==========================================
+// Códigos de verificação por e-mail (Supabase Auth: modelos "Confirm signup" e "Reset Password"
+// com {{ .Token }}). O código confirma o e-mail no cadastro e libera a troca de senha.
+// ==========================================
+
+/** Mensagens do Supabase Auth em português (código errado, vencido, limite de envios). */
+function traduzirErroCodigo(error: any): Error {
+  const msg = String(error?.message || '');
+  if (/expired|invalid|otp/i.test(msg)) return new Error('Código inválido ou vencido. Confira o e-mail ou peça um novo código.');
+  if (/rate limit|security purposes|too many/i.test(msg)) {
+    return new Error('Muitas tentativas em pouco tempo. Aguarde um minuto e tente de novo.');
+  }
+  return new Error(msg || 'Não foi possível verificar o código.');
+}
+
+/** Confirma o cadastro com o código enviado por e-mail. A conta já fica logada. */
+export async function confirmarCadastroComCodigo(email: string, codigo: string) {
+  const { data, error } = await supabase.auth.verifyOtp({ email: email.trim(), token: codigo.trim(), type: 'signup' });
+  if (error) throw traduzirErroCodigo(error);
+  if (data?.user) sincronizarSessaoConfiguracoesLoja(data.user);
   return data;
+}
+
+/** Envia de novo o código de confirmação do cadastro. */
+export async function reenviarCodigoCadastro(email: string): Promise<void> {
+  const { error } = await supabase.auth.resend({ type: 'signup', email: email.trim() });
+  if (error) throw traduzirErroCodigo(error);
+}
+
+/**
+ * Envia o código para redefinir a senha. Por segurança, não revela se o e-mail tem conta
+ * (o Supabase responde igual nos dois casos).
+ */
+export async function enviarCodigoRecuperacao(email: string): Promise<void> {
+  const { error } = await supabase.auth.resetPasswordForEmail(email.trim());
+  if (error) throw traduzirErroCodigo(error);
+}
+
+/** Confere o código de recuperação e grava a nova senha. A conta já fica logada. */
+export async function redefinirSenhaComCodigo(email: string, codigo: string, novaSenha: string): Promise<void> {
+  const erroSenha = validarSenhaForte(novaSenha || '');
+  if (erroSenha) throw new Error(erroSenha);
+  const { data, error } = await supabase.auth.verifyOtp({ email: email.trim(), token: codigo.trim(), type: 'recovery' });
+  if (error) throw traduzirErroCodigo(error);
+  const { error: erroSenhaNova } = await supabase.auth.updateUser({ password: novaSenha });
+  // Mesma senha de antes: o código já confirmou o dono do e-mail, então só segue logado
+  if (erroSenhaNova && !/different from the old/i.test(erroSenhaNova.message || '')) {
+    throw new Error(erroSenhaNova.message || 'Não foi possível gravar a nova senha.');
+  }
+  if (data?.user) sincronizarSessaoConfiguracoesLoja(data.user);
 }
 
 /** Troca a senha da conta autenticada (Supabase Auth). */
