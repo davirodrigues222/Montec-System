@@ -27,9 +27,13 @@ const PASSOS = [
   'O WhatsApp abre na conversa do cliente com o texto já preenchido com os dados daquela OS.',
   'Você revisa e toca em Enviar no WhatsApp. O cliente precisa ter o WhatsApp cadastrado na OS.',
   'Depois que a OS é marcada como Entregue / Concluído, os botões ficam bloqueados. Envie a mensagem de entrega antes de mudar o status.',
+  '{link_acompanhamento} vira um link em que o cliente acompanha o andamento da OS e aprova o orçamento, sem precisar de login.',
 ];
 
-const VARIAVEIS = ['{cliente}', '{aparelho}', '{numero_os}', '{valor}', '{loja}', '{prazo_garantia}'];
+const VARIAVEIS = ['{cliente}', '{aparelho}', '{numero_os}', '{valor}', '{loja}', '{prazo_garantia}', '{link_acompanhamento}'];
+
+// Na pré-visualização o link é só ilustrativo: o de verdade é gerado para cada OS no envio
+const LINK_EXEMPLO = `${window.location.origin}/acompanhar/exemplo`;
 
 export const AbaWhatsapp: React.FC<PropsAba> = ({ config, alterar }) => {
   // A pré-visualização usa a OS mais recente da loja (dados reais); sem ordens, mostra as variáveis
@@ -50,7 +54,7 @@ export const AbaWhatsapp: React.FC<PropsAba> = ({ config, alterar }) => {
   }, []);
 
   const preVisualizar = (modelo: string) =>
-    osExemplo ? preencherModeloMensagem(modelo, variaveisMensagemOS(osExemplo, config)) : modelo;
+    osExemplo ? preencherModeloMensagem(modelo, variaveisMensagemOS(osExemplo, config, LINK_EXEMPLO)) : modelo;
 
   const testar = (texto: string) => {
     const link = linkWhatsapp(config.telefone, texto);

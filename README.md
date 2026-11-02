@@ -70,7 +70,13 @@ Desenvolvido para atender desde a recepção no balcão até a bancada do técni
 - **Termos Legais Customizáveis:** Editor de termos e condições de garantia que alimenta automaticamente a via impressa do cliente.
 - **Comprovante de Entrada / Certidão de Garantia:** Layout profissional com assinaturas do cliente e técnico, adaptado para impressão ou salvamento em PDF.
 
-### 9. Assistente de IA
+### 9. Link de acompanhamento para o cliente
+- **Andamento sem login:** cada OS tem um link (`/acompanhar/<código>`) em que o cliente vê o status, as datas, o orçamento e a garantia. Não aparecem telefone, CPF, IMEI, senha, custos nem observações internas.
+- **Aprovação do orçamento:** o cliente aprova pelo link; a OS registra a data e a forma "Link de acompanhamento".
+- **Envio:** em Ordens de serviço › Detalhes (bloco "Acompanhamento online") ou pela variável `{link_acompanhamento}` nas mensagens de WhatsApp. "Gerar link novo" invalida o anterior; o link vence 30 dias depois da entrega.
+- **Banco:** migração `20261102090000_link_acompanhamento.sql`.
+
+### 10. Assistente de IA
 - **Dúvidas sobre o sistema:** Botão **Assistente** no cabeçalho, com um chat que explica telas e fluxos e abre a tela certa.
 - **Tarefas de configuração:** Cria e altera formas de pagamento (taxas, parcelamento, taxa por parcela), cria as formas padrão e cadastra ou altera serviços. Antes de gravar, mostra um resumo para o usuário confirmar.
 - **Permissões respeitadas:** As ações rodam no navegador com o login e as permissões do funcionário identificado.

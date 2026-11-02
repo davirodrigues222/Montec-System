@@ -57,7 +57,8 @@ import type { AbaSistema } from '../services/acesso';
 import type { OrdemServico } from '../types';
 import { OPCOES_CHECKLIST, criarChecklistPadrao, itensChecklistAtivos } from '../utils/checklist';
 import { formatarValor } from '../utils/formatadores';
-import { enviarMensagemWhatsapp } from '../utils/whatsapp';
+import { enviarMensagemWhatsapp, mensagemLevaLink } from '../utils/whatsapp';
+import { BotaoCopiarLinkAcompanhamento } from '../components/LinkAcompanhamentoOS';
 import { type FormaPagamento, type TipoFormaPagamento, obterTaxaParcela } from '../services/cadastros';
 import { EVENTO_FORMAS_PAGAMENTO, OPCOES_PAGAMENTO_NATIVAS, type OpcaoPagamentoOS, carregarOpcoesPagamento } from '../services/formasPagamentoOS';
 import { useOperador } from '../contexts/OperadorContext';
@@ -1904,6 +1905,15 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
               >
                 <span>Imprimir Comprovante / PDF</span>
               </button>
+              {osCriadaSucesso.dadosCompletos.cliente?.whatsapp && mensagemLevaLink('entrada') && (
+                <p className="-mt-1 text-[11px] text-zinc-500">A mensagem já leva o link de acompanhamento.</p>
+              )}
+
+              {/* Link para o cliente acompanhar a OS e aprovar o orçamento (sem login) */}
+              <BotaoCopiarLinkAcompanhamento
+                idOs={osCriadaSucesso.idOs}
+                className="w-full py-2.5 bg-[#0e1320] hover:bg-blue-600/20 border border-blue-500/40 text-blue-300 font-bold rounded-xl text-xs transition disabled:opacity-60 inline-flex items-center justify-center gap-2"
+              />
 
               {/* Mensagem "OS aberta / entrada do aparelho" (texto em Configurações › Mensagens de WhatsApp) */}
               <button

@@ -27,7 +27,10 @@ export interface TaxasMaquininha {
 /** Maior parcelamento que uma maquininha pode ter no sistema. */
 export const PARCELAS_LIMITE = 48;
 
-/** Modelos de mensagem de WhatsApp com variáveis {cliente}, {aparelho}, {numero_os}, {valor}, {loja}, {prazo_garantia}. */
+/**
+ * Modelos de mensagem de WhatsApp com variáveis {cliente}, {aparelho}, {numero_os}, {valor}, {loja},
+ * {prazo_garantia} e {link_acompanhamento}.
+ */
 export interface MensagensWhatsapp {
   entrada: string;
   orcamento: string;
@@ -146,26 +149,31 @@ export const criarMaquininha = (nome: string, operadora = ''): Maquininha => ({
 // {numero_os} já traz o prefixo da OS (ex.: OS-128584), então o texto não repete "OS".
 export const MENSAGENS_WHATSAPP_PADRAO: MensagensWhatsapp = {
   entrada:
-    'Olá {cliente}, recebemos seu {aparelho} na {loja}. Número da ordem de serviço: {numero_os}. Assim que o diagnóstico ficar pronto, avisaremos por aqui.',
+    'Olá {cliente}, recebemos seu {aparelho} na {loja}. Número da ordem de serviço: {numero_os}. Acompanhe o andamento por este link: {link_acompanhamento}',
   orcamento:
-    'Olá {cliente}, o diagnóstico do seu {aparelho} (ordem {numero_os}) foi concluído. O valor ficou em {valor}. Podemos seguir com o reparo?',
+    'Olá {cliente}, o diagnóstico do seu {aparelho} (ordem {numero_os}) foi concluído. O valor ficou em {valor}. Veja os detalhes e aprove o orçamento por aqui: {link_acompanhamento}',
   pronto:
     'Boas notícias, {cliente}! Seu {aparelho} (ordem {numero_os}) já está pronto para retirada na {loja}.',
   entrega:
     'Obrigado pela preferência, {cliente}! Seu {aparelho} foi entregue com garantia de {prazo_garantia} dias. Qualquer dúvida, é só chamar a {loja}.',
 };
 
-// Primeira versão dos modelos (repetia "OS #OS-..."): quem não editou o texto recebe a versão corrigida
-const MENSAGENS_WHATSAPP_ANTIGAS: Partial<MensagensWhatsapp> = {
-  entrada:
+// Versões anteriores dos modelos padrão: quem não editou o texto recebe a versão atual
+// (1ª versão repetia "OS #OS-..."; a 2ª ainda não tinha o link de acompanhamento)
+const MENSAGENS_WHATSAPP_ANTIGAS: Partial<Record<keyof MensagensWhatsapp, string[]>> = {
+  entrada: [
     'Olá {cliente}, recebemos seu {aparelho} na {loja} (OS #{numero_os}). Assim que o diagnóstico ficar pronto, avisaremos por aqui.',
-  orcamento:
+    'Olá {cliente}, recebemos seu {aparelho} na {loja}. Número da ordem de serviço: {numero_os}. Assim que o diagnóstico ficar pronto, avisaremos por aqui.',
+  ],
+  orcamento: [
     'Olá {cliente}, o diagnóstico do seu {aparelho} (OS #{numero_os}) foi concluído. O valor ficou em {valor}. Podemos seguir com o reparo?',
-  pronto: 'Boas notícias, {cliente}! Seu {aparelho} (OS #{numero_os}) já está pronto para retirada na {loja}.',
+    'Olá {cliente}, o diagnóstico do seu {aparelho} (ordem {numero_os}) foi concluído. O valor ficou em {valor}. Podemos seguir com o reparo?',
+  ],
+  pronto: ['Boas notícias, {cliente}! Seu {aparelho} (OS #{numero_os}) já está pronto para retirada na {loja}.'],
 };
 
 const modeloMensagem = (chave: keyof MensagensWhatsapp, salvo?: string) =>
-  !salvo || salvo === MENSAGENS_WHATSAPP_ANTIGAS[chave] ? MENSAGENS_WHATSAPP_PADRAO[chave] : salvo;
+  !salvo || MENSAGENS_WHATSAPP_ANTIGAS[chave]?.includes(salvo) ? MENSAGENS_WHATSAPP_PADRAO[chave] : salvo;
 
 const ITENS_CHECKLIST_PADRAO = [
   'ligando', 'touchScreen', 'display', 'cameraTraseira', 'cameraFrontal', 'microfone',
@@ -753,13 +761,20 @@ export function calcularDataPrevistaEntrega(diasUteis: number, base: Date = new 
   return `${data.getFullYear()}-${String(data.getMonth() + 1).padStart(2, '0')}-${String(data.getDate()).padStart(2, '0')}`;
 }
 
-/** Troca as variáveis {cliente}, {aparelho}, {numero_os}, {valor}, {loja} e {prazo_garantia} de um modelo de mensagem. */
+/** Troca as variáveis ({cliente}, {aparelho}, {numero_os}...) de um modelo de mensagem. */
 export function preencherModeloMensagem(modelo: string, variaveis: Record<string, string>): string {
   return modelo.replace(/\{(\w+)\}/g, (trecho, nome) => (nome in variaveis ? variaveis[nome] : trecho));
 }
 
-/** Valores das variáveis de mensagem a partir de uma OS real e da configuração da loja. */
-export function variaveisMensagemOS(os: any, cfg: ConfiguracoesLojaIsolada = obterConfiguracoesLojaSincrono()) {
+/**
+ * Valores das variáveis de mensagem a partir de uma OS real e da configuração da loja.
+ * O link de acompanhamento é gerado no banco, então vem pronto de quem chama (utils/whatsapp.ts).
+ */
+export function variaveisMensagemOS(
+  os: any,
+  cfg: ConfiguracoesLojaIsolada = obterConfiguracoesLojaSincrono(),
+  linkAcompanhamento = ''
+) {
   const valor = Number(os?.orcamentoCalculado?.valorTotalOrcamento ?? os?.valor_total ?? 0);
   return {
     cliente: String(os?.cliente?.nome || 'cliente').trim(),
@@ -770,6 +785,7 @@ export function variaveisMensagemOS(os: any, cfg: ConfiguracoesLojaIsolada = obt
     prazo_garantia: String(
       Math.max(GARANTIA_LEGAL_DIAS, os?.possuiGarantia === false ? 0 : Number(os?.prazoGarantiaDias) || cfg.prazoGarantiaDias)
     ),
+    link_acompanhamento: linkAcompanhamento,
   };
 }
 

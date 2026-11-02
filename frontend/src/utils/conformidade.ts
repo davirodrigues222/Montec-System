@@ -20,7 +20,7 @@ export const TIPOS_PECA: Record<TipoPeca, { rotulo: string; exigeAutorizacao: bo
 };
 
 /** Como o cliente aprovou o orçamento (CDC, art. 39, VI: serviço só com autorização expressa). */
-export const FORMAS_APROVACAO = ['Presencial (assinatura)', 'WhatsApp', 'Telefone', 'E-mail'];
+export const FORMAS_APROVACAO = ['Presencial (assinatura)', 'WhatsApp', 'Telefone', 'E-mail', 'Link de acompanhamento'];
 
 /** A partir destes status o serviço está sendo executado: exige orçamento aprovado. */
 export const STATUS_EXIGEM_APROVACAO = ['AGUARDANDO_PECA', 'EM_MANUTENCAO', 'PRONTO', 'ENTREGUE'];

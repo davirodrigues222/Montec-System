@@ -24,6 +24,7 @@ const formaBaseDaOS = (os: OrdemServico): string => {
 /** Linhas exibidas por vez na listagem (botão "Mostrar mais" carrega o restante). */
 const LINHAS_POR_PAGINA = 50;
 import { MODELOS_WHATSAPP, enviarMensagemWhatsapp, podeEnviarMensagem } from "../utils/whatsapp";
+import { LinkAcompanhamentoOS } from "../components/LinkAcompanhamentoOS";
 import { StatusBadge } from "../components/StatusBadge";
 import { AutorizacaoAdministrativa } from "../components/AutorizacaoAdministrativa";
 import { CamposLegaisOS } from "../components/CamposLegaisOS";
@@ -950,6 +951,8 @@ export const HistoricoServicos: React.FC = () => {
                       ))}
                     </div>
                   </div>
+
+                  <LinkAcompanhamentoOS key={osSelecionada.id_os} os={osSelecionada} />
 
                   {/* Badge de Alerta de Garantia / Retorno nos Detalhes da OS */}
                   {osSelecionada.garantia && (
