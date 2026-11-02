@@ -114,3 +114,6 @@ export const PERGUNTAS = [
       'Sim. Você cadastra as formas de pagamento com a taxa de cada número de parcelas, e o sistema mostra quanto você realmente recebe e o lucro de cada OS.',
   },
 ];
+
+export const EMAIL_CONTATO = 'bancadaossystem@gmail.com';
+

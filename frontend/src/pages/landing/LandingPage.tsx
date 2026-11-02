@@ -1,5 +1,6 @@
 import React from 'react';
-import { DESTAQUES_HERO, DORES_E_SOLUCOES, ICONES, PASSOS, PERGUNTAS, RECURSOS } from './conteudo';
+import { Mail } from 'lucide-react';
+import { DESTAQUES_HERO, DORES_E_SOLUCOES, EMAIL_CONTATO, ICONES, PASSOS, PERGUNTAS, RECURSOS } from './conteudo';
 import { MockupOS } from './MockupOS';
 import { NomeBancadaOS, SimboloBancadaOS } from '../../components/Marca';
 
@@ -303,21 +304,44 @@ export const LandingPage: React.FC<Props> = ({ onEntrar, onCriarConta }) => (
 
     {/* ================= RODAPÉ ================= */}
     <footer className="border-t border-zinc-800/60">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
-        <div>
+      {/* Marca à esquerda; Navegação e Contato em colunas à direita (empilham no celular) */}
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-10 flex flex-col md:flex-row justify-between gap-10">
+        <div className="max-w-xs">
           <Logo />
           <p className="mt-3 text-sm text-zinc-500">Gestão de ordens de serviço para assistências técnicas.</p>
         </div>
-        <nav aria-label="Rodapé" className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
-          {LINKS_NAV.map((l) => (
-            <a key={l.href} href={l.href} className="text-zinc-400 hover:text-white transition">
-              {l.label}
+
+        <div className="flex flex-col sm:flex-row gap-10 sm:gap-16">
+          <nav aria-label="Rodapé">
+            <p className="text-xs font-bold uppercase tracking-wider text-zinc-500">Navegação</p>
+            <ul className="mt-3 space-y-2 text-sm">
+              {LINKS_NAV.map((l) => (
+                <li key={l.href}>
+                  <a href={l.href} className="text-zinc-400 hover:text-white transition">
+                    {l.label}
+                  </a>
+                </li>
+              ))}
+              <li>
+                <button type="button" onClick={onEntrar} className="text-zinc-400 hover:text-white transition">
+                  Entrar
+                </button>
+              </li>
+            </ul>
+          </nav>
+
+          <div>
+            <p className="text-xs font-bold uppercase tracking-wider text-zinc-500">Contato</p>
+            <a
+              href={`mailto:${EMAIL_CONTATO}`}
+              className="mt-3 inline-flex items-center gap-2 text-sm text-zinc-400 hover:text-white transition"
+            >
+              <Mail className="w-4 h-4 shrink-0" />
+              {EMAIL_CONTATO}
             </a>
-          ))}
-          <button type="button" onClick={onEntrar} className="text-zinc-400 hover:text-white transition">
-            Entrar
-          </button>
-        </nav>
+            <p className="mt-2 text-xs text-zinc-600">Dúvidas, sugestões ou suporte.</p>
+          </div>
+        </div>
       </div>
       <div className="border-t border-zinc-800/60">
         <p className="max-w-6xl mx-auto px-4 sm:px-6 py-5 text-xs text-zinc-600">© {new Date().getFullYear()} BancadaOS</p>
