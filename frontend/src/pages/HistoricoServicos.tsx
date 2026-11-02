@@ -25,6 +25,8 @@ const formaBaseDaOS = (os: OrdemServico): string => {
 const LINHAS_POR_PAGINA = 50;
 import { MODELOS_WHATSAPP, enviarMensagemWhatsapp, podeEnviarMensagem } from "../utils/whatsapp";
 import { LinkAcompanhamentoOS } from "../components/LinkAcompanhamentoOS";
+import { EditorFotosOS, GaleriaFotosOS } from "../components/FotosOS";
+import { type AlteracoesFotos, SEM_ALTERACOES_FOTOS, aplicarAlteracoesFotos } from "../services/fotosOS";
 import { StatusBadge } from "../components/StatusBadge";
 import { AutorizacaoAdministrativa } from "../components/AutorizacaoAdministrativa";
 import { CamposLegaisOS } from "../components/CamposLegaisOS";
@@ -130,6 +132,9 @@ export const HistoricoServicos: React.FC = () => {
 
   const [osSelecionada, setOsSelecionada] = useState<OrdemServico | null>(null);
   const [osParaEditar, setOsParaEditar] = useState<OrdemServico | null>(null);
+  // Fotos mudadas no "Editar OS" (gravadas ao salvar) e versão para a galeria dos detalhes recarregar
+  const [editFotos, setEditFotos] = useState<AlteracoesFotos>(SEM_ALTERACOES_FOTOS);
+  const [versaoFotos, setVersaoFotos] = useState(0);
   const [osParaExcluir, setOsParaExcluir] = useState<OrdemServico | null>(null);
   const { pode, operador } = useOperador();
   // Custo e lucro só para quem tem acesso financeiro (o banco também não entrega: migração 20261026180000)
@@ -271,6 +276,7 @@ export const HistoricoServicos: React.FC = () => {
 
   const abrirEdicao = (os: OrdemServico) => {
     setOsParaEditar(os);
+    setEditFotos(SEM_ALTERACOES_FOTOS);
     setEditNome(os.cliente?.nome || "");
     setEditWhatsapp(os.cliente?.whatsapp || "");
     setEditCpfCnpj(os.cliente?.cpfCnpj || "");
@@ -476,6 +482,14 @@ export const HistoricoServicos: React.FC = () => {
       });
 
       const idEditado = osParaEditar.id_os;
+
+      // Fotos: só depois de a OS ser gravada (se ela falhar, nada muda nas fotos)
+      if (editFotos.novas.length || editFotos.removidas.length) {
+        const falhasFotos = await aplicarAlteracoesFotos(idEditado, editFotos);
+        setVersaoFotos((v) => v + 1);
+        if (falhasFotos.length) alert(`A OS foi salva, mas algumas fotos não foram gravadas: ${falhasFotos[0]}`);
+      }
+
       setOsParaEditar(null);
       const listaAtualizada = await carregarHistorico();
 
@@ -908,7 +922,7 @@ export const HistoricoServicos: React.FC = () => {
                 onClick={() => setAbaModal("checklist")}
                 className={classeAba(abaModal === "checklist")}
               >
-                Checklist de Entrada
+                Checklist e fotos
               </button>
               <button
                 onClick={() => setAbaModal("historico")}
@@ -1161,6 +1175,10 @@ export const HistoricoServicos: React.FC = () => {
 
               {abaModal === "checklist" && (
                 <div className="grid grid-cols-2 gap-2 text-xs">
+                  {/* Fotos antes do checklist (mesma ordem da Nova OS) */}
+                  <div className="col-span-2 pb-4 mb-2 border-b border-zinc-800">
+                    <GaleriaFotosOS key={`${osSelecionada.id_os}-${versaoFotos}`} idOs={osSelecionada.id_os} />
+                  </div>
                   {itensVisiveisChecklist(osSelecionada.checklistEntrada).length > 0 ? (
                     itensVisiveisChecklist(osSelecionada.checklistEntrada).map(
                       ([item, status]) => (
@@ -1266,7 +1284,7 @@ export const HistoricoServicos: React.FC = () => {
                 onClick={() => setAbaEdicao("checklist")}
                 className={classeAba(abaEdicao === "checklist")}
               >
-                3. Checklist de Entrada
+                3. Checklist e fotos
               </button>
             </div>
 
@@ -1703,6 +1721,11 @@ export const HistoricoServicos: React.FC = () => {
               )}
 
               {abaEdicao === "checklist" && (
+                <div className="space-y-5">
+                {/* Fotos antes do checklist (mesma ordem da Nova OS) */}
+                <div className="pb-4 border-b border-zinc-800">
+                  <EditorFotosOS key={osParaEditar.id_os} idOs={osParaEditar.id_os} alteracoes={editFotos} aoMudar={setEditFotos} />
+                </div>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                   {((ativos) =>
                     // Itens ativos nas Configurações e os que já estavam gravados nesta OS
@@ -1732,6 +1755,7 @@ export const HistoricoServicos: React.FC = () => {
                       </select>
                     </div>
                   ))}
+                </div>
                 </div>
               )}
             </div>

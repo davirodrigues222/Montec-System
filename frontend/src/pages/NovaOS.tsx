@@ -4,6 +4,7 @@ import {
   BookOpen,
   CalendarClock,
   CalendarDays,
+  Camera,
   Check,
   CircleDollarSign,
   Landmark,
@@ -56,8 +57,10 @@ import type { AbaSistema } from '../services/acesso';
 import type { OrdemServico } from '../types';
 import { OPCOES_CHECKLIST, criarChecklistPadrao, itensChecklistAtivos } from '../utils/checklist';
 import { formatarValor } from '../utils/formatadores';
-import { enviarMensagemWhatsapp, mensagemLevaLink } from '../utils/whatsapp';
+import { enviarMensagemWhatsapp } from '../utils/whatsapp';
 import { BotaoCopiarLinkAcompanhamento } from '../components/LinkAcompanhamentoOS';
+import { SeletorFotosNovaOS } from '../components/FotosOS';
+import { enviarFotosOS } from '../services/fotosOS';
 import { type FormaPagamento, type TipoFormaPagamento, obterTaxaParcela } from '../services/cadastros';
 import { EVENTO_FORMAS_PAGAMENTO, OPCOES_PAGAMENTO_NATIVAS, type OpcaoPagamentoOS, carregarOpcoesPagamento } from '../services/formasPagamentoOS';
 import { useOperador } from '../contexts/OperadorContext';
@@ -384,6 +387,11 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
   const [valorPg2, setValorPg2] = useState<number | ''>('');
   const [parcelas2, setParcelas2] = useState(1);
   const [taxaMaquinetaPercentual2, setTaxaMaquinetaPercentual2] = useState<number | ''>(0);
+
+  // Fotos do aparelho: ficam aqui até a OS ser criada; depois sobem com o andamento na tela de sucesso
+  const [fotos, setFotos] = useState<File[]>([]);
+  const [envioFotos, setEnvioFotos] = useState<{ feitas: number; total: number; falhas: string[]; fim: boolean } | null>(null);
+  const geracaoFotos = useRef(0); // "Cadastrar outra ordem" no meio do envio: o andamento antigo não aparece na nova
 
   // Checklist de Entrada
   const [mostrarChecklist, setMostrarChecklist] = useState(false);
@@ -747,6 +755,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
           data_abertura: dataAbertura,
         },
       });
+      if (fotos.length > 0) enviarFotosDaOS(resultado.idOs, fotos);
     } catch (err: any) {
       console.error('Erro ao criar OS:', err);
       alert(`Falha ao salvar Ordem de Serviço: ${err.message || 'Verifique sua conexão.'}`);
@@ -756,7 +765,21 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
     }
   };
 
+  // Envio em segundo plano: a tela de sucesso já aparece e mostra o andamento
+  const enviarFotosDaOS = async (idOs: string, arquivos: File[]) => {
+    const geracao = ++geracaoFotos.current;
+    const atualizar = (dados: NonNullable<typeof envioFotos>) => geracao === geracaoFotos.current && setEnvioFotos(dados);
+    atualizar({ feitas: 0, total: arquivos.length, falhas: [], fim: false });
+    const { falhas } = await enviarFotosOS(idOs, arquivos, (feitas) =>
+      atualizar({ feitas, total: arquivos.length, falhas: [], fim: false })
+    );
+    atualizar({ feitas: arquivos.length, total: arquivos.length, falhas, fim: true });
+  };
+
   const handleLimparFormulario = () => {
+    setFotos([]);
+    setEnvioFotos(null);
+    geracaoFotos.current++;
     setIdClienteSelecionado('');
     setNomeCliente('');
     setWhatsappCliente('');
@@ -1680,7 +1703,21 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
           </div>
         )}
 
-        {/* ================= CARD 04: CHECKLIST DE ENTRADA ================= */}
+        {/* ================= CARD 04: FOTOS DO APARELHO ================= */}
+        <div className={`${cardCls} ${classeEtapa(4)}`}>
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-blue-600/15 border border-blue-500/30 flex items-center justify-center text-blue-400 shrink-0">
+              <Camera className="w-[18px] h-[18px]" />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-white">Fotos do aparelho</h3>
+              <p className="text-[11px] text-zinc-500">Opcional · até 15 fotos</p>
+            </div>
+          </div>
+          <SeletorFotosNovaOS fotos={fotos} aoMudar={setFotos} />
+        </div>
+
+        {/* ================= CARD 05: CHECKLIST DE ENTRADA ================= */}
         <div className={`bg-[#0c101a] border border-zinc-800/80 rounded-2xl overflow-hidden shadow-sm ${classeEtapa(4)}`}>
           <div className="flex items-center gap-2 pr-3">
             <button
@@ -1755,7 +1792,8 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
         </div>
 
         {/* ================= NAVEGAÇÃO DAS ETAPAS (SOMENTE CELULAR) ================= */}
-        <div className="md:hidden sticky bottom-[calc(4rem+env(safe-area-inset-bottom))] z-20 -mx-3 px-3 pt-3 pb-3 bg-[#080c14]/95 backdrop-blur border-t border-zinc-800/80 space-y-2">
+        {/* No fim da etapa, junto com o conteúdo (não acompanha a rolagem): flutuando, cobria os campos */}
+        <div className="md:hidden pt-1 space-y-2">
           <div className="flex items-center gap-2">
             {etapa > 1 && (
               <button
@@ -1851,6 +1889,19 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
               <p className="text-xs text-zinc-400 mt-2">
                 A ordem de serviço foi registrada e já está disponível na bancada.
               </p>
+              {envioFotos && (
+                <p
+                  className={`text-xs mt-2 font-semibold ${
+                    !envioFotos.fim ? 'text-blue-300' : envioFotos.falhas.length ? 'text-rose-400' : 'text-emerald-400'
+                  }`}
+                >
+                  {!envioFotos.fim
+                    ? `Enviando fotos: ${envioFotos.feitas} de ${envioFotos.total}…`
+                    : envioFotos.falhas.length
+                      ? `${envioFotos.total - envioFotos.falhas.length} de ${envioFotos.total} fotos enviadas. ${envioFotos.falhas[0]} Envie as que faltaram pelos detalhes da OS.`
+                      : `${envioFotos.total} ${envioFotos.total === 1 ? 'foto enviada' : 'fotos enviadas'}.`}
+                </p>
+              )}
             </div>
 
             <div className="flex flex-col gap-2.5 pt-2">
@@ -1860,35 +1911,24 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
               >
                 <span>Imprimir Comprovante / PDF</span>
               </button>
-              {osCriadaSucesso.dadosCompletos.cliente?.whatsapp && mensagemLevaLink('entrada') && (
-                <p className="-mt-1 text-[11px] text-zinc-500">A mensagem já leva o link de acompanhamento.</p>
+
+              {/* Mensagem "OS aberta / entrada do aparelho" (Configurações › Mensagens de WhatsApp), sempre com o
+                  link de acompanhamento. Sem WhatsApp do cliente, o link é copiado para mandar por outro meio. */}
+              {osCriadaSucesso.dadosCompletos.cliente?.whatsapp ? (
+                <button
+                  type="button"
+                  onClick={() => enviarMensagemWhatsapp(osCriadaSucesso.dadosCompletos, 'entrada', { garantirLink: true })}
+                  className="w-full py-2.5 bg-[#0e1320] hover:bg-emerald-600/20 border border-emerald-500/40 text-emerald-300 font-bold rounded-xl text-xs transition"
+                >
+                  Avisar cliente no WhatsApp
+                  <span className="block text-[10px] font-medium text-zinc-500 mt-0.5">com o link para acompanhar a OS</span>
+                </button>
+              ) : (
+                <BotaoCopiarLinkAcompanhamento
+                  idOs={osCriadaSucesso.idOs}
+                  className="w-full py-2.5 bg-[#0e1320] hover:bg-blue-600/20 border border-blue-500/40 text-blue-300 font-bold rounded-xl text-xs transition disabled:opacity-60 inline-flex items-center justify-center gap-2"
+                />
               )}
-
-              {/* Link para o cliente acompanhar a OS e aprovar o orçamento (sem login) */}
-              <BotaoCopiarLinkAcompanhamento
-                idOs={osCriadaSucesso.idOs}
-                className="w-full py-2.5 bg-[#0e1320] hover:bg-blue-600/20 border border-blue-500/40 text-blue-300 font-bold rounded-xl text-xs transition disabled:opacity-60 inline-flex items-center justify-center gap-2"
-              />
-
-              {/* Mensagem "OS aberta / entrada do aparelho" (texto em Configurações › Mensagens de WhatsApp) */}
-              <button
-                type="button"
-                onClick={() => enviarMensagemWhatsapp(osCriadaSucesso.dadosCompletos, 'entrada')}
-                disabled={!osCriadaSucesso.dadosCompletos.cliente?.whatsapp}
-                title={osCriadaSucesso.dadosCompletos.cliente?.whatsapp ? undefined : 'Cliente sem WhatsApp informado'}
-                className="w-full py-2.5 bg-[#0e1320] hover:bg-emerald-600/20 border border-emerald-500/40 text-emerald-300 font-bold rounded-xl text-xs transition disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                Avisar cliente no WhatsApp
-              </button>
-              {osCriadaSucesso.dadosCompletos.cliente?.whatsapp && mensagemLevaLink('entrada') && (
-                <p className="-mt-1 text-[11px] text-zinc-500">A mensagem já leva o link de acompanhamento.</p>
-              )}
-
-              {/* Link para o cliente acompanhar a OS e aprovar o orçamento (sem login) */}
-              <BotaoCopiarLinkAcompanhamento
-                idOs={osCriadaSucesso.idOs}
-                className="w-full py-2.5 bg-[#0e1320] hover:bg-blue-600/20 border border-blue-500/40 text-blue-300 font-bold rounded-xl text-xs transition disabled:opacity-60 inline-flex items-center justify-center gap-2"
-              />
 
               <button
                 onClick={handleLimparFormulario}

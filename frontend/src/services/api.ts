@@ -4,6 +4,7 @@ import { validarSenhaForte } from '../utils/formatadores';
 import { GARANTIA_LEGAL_DIAS, STATUS_APAGAM_SENHA } from '../utils/conformidade';
 import { MENSAGEM_SEM_PERMISSAO, ehRecusaDePermissao, exigirLinhaAfetada } from './errosBanco';
 import { contaDoUsuario, ehLoginDeFuncionario } from './contaLogin';
+import { apagarArquivosDaOS } from './fotosOS';
 
 // ==========================================
 // 1. ISOLAMENTO DE CONFIGURAÇÕES, TEMA, METAS E IDENTIDADE VISUAL POR CONTA
@@ -2568,4 +2569,6 @@ export async function excluirOrdemServico(id_os: string): Promise<void> {
   // Sem a permissão "Excluir OS" o banco não apaga nada e também não dá erro
   exigirLinhaAfetada(data);
   invalidarCacheOrdens();
+  // Fotos do aparelho: o banco já apagou os registros; os arquivos saem em segundo plano
+  apagarArquivosDaOS(id_os).then(undefined, () => undefined);
 }

@@ -76,7 +76,13 @@ Desenvolvido para atender desde a recepção no balcão até a bancada do técni
 - **Envio:** em Ordens de serviço › Detalhes (bloco "Acompanhamento online") ou pela variável `{link_acompanhamento}` nas mensagens de WhatsApp. "Gerar link novo" invalida o anterior; o link vence 30 dias depois da entrega.
 - **Banco:** migração `20261102090000_link_acompanhamento.sql`.
 
-### 10. Assistente de IA
+### 10. Fotos do aparelho
+- **Na entrada:** a Nova OS tem o card "Fotos do aparelho" ("Tirar foto" abre a câmera no celular); as fotos sobem logo depois que a OS é criada.
+- **Depois:** em Ordens de serviço › Detalhes › "Checklist e fotos" as fotos só são vistas e ampliadas; enviar mais e excluir fica no "Editar OS" (aba "Checklist e fotos"), gravando ao salvar (até 15 por OS).
+- **Leves e privadas:** cada foto é reduzida no aparelho (lado maior de 1600 px, ~300 KB) e fica no bucket privado `fotos-os`; só a própria loja vê.
+- **Banco:** migração `20261102120000_fotos_os.sql` (cria o bucket e as regras do Storage).
+
+### 11. Assistente de IA
 - **Dúvidas sobre o sistema:** Botão **Assistente** no cabeçalho, com um chat que explica telas e fluxos e abre a tela certa.
 - **Tarefas de configuração:** Cria e altera formas de pagamento (taxas, parcelamento, taxa por parcela), cria as formas padrão e cadastra ou altera serviços. Antes de gravar, mostra um resumo para o usuário confirmar.
 - **Permissões respeitadas:** As ações rodam no navegador com o login e as permissões do funcionário identificado.

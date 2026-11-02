@@ -25,22 +25,24 @@ export const podeEnviarMensagem = (os: OrdemServico) => os.status_os !== 'ENTREG
 
 const usaLink = (texto: string) => texto.includes('{link_acompanhamento}');
 
-/** O modelo de mensagem da loja já leva o link de acompanhamento (para avisar na tela). */
-export const mensagemLevaLink = (chave: keyof MensagensWhatsapp) =>
-  usaLink(obterConfiguracoesLojaSincrono().mensagensWhatsapp[chave] || '');
-
 /**
  * Abre a conversa do cliente da OS com o modelo escolhido já preenchido. Se o modelo usa
  * {link_acompanhamento}, gera o link antes (a janela abre no clique, para o navegador não bloquear).
+ * Com garantirLink, um modelo sem a variável recebe o link no fim (tela de sucesso da Nova OS).
  * Retorna false se a OS já foi entregue, se o número for inválido ou se o envio for cancelado.
  */
-export async function enviarMensagemWhatsapp(os: OrdemServico, chave: keyof MensagensWhatsapp): Promise<boolean> {
+export async function enviarMensagemWhatsapp(
+  os: OrdemServico,
+  chave: keyof MensagensWhatsapp,
+  { garantirLink = false } = {}
+): Promise<boolean> {
   if (!podeEnviarMensagem(os)) {
     alert('Esta OS já foi entregue. As mensagens de WhatsApp só podem ser enviadas antes da entrega.');
     return false;
   }
   const cfg = obterConfiguracoesLojaSincrono();
-  const modelo = cfg.mensagensWhatsapp[chave];
+  const salvo = cfg.mensagensWhatsapp[chave];
+  const modelo = garantirLink && !usaLink(salvo) ? `${salvo.trim()}\n\nAcompanhe sua ordem de serviço: {link_acompanhamento}` : salvo;
   if (!linkWhatsapp(os.cliente?.whatsapp || '', modelo)) {
     alert('O WhatsApp do cliente não está cadastrado ou é inválido. Informe o número com DDD na OS.');
     return false;
