@@ -359,6 +359,12 @@ export const HistoricoServicos: React.FC = () => {
       const logs: string[] = [];
 
       const numValorTotal = editValorTotal === "" ? 0 : Number(editValorTotal);
+      // Mesma regra da Nova OS: OS sem valor não é salva (evita zerar o valor cobrado sem perceber)
+      if (!(numValorTotal > 0)) {
+        alert('Informe o "Valor Bruto / Orçado" (aba 2. Orçamento, Custos & Pagamento) antes de salvar.');
+        setAbaEdicao("financeiro");
+        return;
+      }
       const numCustoPeca = editCustoPeca === "" ? 0 : Number(editCustoPeca);
       const numFrete = editFrete === "" ? 0 : Number(editFrete);
       const numDesconto = editDesconto === "" ? 0 : Number(editDesconto);

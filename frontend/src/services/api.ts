@@ -2264,6 +2264,17 @@ export function invalidarCacheOrdens() {
  * mostrava "nenhuma ordem", como se os dados tivessem sumido).
  * forcarAtualizacao ignora o cache (botões "Atualizar").
  */
+/**
+ * Valor do serviço antes do desconto. Nunca é menor que o valor cobrado (subtotal = cobrado + desconto):
+ * um subtotal menor é dado inconsistente e aí vale cobrado + desconto.
+ */
+function subtotalDaOS(item: any, valorBruto: number): number {
+  const ck = item.checklist_entrada || {};
+  const salvo = Number(ck.__subtotalServicos ?? item.subtotal_servicos ?? NaN);
+  const desconto = Number(ck.__descontoValor ?? item.desconto_valor ?? 0) || 0;
+  return Number.isFinite(salvo) && salvo >= valorBruto ? salvo : valorBruto + desconto;
+}
+
 export async function buscarOrdensServico(forcarAtualizacao = false): Promise<any[]> {
   const conta = obterUsuarioAtivoSincrono()?.id || '';
   if (!forcarAtualizacao && cacheOrdens && cacheOrdens.conta === conta && Date.now() - cacheOrdens.em < VALIDADE_CACHE_ORDENS_MS) {
@@ -2450,12 +2461,14 @@ async function carregarOrdensDoBanco(): Promise<any[]> {
           senhaDesbloqueio: item.checklist_entrada?.__senhaDesbloqueio || '',
         },
         orcamentoCalculado: {
-          // Desconto: prioriza colunas diretas (se existirem) e depois os metadados salvos em checklist_entrada
-          subtotalServicos: Number(item.subtotal_servicos ?? item.checklist_entrada?.__subtotalServicos ?? valorBruto),
-          tipoDesconto: item.tipo_desconto || item.checklist_entrada?.__tipoDesconto || 'VALOR',
-          descontoGeralAplicado: Number(item.desconto_valor ?? item.checklist_entrada?.__descontoValor ?? 0),
+          // Subtotal e desconto: o sistema grava no JSON checklist_entrada, então ele vem primeiro. As colunas
+          // subtotal_servicos/desconto_valor/tipo_desconto (se existirem na tabela) nunca são gravadas e ficam
+          // com o padrão 0: lidas antes, abriam o "Editar OS" com valor 0 e o salvar zerava o valor cobrado.
+          subtotalServicos: subtotalDaOS(item, valorBruto),
+          tipoDesconto: item.checklist_entrada?.__tipoDesconto || item.tipo_desconto || 'VALOR',
+          descontoGeralAplicado: Number(item.checklist_entrada?.__descontoValor ?? item.desconto_valor ?? 0),
           descontoInput: Number(
-            item.checklist_entrada?.__descontoInput ?? item.desconto_valor ?? item.checklist_entrada?.__descontoValor ?? 0
+            item.checklist_entrada?.__descontoInput ?? item.checklist_entrada?.__descontoValor ?? item.desconto_valor ?? 0
           ),
           valorTotalOrcamento: valorBruto,
           lucroTotalEstimadoInterno: lucroLiquidoReal,
