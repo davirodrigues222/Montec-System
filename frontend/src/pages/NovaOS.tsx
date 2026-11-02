@@ -19,7 +19,6 @@ import {
   QrCode,
   Receipt,
   RotateCcw,
-  Save,
   ShieldCheck,
   Smartphone,
   Tag,
@@ -639,8 +638,8 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
     ? { __servicoId: servicoPadraoId, __servicoNome: servicoSelecionado.nome }
     : {};
 
-  // Payload único para "Criar ordem" e "Salvar rascunho".
-  // Os textos padrão só entram no rascunho: na criação os campos obrigatórios já foram validados.
+  // Payload da criação da OS. Os campos obrigatórios já foram validados antes; os textos padrão
+  // abaixo são só uma proteção para nunca gravar campo vazio.
   const montarPayload = () => {
     const { formaPagamentoTexto, parcelasFinal, pagamentosArray } = gerarDadosPagamento();
     // Garantia da loja nunca abaixo da legal; "só garantia legal" grava 0 e vale os 90 dias do CDC
@@ -751,31 +750,6 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
     } catch (err: any) {
       console.error('Erro ao criar OS:', err);
       alert(`Falha ao salvar Ordem de Serviço: ${err.message || 'Verifique sua conexão.'}`);
-    } finally {
-      setCarregando(false);
-      enviandoRef.current = false;
-    }
-  };
-
-  // Salvar OS em modo Rascunho
-  const handleSalvarRascunho = async () => {
-    if (enviandoRef.current) return; // duplo clique: o disabled só vale depois do próximo render
-    if (!nomeCliente.trim() && !modeloAparelho.trim()) {
-      alert('Para salvar como rascunho, preencha ao menos o Nome do Cliente ou o Modelo do Aparelho.');
-      return;
-    }
-
-    enviandoRef.current = true;
-    setCarregando(true);
-    try {
-      const resultado = await criarOrdemServico({ ...montarPayload(), status_os: 'RASCUNHO' });
-
-      alert(`Rascunho da OS ${resultado.numeroOs} salvo com sucesso!\n\nEle está disponível na aba "Rascunhos / Em Definição" no histórico de ordens.`);
-      handleLimparFormulario();
-      onNavigate?.('historico');
-    } catch (err: any) {
-      console.error('Erro ao salvar rascunho:', err);
-      alert(`Falha ao salvar rascunho: ${err.message || 'Verifique sua conexão.'}`);
     } finally {
       setCarregando(false);
       enviandoRef.current = false;
@@ -1823,15 +1797,6 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
               </button>
             )}
           </div>
-          <button
-            type="button"
-            onClick={handleSalvarRascunho}
-            disabled={carregando}
-            className="w-full py-2 inline-flex items-center justify-center gap-1.5 text-xs font-semibold text-blue-300/90 hover:text-blue-200 disabled:opacity-50 transition"
-          >
-            <Save className="w-3.5 h-3.5" />
-            Salvar como rascunho
-          </button>
         </div>
 
         {/* ================= BOTÕES DE AÇÃO INFERIORES (DESKTOP) ================= */}
@@ -1849,16 +1814,6 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
           </button>
 
           <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={handleSalvarRascunho}
-              disabled={carregando}
-              className="inline-flex items-center gap-1.5 px-5 py-2.5 bg-blue-500/10 hover:bg-blue-500/20 active:bg-blue-500/30 text-blue-300 border border-blue-500/30 rounded-xl text-xs font-semibold transition"
-            >
-              <Save className="w-3.5 h-3.5" />
-              Salvar rascunho
-            </button>
-
             <button
               type="submit"
               disabled={carregando}
@@ -1925,6 +1880,15 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
               >
                 Avisar cliente no WhatsApp
               </button>
+              {osCriadaSucesso.dadosCompletos.cliente?.whatsapp && mensagemLevaLink('entrada') && (
+                <p className="-mt-1 text-[11px] text-zinc-500">A mensagem já leva o link de acompanhamento.</p>
+              )}
+
+              {/* Link para o cliente acompanhar a OS e aprovar o orçamento (sem login) */}
+              <BotaoCopiarLinkAcompanhamento
+                idOs={osCriadaSucesso.idOs}
+                className="w-full py-2.5 bg-[#0e1320] hover:bg-blue-600/20 border border-blue-500/40 text-blue-300 font-bold rounded-xl text-xs transition disabled:opacity-60 inline-flex items-center justify-center gap-2"
+              />
 
               <button
                 onClick={handleLimparFormulario}

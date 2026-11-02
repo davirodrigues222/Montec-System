@@ -69,7 +69,6 @@ type Ordenacao = "RECENTES" | "ANTIGAS";
 
 const OPCOES_STATUS: { valor: StatusOS | "TODOS"; rotulo: string }[] = [
   { valor: "TODOS", rotulo: "Todos os status" },
-  { valor: "RASCUNHO", rotulo: "Rascunho" },
   { valor: "AGUARDANDO_AVALIACAO", rotulo: "Aguardando avaliação" },
   { valor: "EM_ANALISE", rotulo: "Em análise" },
   { valor: "AGUARDANDO_PECA", rotulo: "Aguardando peça" },

@@ -49,7 +49,7 @@ export const RECURSOS = [
   {
     icone: ICONES.ordem,
     titulo: 'Ordem de serviço completa',
-    texto: 'Cliente, aparelho, IMEI, senha de teste, defeito relatado, diagnóstico, checklist e prazo de entrega. Salve como rascunho e conclua depois.',
+    texto: 'Cliente, aparelho, IMEI, senha de teste, defeito relatado, diagnóstico, checklist e prazo de entrega.',
     itens: ['Serviços do catálogo com preço e garantia', 'Histórico e edição de cada OS', 'Comprovante de entrada para impressão'],
   },
   {
