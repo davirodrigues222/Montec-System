@@ -225,8 +225,11 @@ export const Configuracoes: React.FC<Props> = ({ secao, onAbrirCadastro }) => {
       )}
 
       {/* Barra de salvamento: aparece nas abas de formulário ou sempre que houver alteração pendente */}
+      {/* No celular fica fixa logo acima da barra inferior ("sticky" ficava solta no meio no iPhone);
+          o espaço reservado embaixo evita que ela cubra o fim da página */}
+      {(abaComFormulario || alterado) && <div aria-hidden className="md:hidden h-28" />}
       {(abaComFormulario || alterado) && (
-        <div className="sticky bottom-0 max-md:bottom-[calc(4rem+env(safe-area-inset-bottom))] z-20 -mx-1 px-1">
+        <div className="sticky bottom-0 z-20 -mx-1 px-1 max-md:fixed max-md:inset-x-0 max-md:bottom-[calc(4rem+env(safe-area-inset-bottom))] max-md:mx-0 max-md:px-3 max-md:pb-2">
           <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 bg-[#0c101a]/95 backdrop-blur border border-zinc-800/80 rounded-2xl shadow-lg">
             <span className={`text-xs font-semibold ${alterado ? 'text-blue-400' : 'text-zinc-500'}`}>
               {alterado ? 'Há alterações não salvas.' : 'Nenhuma alteração pendente.'}

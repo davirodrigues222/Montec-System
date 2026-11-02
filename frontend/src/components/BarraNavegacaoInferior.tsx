@@ -1,5 +1,5 @@
 import React from 'react';
-import { ChartColumn, House, Plus, Settings, ShieldCheck, type LucideIcon } from 'lucide-react';
+import { ChartColumn, ClipboardList, House, Plus, Settings, type LucideIcon } from 'lucide-react';
 import type { AbaSistema } from '../services/acesso';
 
 interface Props {
@@ -10,7 +10,7 @@ interface Props {
 const ITENS: { aba: AbaSistema; rotulo: string; Icone: LucideIcon }[] = [
   { aba: 'dashboard', rotulo: 'Painel', Icone: House },
   { aba: 'relatorios', rotulo: 'Financeiro', Icone: ChartColumn },
-  { aba: 'garantia-retorno', rotulo: 'Garantias', Icone: ShieldCheck },
+  { aba: 'historico', rotulo: 'Ordens', Icone: ClipboardList },
   { aba: 'configuracoes', rotulo: 'Ajustes', Icone: Settings },
 ];
 
