@@ -26,6 +26,7 @@ import {
   useFeedback,
 } from '../../components/cadastros/ui';
 import { formatarMoeda } from '../../utils/formatadores';
+import { EVENTO_ASSISTENTE_GRAVOU } from '../../services/assistente';
 
 // Valores gravados em garantia_padrao (texto lido por extrairDiasGarantia). '' = usa o prazo padrão da loja.
 // "Sem garantia" significa só a garantia legal: ela não pode ser excluída nem reduzida (CDC, arts. 24 e 26, II).
@@ -70,6 +71,9 @@ export const ServicosCadastro: React.FC = () => {
 
   useEffect(() => {
     carregar();
+    // O assistente de IA pode gravar com esta tela aberta
+    window.addEventListener(EVENTO_ASSISTENTE_GRAVOU, carregar);
+    return () => window.removeEventListener(EVENTO_ASSISTENTE_GRAVOU, carregar);
   }, []);
 
   /** Dias efetivos de garantia: null no cadastro = prazo padrão da loja. */

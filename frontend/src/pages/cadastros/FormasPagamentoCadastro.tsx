@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { TIPOS_NATIVOS, avisarFormasPagamentoAlteradas } from '../../services/formasPagamentoOS';
+import { EVENTO_ASSISTENTE_GRAVOU } from '../../services/assistente';
 import {
   type FormaPagamento,
   type FormaPagamentoInput,
@@ -198,6 +199,9 @@ export const FormasPagamentoCadastro: React.FC = () => {
 
   useEffect(() => {
     carregar();
+    // O assistente de IA pode gravar com esta tela aberta
+    window.addEventListener(EVENTO_ASSISTENTE_GRAVOU, carregar);
+    return () => window.removeEventListener(EVENTO_ASSISTENTE_GRAVOU, carregar);
   }, []);
 
   const aceitaParcelamento = TIPOS_FORMA_PAGAMENTO[form.tipo].aceitaParcelamento;

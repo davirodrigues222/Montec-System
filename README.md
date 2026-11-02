@@ -19,7 +19,7 @@ Desenvolvido para atender desde a recepção no balcão até a bancada do técni
 - **Supabase (PostgreSQL)** (Banco relacional com JSONB e Row Level Security)
 - **Supabase Auth** (Login, código de verificação por e-mail e sessões persistentes)
 - **Row Level Security (RLS)** (Isolamento total de dados por loja, permissões por funcionário e assinatura exigida para gravar)
-- **Edge Functions** (`cakto-webhook`: pagamentos da Cakto; `login-funcionario`: login próprio dos funcionários)
+- **Edge Functions** (`cakto-webhook`: pagamentos da Cakto; `login-funcionario`: login próprio dos funcionários; `assistente`: assistente de IA com Google Gemini)
 - **Vercel** (Hospedagem do frontend, com cabeçalhos de segurança em `frontend/vercel.json`)
 
 ---
@@ -70,6 +70,18 @@ Desenvolvido para atender desde a recepção no balcão até a bancada do técni
 - **Termos Legais Customizáveis:** Editor de termos e condições de garantia que alimenta automaticamente a via impressa do cliente.
 - **Comprovante de Entrada / Certidão de Garantia:** Layout profissional com assinaturas do cliente e técnico, adaptado para impressão ou salvamento em PDF.
 
+### 9. Assistente de IA
+- **Dúvidas sobre o sistema:** Botão **Assistente** no cabeçalho, com um chat que explica telas e fluxos e abre a tela certa.
+- **Tarefas de configuração:** Cria e altera formas de pagamento (taxas, parcelamento, taxa por parcela), cria as formas padrão e cadastra ou altera serviços. Antes de gravar, mostra um resumo para o usuário confirmar.
+- **Permissões respeitadas:** As ações rodam no navegador com o login e as permissões do funcionário identificado.
+- **Privacidade:** Nenhum dado de cliente ou de OS é enviado ao Gemini (no plano gratuito o Google pode usar as conversas).
+- **Configuração:** crie uma chave grátis em [Google AI Studio](https://aistudio.google.com/apikey) e publique a função:
+  ```bash
+  supabase secrets set GEMINI_API_KEY=sua_chave
+  supabase functions deploy assistente
+  ```
+  Opcional: `GEMINI_MODELO` troca o modelo (padrão `gemini-3.6-flash`; reservas em `GEMINI_MODELOS_RESERVA`).
+
 ---
 
 ## 🗄️ Estrutura do Banco de Dados (Supabase / PostgreSQL)
@@ -92,7 +104,7 @@ O sistema opera com o **Row Level Security (RLS)** ativo em todas as tabelas, va
 BancadaOS/
 ├── supabase/
 │   ├── migrations/             # Banco: tabelas, regras de acesso (RLS) e funções (rodar em ordem)
-│   ├── functions/              # Edge Functions: cakto-webhook e login-funcionario
+│   ├── functions/              # Edge Functions: cakto-webhook, login-funcionario e assistente
 │   └── templates/              # Modelos dos e-mails de código de verificação
 └── frontend/
     ├── public/

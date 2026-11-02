@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Sparkles } from 'lucide-react';
 import {
   carregarConfiguracoesLoja,
   obterConfiguracoesLojaSincrono,
@@ -14,6 +15,8 @@ import { useAssinatura } from '../contexts/AssinaturaContext';
 import { PLANOS, diasRestantes, ehCortesia, formatarPrecoPlano } from '../services/assinatura';
 import { NomeBancadaOS, SimboloBancadaOS } from './Marca';
 import { BarraNavegacaoInferior } from './BarraNavegacaoInferior';
+import { Assistente } from './Assistente';
+import type { DestinoTela } from '../services/assistente';
 
 /** Selo compacto do plano no rodapé do menu; leva para Configurações › Plano & Assinatura. */
 const SeloPlano: React.FC<{ onAbrir: () => void }> = ({ onAbrir }) => {
@@ -161,6 +164,16 @@ export const Layout: React.FC<Props> = ({
     setSecaoConfiguracao?.(secao);
     setActiveTab('configuracoes');
     setMenuAberto(false);
+  };
+
+  // Assistente de IA: no celular o painel cobre a tela, então fecha ao abrir uma tela por ele
+  const [assistenteAberto, setAssistenteAberto] = useState(false);
+  const fecharAssistente = useCallback(() => setAssistenteAberto(false), []);
+  const abrirTelaPeloAssistente = (destino: DestinoTela) => {
+    if (destino.secaoCadastro) abrirSecaoCadastro(destino.secaoCadastro);
+    else if (destino.secaoConfiguracao) abrirSecaoConfiguracao(destino.secaoConfiguracao);
+    else mudarAba(destino.aba);
+    if (window.matchMedia('(max-width: 767px)').matches) setAssistenteAberto(false);
   };
 
   // Identidade da assistência técnica da conta (preenchida por carregarConfigs)
@@ -581,6 +594,17 @@ export const Layout: React.FC<Props> = ({
 
           {/* Topo Direito: loja cadastrada + perfil do funcionário identificado */}
           <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+            {/* Assistente: fica no cabeçalho porque o rodapé já tem a barra inferior e os botões fixos de salvar */}
+            <button
+              type="button"
+              onClick={() => setAssistenteAberto(true)}
+              aria-label="Abrir assistente"
+              className="inline-flex items-center gap-2 p-2 lg:px-3.5 rounded-xl bg-blue-600/15 border border-blue-500/30 text-blue-400 hover:bg-blue-600/25 text-xs font-bold transition shrink-0"
+            >
+              <Sparkles className="w-5 h-5 lg:w-4 lg:h-4" />
+              <span className="hidden lg:inline">Assistente</span>
+            </button>
+
             {/* Loja */}
             <div
               className="flex items-center space-x-2 sm:space-x-3 bg-[#0d121c] border border-zinc-800/80 rounded-xl px-2 sm:px-3.5 py-1.5 shadow-sm max-w-[150px] sm:max-w-[220px]"
@@ -669,6 +693,22 @@ export const Layout: React.FC<Props> = ({
 
         <BarraNavegacaoInferior activeTab={activeTab} onNavegar={mudarAba} />
       </div>
+
+      <Assistente
+        aberto={assistenteAberto}
+        onFechar={fecharAssistente}
+        abrirTela={abrirTelaPeloAssistente}
+        telaAtual={[
+          titulosAbas[activeTab] || activeTab,
+          activeTab === 'cadastros' && secaoCadastro
+            ? GRUPOS_CADASTRO.flatMap((g) => g.itens).find((i) => i.id === secaoCadastro)?.label
+            : activeTab === 'configuracoes' && secaoConfiguracao
+              ? SECOES_CONFIGURACAO.find((s) => s.id === secaoConfiguracao)?.rotulo
+              : '',
+        ]
+          .filter(Boolean)
+          .join(' › ')}
+      />
     </div>
   );
 };
