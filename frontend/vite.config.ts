@@ -12,7 +12,7 @@ const CSP = [
   "script-src 'self'",
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' https://fonts.gstatic.com",
-  "img-src 'self' data: blob:",
+  "img-src 'self' data: blob: https://*.supabase.co",
   "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://viacep.com.br",
   "object-src 'none'",
   "base-uri 'self'",
@@ -33,5 +33,4 @@ export default defineConfig({
     tailwindcss(),
     politicaSeguranca(),
   ],
-  base: './',
 })
