@@ -266,11 +266,12 @@ export const HistoricoServicos: React.FC = () => {
     return () => window.removeEventListener(EVENTO_FORMAS_PAGAMENTO, carregarFormas);
   }, []);
 
+  // O documento fica montado depois do print(): no iPhone o print() volta na hora, antes de o Safari
+  // gerar a impressão, e sem o documento sai folha em branco. Sai da página ao fechar os detalhes da OS.
   const handleImprimir = (os: OrdemServico) => {
     setOsParaImprimir(os);
     setTimeout(() => {
       window.print();
-      setOsParaImprimir(null);
     }, 300);
   };
 
@@ -867,7 +868,10 @@ export const HistoricoServicos: React.FC = () => {
             <div className="relative p-4 pr-14 bg-zinc-950 border-b border-zinc-800 flex flex-wrap items-center justify-between gap-3">
               {/* Fechar: fixo no canto superior direito do modal */}
               <button
-                onClick={() => setOsSelecionada(null)}
+                onClick={() => {
+                  setOsSelecionada(null);
+                  setOsParaImprimir(null);
+                }}
                 className="absolute top-3 right-3 w-8 h-8 flex items-center justify-center rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 text-base font-bold transition"
                 title="Fechar"
                 aria-label="Fechar"
