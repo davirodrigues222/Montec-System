@@ -370,6 +370,31 @@ html[data-theme="light"] .divide-slate-800 > :not([hidden]) ~ :not([hidden]) {
   }
 }
 
+/* iPhone e iPad: o documento abre como página comum, na tela, antes de imprimir (imprimirDocumento) */
+html.imprimindo,
+html.imprimindo body {
+  height: auto;
+  min-height: 0;
+  overflow: visible;
+  background: #fff;
+  color-scheme: light;
+  transition: none;
+}
+
+html.imprimindo body:has(> .area-impressao) > *:not(.area-impressao) {
+  display: none !important;
+}
+
+html.imprimindo .area-impressao {
+  display: block;
+}
+
+@media screen {
+  html.imprimindo .area-impressao {
+    padding: calc(0.75rem + env(safe-area-inset-top)) 0.75rem 2rem;
+  }
+}
+
 /* ================= FUNDO ANIMADO DOS ESTADOS VAZIOS (components/FundoBancada.tsx) ================= */
 @keyframes fundo-bancada-flutuar {
   0%, 100% { transform: translateY(0) rotate(0deg); }

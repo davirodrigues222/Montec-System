@@ -10,6 +10,7 @@ import {
   BlocoOrcamentoImpressao,
   CabecalhoLojaImpressao,
   DocumentoParaImpressao,
+  imprimirDocumento,
   RodapeLojaImpressao,
   TermosImpressos,
   ViasImpressao,
@@ -159,7 +160,7 @@ export const CertidaoGarantia: React.FC<Props> = ({ os, onClose }) => {
             </div>
             <div className="flex gap-2">
               <button
-                onClick={() => window.print()}
+                onClick={imprimirDocumento}
                 className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition"
               >
                 Imprimir / Salvar PDF

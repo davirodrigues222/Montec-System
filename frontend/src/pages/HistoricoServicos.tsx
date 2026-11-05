@@ -43,6 +43,7 @@ import {
   BlocoOrcamentoImpressao,
   CabecalhoLojaImpressao,
   DocumentoParaImpressao,
+  imprimirDocumento,
   RodapeLojaImpressao,
   TermosImpressos,
   ViasImpressao,
@@ -267,12 +268,10 @@ export const HistoricoServicos: React.FC = () => {
   }, []);
 
   // O documento fica montado depois do print(): no iPhone o print() volta na hora, antes de o Safari
-  // gerar a impressão, e sem o documento sai folha em branco. Sai da página ao fechar os detalhes da OS.
+  // gerar a impressão. Sai da página ao fechar os detalhes da OS.
   const handleImprimir = (os: OrdemServico) => {
     setOsParaImprimir(os);
-    setTimeout(() => {
-      window.print();
-    }, 300);
+    setTimeout(imprimirDocumento, 300);
   };
 
   const abrirEdicao = (os: OrdemServico) => {

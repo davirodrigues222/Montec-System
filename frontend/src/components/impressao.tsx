@@ -14,6 +14,25 @@ import {
 // Peças comuns do comprovante de entrada (Histórico) e da certidão de garantia (Nova OS).
 // Tudo vem das Configurações da conta: identidade, termos, horário, contatos, PIX e formato do papel.
 
+/** iPhone e iPad (o iPad se apresenta como Mac, mas tem tela de toque). */
+const ehIOS = () =>
+  /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+/**
+ * Imprime o documento montado. No iPhone a pré-visualização sai em branco com o documento só em
+ * @media print: lá ele abre na tela e o print() vem do toque em "Imprimir" (ver .imprimindo no index.css).
+ */
+export const imprimirDocumento = () => {
+  if (!ehIOS()) {
+    window.print();
+    return;
+  }
+  document.documentElement.classList.add('imprimindo');
+  window.scrollTo(0, 0);
+};
+
+const sairDaTelaDeImpressao = () => document.documentElement.classList.remove('imprimindo');
+
 /**
  * Envia o documento direto para o <body>. Na impressão o CSS global (index.css) esconde o resto
  * da aplicação, então sai só o documento, no formato configurado.
@@ -21,18 +40,39 @@ import {
 export const DocumentoParaImpressao: React.FC<{ formato: FormatoImpressao; children: React.ReactNode }> = ({
   formato,
   children,
-}) =>
-  createPortal(
+}) => {
+  const ios = ehIOS();
+  return createPortal(
     <div className="area-impressao hidden print:block bg-white text-slate-900">
-      <style>
-        {formato === 'TERMICA_80'
-          ? '@page { size: 80mm auto; margin: 3mm; }'
-          : '@page { size: A4; margin: 10mm; }'}
-      </style>
+      {ios ? (
+        <div className="flex justify-end gap-2 pb-3 mb-3 border-b border-slate-200 print:hidden">
+          <button
+            type="button"
+            onClick={sairDaTelaDeImpressao}
+            className="px-4 py-2 bg-slate-200 text-slate-800 rounded-lg text-sm font-medium"
+          >
+            Voltar
+          </button>
+          <button
+            type="button"
+            onClick={() => window.print()}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium"
+          >
+            Imprimir / Salvar PDF
+          </button>
+        </div>
+      ) : (
+        <style>
+          {formato === 'TERMICA_80'
+            ? '@page { size: 80mm auto; margin: 3mm; }'
+            : '@page { size: A4; margin: 10mm; }'}
+        </style>
+      )}
       {children}
     </div>,
     document.body
   );
+};
 
 /** Largura e tamanho de fonte de cada formato de papel. */
 export const classeFormato = (formato: FormatoImpressao) =>
