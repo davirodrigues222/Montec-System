@@ -6,6 +6,7 @@ import { MENSAGEM_SEM_PERMISSAO, ehRecusaDePermissao, exigirLinhaAfetada } from 
 import { contaDoUsuario, ehLoginDeFuncionario } from './contaLogin';
 import { apagarArquivosDaOS } from './fotosOS';
 import { listarPecasEstoque } from './estoque';
+import { listarDespesasSeDisponivel } from './despesas';
 
 // ==========================================
 // 1. ISOLAMENTO DE CONFIGURAÇÕES, TEMA, METAS E IDENTIDADE VISUAL POR CONTA
@@ -1315,12 +1316,13 @@ export async function alterarSenhaConta(senhaAtual: string, novaSenha: string): 
  * exatamente como estão no banco. Nada é alterado.
  */
 export async function gerarBackupConta() {
-  const [ordens, clientes, fornecedores, servicos, estoque, { data: authData }] = await Promise.all([
+  const [ordens, clientes, fornecedores, servicos, estoque, despesas, { data: authData }] = await Promise.all([
     buscarOrdensServico(),
     buscarClientes(),
     buscarFornecedores(),
     buscarServicosCadastrados(),
     listarPecasEstoque().catch(() => []), // estoque ainda não ativado: backup sai sem ele
+    listarDespesasSeDisponivel(),
     supabase.auth.getUser(),
   ]);
   return {
@@ -1332,6 +1334,7 @@ export async function gerarBackupConta() {
     cad_fornecedores: fornecedores,
     cad_servicos: servicos,
     estoque_pecas: estoque,
+    despesas,
   };
 }
 

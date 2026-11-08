@@ -4,6 +4,7 @@ import { Auth } from './pages/Auth';
 import { Layout } from './components/Layout';
 import { Dashboard } from './pages/Dashboard';
 import { Relatorios } from './pages/Relatorios';
+import { Despesas } from './pages/Despesas';
 import { HistoricoServicos } from './pages/HistoricoServicos';
 import { Configuracoes } from './pages/Configuracoes';
 import { NovaOS } from './pages/NovaOS';
@@ -72,6 +73,7 @@ const limparParametroInicio = () => {
 const NOMES_TELAS: Record<string, string> = {
   dashboard: 'Painel',
   relatorios: 'Análises e relatórios',
+  despesas: 'Despesas',
   historico: 'Ordens de serviço',
   'nova-os': 'Nova ordem',
   'garantia-retorno': 'Garantias e retornos',
@@ -545,7 +547,8 @@ export default function App() {
                   navegar('cadastros');
                 }}
               />}
-            {activeTab === 'relatorios' && <Relatorios />}
+            {activeTab === 'relatorios' && <Relatorios onAbrirDespesas={() => navegar('despesas')} />}
+            {activeTab === 'despesas' && <Despesas />}
             {activeTab === 'historico' && <HistoricoServicos />}
             {activeTab === 'configuracoes' && (
               <Configuracoes

@@ -16,6 +16,7 @@ import { formatarValor } from '../utils/formatadores';
 import { custosOS, somar, valorLiquidoOS } from '../utils/financeiroOS';
 import { useOperador } from '../contexts/OperadorContext';
 import { type PecaEstoque, listarPecasEstoqueBaixo } from '../services/estoque';
+import { type Despesa, listarDespesasSeDisponivel, situacaoDespesa, somarDespesas } from '../services/despesas';
 
 interface Props {
   onNavigate?: (tab: AbaSistema) => void;
@@ -28,6 +29,7 @@ export const Dashboard: React.FC<Props> = ({ onNavigate, onAbrirEstoque, session
   const [ordens, setOrdens] = useState<OrdemServico[]>([]);
   // Peças sem estoque ou com estoque baixo (vazio se o estoque não estiver ativado)
   const [estoqueBaixo, setEstoqueBaixo] = useState<PecaEstoque[]>([]);
+  const [despesasVencidas, setDespesasVencidas] = useState<Despesa[]>([]);
   const [loading, setLoading] = useState(true);
   // Horário em que o painel foi aberto (exibido em "Hoje na loja")
   const [horaAtual] = useState(() =>
@@ -54,6 +56,8 @@ export const Dashboard: React.FC<Props> = ({ onNavigate, onAbrirEstoque, session
   useEffect(() => {
     carregarOrdens();
     listarPecasEstoqueBaixo().then(setEstoqueBaixo);
+    // Sem acesso financeiro o banco não devolve despesas: a lista vem vazia e o aviso não aparece
+    listarDespesasSeDisponivel().then((lista) => setDespesasVencidas(lista.filter((d) => situacaoDespesa(d) === 'VENCIDA')));
     carregarConfiguracoesLoja()
       .then(() => setVersaoConfig((v) => v + 1))
       .catch(() => {});
@@ -342,6 +346,34 @@ export const Dashboard: React.FC<Props> = ({ onNavigate, onAbrirEstoque, session
 
       {erroCarregamento && (
         <AvisoErroCarregamento mensagem={erroCarregamento} onTentarNovamente={() => carregarOrdens(true)} />
+      )}
+
+      {/* Despesas da loja vencidas e não pagas (só quem tem acesso financeiro) */}
+      {despesasVencidas.length > 0 && (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 py-3 rounded-2xl border border-rose-500/30 bg-rose-500/[0.06]">
+          <div className="min-w-0">
+            <p className="text-xs font-bold text-rose-400">
+              {despesasVencidas.length === 1 ? '1 despesa vencida' : `${despesasVencidas.length} despesas vencidas`} · R${' '}
+              {formatarValor(somarDespesas(despesasVencidas))}
+            </p>
+            <p className="text-[11px] text-zinc-400 mt-0.5 truncate">
+              {despesasVencidas
+                .slice(0, 4)
+                .map((d) => d.descricao)
+                .join(' · ')}
+              {despesasVencidas.length > 4 ? ` · e mais ${despesasVencidas.length - 4}` : ''}
+            </p>
+          </div>
+          {onNavigate && (
+            <button
+              type="button"
+              onClick={() => onNavigate('despesas')}
+              className="px-3 py-1.5 rounded-xl bg-[#080c14] hover:bg-zinc-800/80 border border-zinc-800 text-xs font-semibold text-rose-400 transition shrink-0"
+            >
+              Ver despesas &rsaquo;
+            </button>
+          )}
+        </div>
       )}
 
       {/* Alerta de estoque: peças sem estoque ou no mínimo definido */}

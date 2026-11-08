@@ -90,7 +90,15 @@ Desenvolvido para atender desde a recepção no balcão até a bancada do técni
 - **Permissões:** cadastro, entrada e ajuste exigem "Cadastros"; a baixa na OS exige "Nova ordem" ou "Ordens de serviço". Custos só aparecem para quem tem "Análises e relatórios".
 - **Banco:** migração `20261108090000_estoque_pecas.sql`. A quantidade só muda pelas funções do banco, nunca direto na tabela.
 
-### 12. Assistente de IA
+### 12. Despesas da loja e resultado do mês
+- **Lançamento:** menu Despesas. Cada conta tem descrição, categoria (aluguel, energia, salários, impostos...), valor, vencimento, forma de pagamento e fornecedor. "Repetir" lança a mesma conta nos próximos 2 a 24 meses. Na exclusão, dá para apagar só uma ou ela e as seguintes.
+- **Paga ou a pagar:** cada despesa é marcada como paga (com a data) ou fica em aberto. As vencidas aparecem em vermelho, e o Painel avisa quem tem acesso financeiro.
+- **Resultado da loja:** a tela mostra, mês a mês, lucro das OS − despesas = resultado da loja, além de quanto falta pagar e para onde foi o dinheiro (por categoria). Em Análises e relatórios, o mesmo resultado aparece no período escolhido e na listagem "Taxas e descontos (fluxo de caixa)".
+- **Regra do mês:** a despesa entra no mês do vencimento, paga ou não; a OS entra no mês de abertura (a mesma regra dos relatórios).
+- **Permissão:** ver e lançar despesas exige "Análises, relatórios e despesas" (antes "Análises e relatórios"). Exportação em CSV por mês.
+- **Banco:** migração `20261108120000_despesas.sql` (requer a do estoque).
+
+### 13. Assistente de IA
 - **Dúvidas sobre o sistema:** Botão **Assistente** no cabeçalho, com um chat que explica telas e fluxos e abre a tela certa.
 - **Tarefas de configuração:** Cria e altera formas de pagamento (taxas, parcelamento, taxa por parcela), cria as formas padrão e cadastra ou altera serviços. Antes de gravar, mostra um resumo para o usuário confirmar.
 - **Permissões respeitadas:** As ações rodam no navegador com o login e as permissões do funcionário identificado.
@@ -115,6 +123,7 @@ O sistema opera com o **Row Level Security (RLS)** ativo em todas as tabelas, va
 | `aparelhos_cliente` | Dispositivos dos clientes (modelo, IMEI, senha de desbloqueio) | `user_id = auth.uid()` |
 | `cad_servicos` | Catálogo de serviços e preços sugeridos | `user_id = auth.uid()` |
 | `cad_fornecedores` | Cadastro de fornecedores de componentes e peças | `user_id = auth.uid()` |
+| `despesas` | Despesas da loja (aluguel, salários, contas) | `user_id = conta_atual()` e permissão "Análises e relatórios" |
 | `estoque_pecas` / `estoque_movimentos` / `os_pecas` | Estoque de peças, histórico de movimentos e peças usadas em cada OS | Leitura pelas views `*_lista` da loja; gravação só pelas funções do banco |
 
 ---

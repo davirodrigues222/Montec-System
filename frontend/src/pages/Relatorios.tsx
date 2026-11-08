@@ -26,6 +26,7 @@ import { formaSemParcelas } from '../services/formasPagamentoOS';
 import { custoFreteOS, custoGarantiaOS, custoPecaOS, custosOS, somar, valorBrutoOS, valorLiquidoOS, valorTaxasOS } from '../utils/financeiroOS';
 import { formatarDataOS, formatarValor } from '../utils/formatadores';
 import { StatusBadge } from '../components/StatusBadge';
+import { type Despesa, listarDespesasSeDisponivel, somarDespesas } from '../services/despesas';
 
 type FiltroPeriodo = 'HOJE' | 'ATUAL' | 'ANTERIOR' | 'ANO_ATUAL' | 'TODOS' | 'PERSONALIZADO';
 
@@ -244,13 +245,13 @@ const MenuListagens: React.FC<{ atual: Detalhamento; onEscolher: (d: Detalhament
  * (ontem, mês anterior, ano anterior ou intervalo de mesmo tamanho imediatamente antes do personalizado).
  * Retorna null quando não existe período anterior para comparar ("Todo o histórico" ou intervalo incompleto).
  */
-function filtrarOrdensPorPeriodo(
-  ordens: OrdemServico[],
+function filtrarOrdensPorPeriodo<T extends { data_abertura?: string }>(
+  ordens: T[],
   filtro: FiltroPeriodo,
   inicioPersonalizado: string,
   fimPersonalizado: string,
   deslocamento: 0 | -1 = 0,
-): OrdemServico[] | null {
+): T[] | null {
   if (filtro === 'TODOS') return deslocamento === 0 ? ordens : null;
 
   const hoje = new Date();
@@ -313,8 +314,10 @@ const PLACEHOLDER_BUSCA: Record<Exclude<Detalhamento, 'NENHUM'>, string> = {
   FLUXO: 'Buscar indicador...',
 };
 
-export const Relatorios: React.FC = () => {
+export const Relatorios: React.FC<{ onAbrirDespesas?: () => void }> = ({ onAbrirDespesas }) => {
   const [ordens, setOrdens] = useState<OrdemServico[]>([]);
+  // Despesas da loja (aluguel, salários...): o vencimento ao meio-dia local entra no mesmo filtro de período
+  const [despesas, setDespesas] = useState<(Despesa & { data_abertura: string })[]>([]);
   const [loading, setLoading] = useState(true);
   const [metaFinanceira, setMetaFinanceira] = useState<number>(() => obterMetaFinanceiraConta());
   const [metaInput, setMetaInput] = useState<string>(() => formatarValor(obterMetaFinanceiraConta()));
@@ -338,8 +341,9 @@ export const Relatorios: React.FC = () => {
     setLoading(true);
     setErroCarregamento(null);
     try {
-      const data = await buscarOrdensServico(forcar);
+      const [data, listaDespesas] = await Promise.all([buscarOrdensServico(forcar), listarDespesasSeDisponivel()]);
       setOrdens(data);
+      setDespesas(listaDespesas.map((d) => ({ ...d, data_abertura: `${d.data}T12:00:00` })));
     } catch (err: any) {
       console.error('Erro ao buscar relatórios:', err);
       setErroCarregamento(err?.message || 'Verifique a conexão e tente novamente.');
@@ -538,6 +542,15 @@ export const Relatorios: React.FC = () => {
   // 3. Lucro Líquido Real e Margem
   const lucroLiquido = faturamentoLiquido - custosTotais;
   const margemLucro = faturamentoLiquido > 0 ? ((lucroLiquido / faturamentoLiquido) * 100).toFixed(1) : '0.0';
+
+  // Despesas da loja no período e o resultado da loja (lucro das OS − despesas)
+  const despesasPeriodo = useMemo(
+    () => filtrarOrdensPorPeriodo(despesas, mesSelecionado, dataInicioPersonalizada, dataFimPersonalizada) ?? [],
+    [despesas, mesSelecionado, dataInicioPersonalizada, dataFimPersonalizada]
+  );
+  const totalDespesas = somarDespesas(despesasPeriodo);
+  const despesasAPagar = somarDespesas(despesasPeriodo.filter((d) => !d.pago));
+  const resultadoLoja = lucroLiquido - totalDespesas;
 
   // 4. Ticket Médio e Quantidade de Atendimentos
   const totalAtendimentos = ordensFiltradas.length;
@@ -882,6 +895,43 @@ export const Relatorios: React.FC = () => {
         </div>
       </div>
 
+      {/* ================= RESULTADO DA LOJA: LUCRO DAS OS − DESPESAS ================= */}
+      <div className="bg-[#0c101a] border border-zinc-800/80 rounded-xl sm:rounded-2xl p-3 sm:p-5 shadow-sm flex flex-col lg:flex-row lg:items-center gap-3 lg:gap-6 min-w-0">
+        <div className="grid grid-cols-3 gap-2 sm:gap-4 flex-1 min-w-0">
+          {[
+            { rotulo: 'Lucro das OS', valor: lucroLiquido, cor: 'text-white', sinal: '' },
+            { rotulo: 'Despesas da loja', valor: totalDespesas, cor: 'text-rose-400', sinal: '−' },
+            { rotulo: 'Resultado da loja', valor: resultadoLoja, cor: resultadoLoja >= 0 ? 'text-emerald-400' : 'text-rose-400', sinal: '=' },
+          ].map((c) => (
+            <div key={c.rotulo} className="min-w-0">
+              <span className="block text-[10px] sm:text-[11px] font-bold text-zinc-400 uppercase tracking-wider truncate">
+                {c.sinal && <span className="text-zinc-500 mr-1">{c.sinal}</span>}
+                {c.rotulo}
+              </span>
+              <p className={`text-sm sm:text-xl font-extrabold mt-1 tabular-nums truncate ${c.cor}`}>R$ {formatarValor(c.valor)}</p>
+            </div>
+          ))}
+        </div>
+        <div className="flex items-center justify-between lg:justify-end gap-3 shrink-0">
+          <p className="text-[10px] sm:text-[11px] text-zinc-500">
+            {despesasPeriodo.length === 0
+              ? 'Nenhuma despesa lançada no período'
+              : despesasAPagar > 0
+              ? `R$ ${formatarValor(despesasAPagar)} ainda a pagar`
+              : 'Todas as despesas pagas'}
+          </p>
+          {onAbrirDespesas && (
+            <button
+              type="button"
+              onClick={onAbrirDespesas}
+              className="px-3 py-1.5 rounded-xl bg-[#080c14] hover:bg-zinc-800/80 border border-zinc-800 text-xs font-semibold text-blue-400 hover:text-blue-300 transition shrink-0"
+            >
+              {despesasPeriodo.length === 0 ? 'Lançar despesas' : 'Ver despesas'} &rsaquo;
+            </button>
+          )}
+        </div>
+      </div>
+
       {/* ================= LISTAGEM EM JANELA (MODAL) ================= */}
       {/* Aberta pelo botão "Listagens" do cabeçalho; vai para o <body> para cobrir a tela toda */}
       {detalhamento !== 'NENHUM' &&
@@ -1075,15 +1125,18 @@ export const Relatorios: React.FC = () => {
             {detalhamento === 'FLUXO' && (
               <div className="p-4 sm:px-5 pt-3 space-y-3">
                 <p className="text-xs text-zinc-400">
-                  O que o cliente pagou, quanto a maquininha reteve, o que entrou na conta e o que sobrou depois dos custos.
+                  O que o cliente pagou, quanto a maquininha reteve, o que entrou na conta, o que sobrou depois dos custos das OS e,
+                  descontadas as despesas da loja, o resultado do período.
                 </p>
-                <div className="grid grid-cols-2 lg:grid-cols-5 gap-2.5 sm:gap-3">
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">
                   {[
                     { rotulo: 'Faturamento bruto', valor: faturamentoBruto, sinal: '', cor: 'text-white', dica: 'Cobrado dos clientes' },
                     { rotulo: 'Taxas de maquininha', valor: totalTaxas, sinal: '−', cor: 'text-rose-400', dica: 'Retido pelas operadoras' },
                     { rotulo: 'Líquido recebido', valor: faturamentoLiquido, sinal: '=', cor: 'text-blue-400', dica: 'O que entrou na conta' },
                     { rotulo: 'Custos', valor: custosTotais, sinal: '−', cor: 'text-zinc-200', dica: 'Peças, fretes e garantias' },
-                    { rotulo: 'Lucro líquido real', valor: lucroLiquido, sinal: '=', cor: lucroLiquido >= 0 ? 'text-emerald-400' : 'text-rose-400', dica: 'O que sobrou' },
+                    { rotulo: 'Lucro das OS', valor: lucroLiquido, sinal: '=', cor: lucroLiquido >= 0 ? 'text-emerald-400' : 'text-rose-400', dica: 'O que sobrou das ordens' },
+                    { rotulo: 'Despesas da loja', valor: totalDespesas, sinal: '−', cor: 'text-rose-400', dica: 'Aluguel, salários, contas...' },
+                    { rotulo: 'Resultado da loja', valor: resultadoLoja, sinal: '=', cor: resultadoLoja >= 0 ? 'text-emerald-400' : 'text-rose-400', dica: 'O que sobrou no período' },
                   ]
                     .filter((etapa) => etapa.rotulo.toLowerCase().includes(buscaListagem.trim().toLowerCase()))
                     .map((etapa) => (

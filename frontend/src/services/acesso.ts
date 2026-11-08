@@ -17,6 +17,7 @@ import type { SecaoCadastro } from '../types';
 export type AbaSistema =
   | 'dashboard'
   | 'relatorios'
+  | 'despesas'
   | 'historico'
   | 'configuracoes'
   | 'nova-os'
@@ -39,6 +40,7 @@ export const PERMISSAO_POR_ABA: Record<Exclude<AbaSistema, 'cadastros'>, ChavePe
   historico: 'tela_ordens',
   'garantia-retorno': 'tela_garantias',
   relatorios: 'tela_relatorios',
+  despesas: 'tela_relatorios',
   configuracoes: 'tela_configuracoes',
 };
 
@@ -59,6 +61,7 @@ const ORDEM_ABAS: Exclude<AbaSistema, 'cadastros'>[] = [
   'historico',
   'garantia-retorno',
   'relatorios',
+  'despesas',
   'configuracoes',
 ];
 const ORDEM_SECOES: SecaoCadastro[] = ['clientes', 'servicos', 'fornecedores', 'estoque', 'lojas', 'funcionarios', 'formas-pagamento'];
