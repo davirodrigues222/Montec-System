@@ -60,6 +60,8 @@ import { formatarValor } from '../utils/formatadores';
 import { enviarMensagemWhatsapp } from '../utils/whatsapp';
 import { BotaoCopiarLinkAcompanhamento } from '../components/LinkAcompanhamentoOS';
 import { SeletorFotosNovaOS } from '../components/FotosOS';
+import { PecasEstoqueOS } from '../components/PecasEstoqueOS';
+import { type PecaDaOS, type PecaEstoque, custoTotalPecas, definirPecasDaOS, listarPecasEstoque, textoPecas } from '../services/estoque';
 import { enviarFotosOS } from '../services/fotosOS';
 import { type FormaPagamento, type TipoFormaPagamento, obterTaxaParcela } from '../services/cadastros';
 import { EVENTO_FORMAS_PAGAMENTO, OPCOES_PAGAMENTO_NATIVAS, type OpcaoPagamentoOS, carregarOpcoesPagamento } from '../services/formasPagamentoOS';
@@ -355,6 +357,9 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
   const [custoPeca, setCustoPeca] = useState<number | ''>('');
   const [freteReal, setFreteReal] = useState<number | ''>(0);
   const [fornecedorPeca, setFornecedorPeca] = useState('');
+  // Peças do estoque: a baixa acontece logo depois que a OS é criada. null = estoque não ativado no banco
+  const [estoque, setEstoque] = useState<PecaEstoque[] | null>(null);
+  const [pecasOS, setPecasOS] = useState<PecaDaOS[]>([]);
   const [tipoDesconto, setTipoDesconto] = useState<'VALOR' | 'PERCENTUAL'>('VALOR');
   const [descontoCliente, setDescontoCliente] = useState<number | ''>('');
   const [valorServico, setValorServico] = useState<number | ''>('');
@@ -416,6 +421,11 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
   // Quando o celular chegou na etapa 4: toques logo em seguida são o mesmo toque do "Continuar"
   const chegouNaEtapa4Em = useRef(0);
 
+  const carregarEstoque = () =>
+    listarPecasEstoque()
+      .then(setEstoque)
+      .catch(() => setEstoque(null));
+
   useEffect(() => {
     // As funções de busca já tratam erros e devolvem lista vazia
     Promise.all([buscarClientes(), buscarFornecedores(), buscarServicosCadastrados(), buscarModelosAparelhos()]).then(
@@ -426,7 +436,17 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
         setModelosDaLoja(modelos);
       },
     );
+    carregarEstoque();
   }, []);
+
+  // Primeira peça do estoque com fornecedor: preenche o fornecedor da OS se ainda estiver vazio
+  const mudarPecasOS = (itens: PecaDaOS[]) => {
+    if (!fornecedorPeca && itens.length > pecasOS.length) {
+      const nova = estoque?.find((p) => p.id_peca === itens[itens.length - 1].id_peca);
+      if (nova?.fornecedor_nome && listaFornecedores.some((f) => f.nome === nova.fornecedor_nome)) setFornecedorPeca(nova.fornecedor_nome);
+    }
+    setPecasOS(itens);
+  };
 
   // Selecionar Cliente
   const handleSelecionarCliente = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -570,7 +590,12 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
 
   const numCustoPeca = Number(custoPeca) || 0;
   const numFreteReal = Number(freteReal) || 0;
-  const lucroEstimado = liquidoRecebido - (numCustoPeca + numFreteReal);
+  // Peças do estoque: o banco soma o custo delas na OS ao dar baixa (quem não vê custos não sabe o valor)
+  const custoPecasEstoque = custoTotalPecas(pecasOS) ?? 0;
+  const custoPecasTotal = numCustoPeca + custoPecasEstoque;
+  const lucroEstimado = liquidoRecebido - (custoPecasTotal + numFreteReal);
+  // Gravado na criação, antes da baixa (a baixa desconta as peças do estoque)
+  const lucroSemPecasEstoque = liquidoRecebido - (numCustoPeca + numFreteReal);
 
   // Estrutura de dados dos pagamentos para salvar no banco
   const gerarDadosPagamento = () => {
@@ -671,6 +696,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
       defeitoRelatado: defeito || 'Defeito a diagnosticar',
       diagnostico: diagnostico.trim(),
       servicoRealizado: servicoSelecionado?.nome || defeito || 'Aguardando diagnóstico',
+      pecasUtilizadas: textoPecas(pecasOS),
       observacoes: (diagnostico || observacoes).trim(),
       dataAbertura,
       dataPrevistaEntrega: dataPrevista || undefined,
@@ -697,7 +723,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
         custoPeca: numCustoPeca,
         freteReal: numFreteReal,
         fornecedorPeca,
-        lucroTotalEstimadoInterno: lucroEstimado,
+        lucroTotalEstimadoInterno: lucroSemPecasEstoque,
         totalTaxaMaquineta,
         pagamentos: pagamentosArray,
       },
@@ -743,12 +769,29 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
       const payload = montarPayload();
       const resultado = await criarOrdemServico(payload);
 
+      // Baixa das peças do estoque (soma o custo delas na OS). A OS já existe: uma falha aqui só avisa.
+      if (pecasOS.length > 0) {
+        try {
+          await definirPecasDaOS(
+            resultado.idOs,
+            pecasOS.filter((p) => p.id_peca).map((p) => ({ id_peca: p.id_peca!, quantidade: p.quantidade })),
+          );
+        } catch (erroEstoque: any) {
+          alert(
+            `A OS ${resultado.numeroOs} foi criada, mas a baixa das peças no estoque falhou: ${erroEstoque.message}\n\n` +
+              'Abra a OS em Ordens de serviço › Editar para lançar as peças de novo.',
+          );
+        }
+        carregarEstoque();
+      }
+
       // Dados para o comprovante impresso (mesmo formato de OrdemServico usado no Histórico)
       setOsCriadaSucesso({
         idOs: resultado.idOs,
         numeroOs: resultado.numeroOs,
         dadosCompletos: {
           ...payload,
+          orcamentoCalculado: { ...payload.orcamentoCalculado, custoPeca: custoPecasTotal, lucroTotalEstimadoInterno: lucroEstimado },
           id_os: resultado.idOs,
           numero_os: resultado.numeroOs,
           status_os: 'AGUARDANDO_AVALIACAO',
@@ -796,6 +839,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
     setPossuiGarantia(true);
     setDadosLegais({});
     setCustoPeca('');
+    setPecasOS([]);
     setFreteReal(0);
     setFornecedorPeca('');
     setTipoDesconto('VALOR');
@@ -1245,7 +1289,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
           <SubBloco titulo="Controle interno de custos" descricao="Peça, frete e fornecedor (não aparece para o cliente)" icone={Package} className="bg-[#080c14]/60">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
-                <Rotulo>Custo da peça</Rotulo>
+                <Rotulo>{pecasOS.length > 0 ? 'Outras peças (fora do estoque)' : 'Custo da peça'}</Rotulo>
                 <ComReais>
                   <input
                     type="number"
@@ -1286,6 +1330,13 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
                 </ComIcone>
               </div>
             </div>
+
+            {estoque && (
+              <div className="mt-4 pt-4 border-t border-dashed border-zinc-800/80">
+                <Rotulo opcional>Peças do estoque</Rotulo>
+                <PecasEstoqueOS pecas={estoque} itens={pecasOS} onChange={mudarPecasOS} veCustos={veCustos} />
+              </div>
+            )}
           </SubBloco>
 
           <CamposLegaisOS valor={dadosLegais} onChange={setDadosLegais} />
@@ -1641,7 +1692,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
                   { rotulo: 'Desconto concedido', valor: `− R$ ${formatarValor(descontoCalculado)}`, cor: 'text-rose-400' },
                   { rotulo: 'Taxa da maquineta', valor: `− R$ ${formatarValor(totalTaxaMaquineta)}`, cor: 'text-rose-400' },
                   { rotulo: 'Líquido recebido', valor: `R$ ${formatarValor(liquidoRecebido)}`, cor: 'text-zinc-200' },
-                  { rotulo: 'Custos (peça + frete)', valor: `− R$ ${formatarValor(numCustoPeca + numFreteReal)}`, cor: 'text-zinc-200' },
+                  { rotulo: 'Custos (peça + frete)', valor: `− R$ ${formatarValor(custoPecasTotal + numFreteReal)}`, cor: 'text-zinc-200' },
                 ].map((linha) => (
                   <div key={linha.rotulo} className="flex items-center justify-between gap-3 border-b border-dashed border-zinc-800/80 pb-2 last:border-0 last:pb-0">
                     <dt className="text-zinc-500">{linha.rotulo}</dt>

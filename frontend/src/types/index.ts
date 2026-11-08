@@ -125,6 +125,7 @@ export type SecaoCadastro =
   | 'clientes'
   | 'servicos'
   | 'fornecedores'
+  | 'estoque'
   | 'lojas'
   | 'funcionarios'
   | 'formas-pagamento';

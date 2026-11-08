@@ -11,6 +11,7 @@ import { GarantiaRetorno } from './pages/Garantiaretorno';
 import { ClientesCadastro } from './pages/cadastros/ClientesCadastro';
 import { ServicosCadastro } from './pages/cadastros/ServicosCadastro';
 import { FornecedoresCadastro } from './pages/cadastros/FornecedoresCadastro';
+import { EstoqueCadastro } from './pages/cadastros/EstoqueCadastro';
 import { LojasCadastro } from './pages/cadastros/LojasCadastro';
 import { FuncionariosCadastro } from './pages/cadastros/FuncionariosCadastro';
 import { FormasPagamentoCadastro } from './pages/cadastros/FormasPagamentoCadastro';
@@ -78,6 +79,7 @@ const NOMES_TELAS: Record<string, string> = {
   'cadastros:clientes': 'Cadastros › Clientes',
   'cadastros:servicos': 'Cadastros › Serviços',
   'cadastros:fornecedores': 'Cadastros › Fornecedores',
+  'cadastros:estoque': 'Cadastros › Estoque de peças',
   'cadastros:lojas': 'Cadastros › Lojas',
   'cadastros:funcionarios': 'Cadastros › Funcionários',
   'cadastros:formas-pagamento': 'Cadastros › Formas de pagamento',
@@ -535,7 +537,14 @@ export default function App() {
                 </button>
               </div>
             )}
-            {activeTab === 'dashboard' && <Dashboard onNavigate={navegar} session={session} />}
+            {activeTab === 'dashboard' && <Dashboard
+                onNavigate={navegar}
+                session={session}
+                onAbrirEstoque={() => {
+                  mudarSecaoCadastro('estoque');
+                  navegar('cadastros');
+                }}
+              />}
             {activeTab === 'relatorios' && <Relatorios />}
             {activeTab === 'historico' && <HistoricoServicos />}
             {activeTab === 'configuracoes' && (
@@ -557,6 +566,7 @@ export default function App() {
                 {secaoCadastro === 'formas-pagamento' && <FormasPagamentoCadastro />}
                 {secaoCadastro === 'servicos' && <ServicosCadastro />}
                 {secaoCadastro === 'fornecedores' && <FornecedoresCadastro />}
+                {secaoCadastro === 'estoque' && <EstoqueCadastro />}
               </>
             )}
           </>

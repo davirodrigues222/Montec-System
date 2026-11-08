@@ -46,6 +46,7 @@ export const PERMISSAO_POR_SECAO: Record<SecaoCadastro, ChavePermissao> = {
   clientes: 'tela_cadastros',
   servicos: 'tela_cadastros',
   fornecedores: 'tela_cadastros',
+  estoque: 'tela_cadastros',
   lojas: 'tela_empresa',
   funcionarios: 'tela_empresa',
   'formas-pagamento': 'tela_empresa',
@@ -60,7 +61,7 @@ const ORDEM_ABAS: Exclude<AbaSistema, 'cadastros'>[] = [
   'relatorios',
   'configuracoes',
 ];
-const ORDEM_SECOES: SecaoCadastro[] = ['clientes', 'servicos', 'fornecedores', 'lojas', 'funcionarios', 'formas-pagamento'];
+const ORDEM_SECOES: SecaoCadastro[] = ['clientes', 'servicos', 'fornecedores', 'estoque', 'lojas', 'funcionarios', 'formas-pagamento'];
 
 export const podeAcessar = (op: Operador | null, chave: ChavePermissao) => !!op && !!op.permissoes[chave];
 

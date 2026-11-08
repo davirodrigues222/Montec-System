@@ -15,14 +15,19 @@ import type { AbaSistema } from '../services/acesso';
 import { formatarValor } from '../utils/formatadores';
 import { custosOS, somar, valorLiquidoOS } from '../utils/financeiroOS';
 import { useOperador } from '../contexts/OperadorContext';
+import { type PecaEstoque, listarPecasEstoqueBaixo } from '../services/estoque';
 
 interface Props {
   onNavigate?: (tab: AbaSistema) => void;
+  /** Abre Cadastros › Estoque de peças (alerta de estoque baixo) */
+  onAbrirEstoque?: () => void;
   session?: any;
 }
 
-export const Dashboard: React.FC<Props> = ({ onNavigate, session }) => {
+export const Dashboard: React.FC<Props> = ({ onNavigate, onAbrirEstoque, session }) => {
   const [ordens, setOrdens] = useState<OrdemServico[]>([]);
+  // Peças sem estoque ou com estoque baixo (vazio se o estoque não estiver ativado)
+  const [estoqueBaixo, setEstoqueBaixo] = useState<PecaEstoque[]>([]);
   const [loading, setLoading] = useState(true);
   // Horário em que o painel foi aberto (exibido em "Hoje na loja")
   const [horaAtual] = useState(() =>
@@ -48,6 +53,7 @@ export const Dashboard: React.FC<Props> = ({ onNavigate, session }) => {
 
   useEffect(() => {
     carregarOrdens();
+    listarPecasEstoqueBaixo().then(setEstoqueBaixo);
     carregarConfiguracoesLoja()
       .then(() => setVersaoConfig((v) => v + 1))
       .catch(() => {});
@@ -336,6 +342,33 @@ export const Dashboard: React.FC<Props> = ({ onNavigate, session }) => {
 
       {erroCarregamento && (
         <AvisoErroCarregamento mensagem={erroCarregamento} onTentarNovamente={() => carregarOrdens(true)} />
+      )}
+
+      {/* Alerta de estoque: peças sem estoque ou no mínimo definido */}
+      {estoqueBaixo.length > 0 && (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 py-3 rounded-2xl border border-rose-500/30 bg-rose-500/[0.06]">
+          <div className="min-w-0">
+            <p className="text-xs font-bold text-rose-400">
+              {estoqueBaixo.length === 1 ? '1 peça precisa' : `${estoqueBaixo.length} peças precisam`} de reposição
+            </p>
+            <p className="text-[11px] text-zinc-400 mt-0.5 truncate">
+              {estoqueBaixo
+                .slice(0, 4)
+                .map((p) => `${p.nome} (${Math.max(p.quantidade, 0)})`)
+                .join(' · ')}
+              {estoqueBaixo.length > 4 ? ` · e mais ${estoqueBaixo.length - 4}` : ''}
+            </p>
+          </div>
+          {onAbrirEstoque && (
+            <button
+              type="button"
+              onClick={onAbrirEstoque}
+              className="px-3 py-1.5 rounded-xl bg-[#080c14] hover:bg-zinc-800/80 border border-zinc-800 text-xs font-semibold text-rose-400 transition shrink-0"
+            >
+              Ver estoque &rsaquo;
+            </button>
+          )}
+        </div>
       )}
 
       {/* ================= 4 CARDS SUPERIORES: 2x2 NO MOBILE, 4 COLUNAS NO DESKTOP ================= */}

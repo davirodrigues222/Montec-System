@@ -28,6 +28,17 @@ import { LinkAcompanhamentoOS } from "../components/LinkAcompanhamentoOS";
 import { EditorFotosOS, GaleriaFotosOS } from "../components/FotosOS";
 import { type AlteracoesFotos, SEM_ALTERACOES_FOTOS, aplicarAlteracoesFotos } from "../services/fotosOS";
 import { StatusBadge } from "../components/StatusBadge";
+import { PecasEstoqueOS } from "../components/PecasEstoqueOS";
+import {
+  type PecaDaOS,
+  type PecaEstoque,
+  custoTotalPecas,
+  definirPecasDaOS,
+  listarPecasDaOS,
+  listarPecasEstoque,
+  mesmasPecas,
+  textoPecas,
+} from "../services/estoque";
 import { AutorizacaoAdministrativa } from "../components/AutorizacaoAdministrativa";
 import { CamposLegaisOS } from "../components/CamposLegaisOS";
 import {
@@ -172,7 +183,13 @@ export const HistoricoServicos: React.FC = () => {
   const [editCustoPeca, setEditCustoPeca] = useState<number | "">("");
   const [editFrete, setEditFrete] = useState<number | "">("");
   const [editFornecedor, setEditFornecedor] = useState("");
-  
+  // Peças do estoque na edição. editCustoPeca passa a ser só o custo das "outras peças" (fora do estoque).
+  // pecasOriginais null = carregando; estoqueEdicao null = estoque não ativado no banco
+  const [pecasOriginais, setPecasOriginais] = useState<PecaDaOS[] | null>(null);
+  const [editPecasEstoque, setEditPecasEstoque] = useState<PecaDaOS[]>([]);
+  const [estoqueEdicao, setEstoqueEdicao] = useState<PecaEstoque[] | null>(null);
+  const edicaoAbertaRef = useRef<string | null>(null);
+
   // Estados para desconto e valor líquido editável
   const [editTipoDesconto, setEditTipoDesconto] = useState<'VALOR' | 'PERCENTUAL'>('VALOR');
   const [editDesconto, setEditDesconto] = useState<number | "">("");
@@ -293,6 +310,29 @@ export const HistoricoServicos: React.FC = () => {
     const custo = os.orcamentoCalculado?.custoPeca;
     setEditCustoPeca(custo !== undefined && custo !== null ? custo : "");
 
+    // Peças do estoque já baixadas nesta OS: o custo delas sai do campo "outras peças"
+    setPecasOriginais(null);
+    setEditPecasEstoque([]);
+    setEstoqueEdicao(null);
+    const idEdicao = os.id_os;
+    edicaoAbertaRef.current = idEdicao;
+    Promise.all([listarPecasDaOS(idEdicao), listarPecasEstoque().catch(() => null)])
+      .then(([daOS, catalogo]) => {
+        if (edicaoAbertaRef.current !== idEdicao) return; // outra OS aberta nesse meio-tempo
+        const custoEstoque = custoTotalPecas(daOS) ?? 0;
+        if (custoEstoque > 0 && custo !== undefined && custo !== null) {
+          setEditCustoPeca(Math.max(0, Math.round((Number(custo) - custoEstoque) * 100) / 100));
+        }
+        setPecasOriginais(daOS);
+        setEditPecasEstoque(daOS);
+        setEstoqueEdicao(catalogo);
+      })
+      .catch(() => {
+        if (edicaoAbertaRef.current !== idEdicao) return;
+        setPecasOriginais([]);
+        setEstoqueEdicao(null);
+      });
+
     const frete = os.orcamentoCalculado?.freteReal;
     setEditFrete(frete !== undefined && frete !== null ? frete : "");
 
@@ -334,6 +374,10 @@ export const HistoricoServicos: React.FC = () => {
 
   const handleSalvarEdicao = async () => {
     if (!osParaEditar) return;
+    if (pecasOriginais === null) {
+      alert("Aguarde as peças do estoque desta OS carregarem e tente de novo.");
+      return;
+    }
 
     const legal = lerDadosLegaisOS(editChecklist);
     if (faltaAutorizacaoPeca(legal)) {
@@ -399,8 +443,17 @@ export const HistoricoServicos: React.FC = () => {
         0
       );
 
+      // custo_peca gravado = outras peças + peças do estoque JÁ baixadas. A diferença das peças do
+      // estoque alteradas agora é somada pelo banco na baixa (definirPecasDaOS, logo abaixo).
+      const custoPecaGravado = numCustoPeca + (custoTotalPecas(pecasOriginais) ?? 0);
       const lucroCalculado =
-        numValorLiquidoFinal - (numCustoPeca + numFrete + custoGarantiaExistente);
+        numValorLiquidoFinal - (custoPecaGravado + numFrete + custoGarantiaExistente);
+      const pecasEstoqueMudaram = !mesmasPecas(pecasOriginais, editPecasEstoque);
+      // Texto "Peças utilizadas" acompanha o estoque, a não ser que tenha sido escrito à mão
+      const pecasTexto =
+        pecasEstoqueMudaram && (!editPecas.trim() || editPecas.trim() === textoPecas(pecasOriginais))
+          ? textoPecas(editPecasEstoque)
+          : editPecas;
 
       // Forma e pagamentos: refeitos só quando forma, parcelas ou valores mudaram (antes ficavam os antigos)
       // Forma do cadastro (nativa ou complementar): pagamentos refeitos; texto fora da lista ("Manter") fica como está
@@ -452,7 +505,7 @@ export const HistoricoServicos: React.FC = () => {
         defeitoRelatado: editDefeito,
         diagnostico: editDiagnostico,
         servicoRealizado: editServico,
-        pecasUtilizadas: editPecas,
+        pecasUtilizadas: pecasTexto,
         observacoes: editObservacoes,
         formaPagamento: formaPadrao ? formaTexto : editFormaPagamento,
         parcelas: parcelasFinais,
@@ -471,7 +524,7 @@ export const HistoricoServicos: React.FC = () => {
           ...(veCustos
             ? {
                 lucroTotalEstimadoInterno: lucroCalculado,
-                custoPeca: numCustoPeca,
+                custoPeca: custoPecaGravado,
                 freteReal: numFrete,
                 custoPecaGarantia: custoGarantiaExistente,
               }
@@ -482,6 +535,18 @@ export const HistoricoServicos: React.FC = () => {
       });
 
       const idEditado = osParaEditar.id_os;
+
+      // Peças do estoque: baixa ou devolução da diferença (e custo/lucro da OS) só depois de a OS ser gravada
+      if (pecasEstoqueMudaram) {
+        try {
+          await definirPecasDaOS(
+            idEditado,
+            editPecasEstoque.filter((p) => p.id_peca).map((p) => ({ id_peca: p.id_peca!, quantidade: p.quantidade })),
+          );
+        } catch (erroEstoque: any) {
+          alert(`A OS foi salva, mas as peças do estoque não foram atualizadas: ${erroEstoque.message}`);
+        }
+      }
 
       // Fotos: só depois de a OS ser gravada (se ela falhar, nada muda nas fotos)
       if (editFotos.novas.length || editFotos.removidas.length) {
@@ -1580,12 +1645,14 @@ export const HistoricoServicos: React.FC = () => {
                     <>
                     <div>
                       <label className="text-zinc-400 block mb-1">
-                        Custo Peça (R$)
+                        {editPecasEstoque.length > 0 ? "Outras peças (R$)" : "Custo Peça (R$)"}
                       </label>
                       <input
                         type="number"
                         step="0.01"
                         placeholder="0.00"
+                        disabled={pecasOriginais === null}
+                        title={editPecasEstoque.length > 0 ? "Peças fora do estoque. As do estoque são somadas sozinhas." : undefined}
                         value={editCustoPeca}
                         onChange={(e) =>
                           setEditCustoPeca(
@@ -1668,6 +1735,24 @@ export const HistoricoServicos: React.FC = () => {
                     </div>
                   </div>
 
+                  {/* Peças do estoque: baixa (ou devolução) da diferença ao salvar */}
+                  {(estoqueEdicao || (pecasOriginais && pecasOriginais.length > 0)) && (
+                    <div className="pt-3 border-t border-zinc-800/80">
+                      <label className="text-zinc-400 block mb-2">Peças do estoque</label>
+                      {pecasOriginais === null ? (
+                        <p className="text-[11px] text-zinc-500">Carregando...</p>
+                      ) : (
+                        <PecasEstoqueOS
+                          pecas={estoqueEdicao || []}
+                          itens={editPecasEstoque}
+                          onChange={setEditPecasEstoque}
+                          veCustos={veCustos}
+                          jaBaixadas={pecasOriginais}
+                        />
+                      )}
+                    </div>
+                  )}
+
                   {/* Resumo financeiro em tempo real (antes de salvar) */}
                   {(() => {
                     const bruto = editValorTotal === "" ? 0 : Number(editValorTotal);
@@ -1688,6 +1773,7 @@ export const HistoricoServicos: React.FC = () => {
                     const lucro =
                       liquido -
                       ((editCustoPeca === "" ? 0 : Number(editCustoPeca)) +
+                        (custoTotalPecas(editPecasEstoque) ?? 0) +
                         (editFrete === "" ? 0 : Number(editFrete)) +
                         custoGarantia);
                     const fmt = (v: number) =>

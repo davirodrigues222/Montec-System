@@ -117,6 +117,7 @@ const GRUPOS_CADASTRO: { titulo: string; itens: { id: SecaoCadastro; label: stri
       { id: 'clientes', label: 'Clientes' },
       { id: 'servicos', label: 'Serviços' },
       { id: 'fornecedores', label: 'Fornecedores' },
+      { id: 'estoque', label: 'Estoque de peças', novo: true },
     ],
   },
   {

@@ -405,7 +405,7 @@ export const PERMISSOES_DISPONIVEIS = [
   { chave: 'tela_ordens', label: 'Ordens de serviço', grupo: 'Telas' },
   { chave: 'tela_garantias', label: 'Garantias e retornos', grupo: 'Telas' },
   { chave: 'tela_relatorios', label: 'Análises e relatórios', grupo: 'Telas' },
-  { chave: 'tela_cadastros', label: 'Cadastros: clientes, serviços e fornecedores', grupo: 'Telas' },
+  { chave: 'tela_cadastros', label: 'Cadastros: clientes, serviços, fornecedores e estoque', grupo: 'Telas' },
   { chave: 'tela_empresa', label: 'Cadastros: lojas, funcionários e formas de pagamento', grupo: 'Telas' },
   { chave: 'tela_configuracoes', label: 'Configurações', grupo: 'Telas' },
   { chave: 'excluir_os', label: 'Excluir ordens de serviço', grupo: 'Ações' },

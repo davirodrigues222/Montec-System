@@ -82,7 +82,15 @@ Desenvolvido para atender desde a recepção no balcão até a bancada do técni
 - **Leves e privadas:** cada foto é reduzida no aparelho (lado maior de 1600 px, ~300 KB) e fica no bucket privado `fotos-os`; só a própria loja vê.
 - **Banco:** migração `20261102120000_fotos_os.sql` (cria o bucket e as regras do Storage).
 
-### 11. Assistente de IA
+### 11. Estoque de peças
+- **Cadastro:** em Cadastros › Estoque de peças, com nome, modelos compatíveis, código, categoria, fornecedor (do cadastro de Fornecedores), estoque mínimo, custo e quantidade inicial.
+- **Entrada e ajuste:** "+ Entrada" lança uma compra (quantidade, custo unitário e fornecedor) e recalcula o custo médio ponderado; "Ajustar" grava a contagem real (perda, defeito, inventário). Cada movimento fica no histórico da peça, com data e quem fez.
+- **Baixa automática na OS:** na Nova OS e no Editar OS (bloco "Peças do estoque"), as peças escolhidas saem do estoque ao salvar. Tirar uma peça ou diminuir a quantidade devolve a diferença, e excluir a OS devolve tudo. O custo delas (custo médio do dia da baixa) entra no custo da OS e sai do lucro. O campo de custo digitado passa a ser "Outras peças (fora do estoque)".
+- **Estoque baixo:** a peça fica marcada quando chega no mínimo definido (mínimo 0 desliga o aviso), e o Painel mostra o alerta com as peças a repor. O saldo pode ficar negativo se a peça for usada antes de a entrada ser lançada; a tela avisa.
+- **Permissões:** cadastro, entrada e ajuste exigem "Cadastros"; a baixa na OS exige "Nova ordem" ou "Ordens de serviço". Custos só aparecem para quem tem "Análises e relatórios".
+- **Banco:** migração `20261108090000_estoque_pecas.sql`. A quantidade só muda pelas funções do banco, nunca direto na tabela.
+
+### 12. Assistente de IA
 - **Dúvidas sobre o sistema:** Botão **Assistente** no cabeçalho, com um chat que explica telas e fluxos e abre a tela certa.
 - **Tarefas de configuração:** Cria e altera formas de pagamento (taxas, parcelamento, taxa por parcela), cria as formas padrão e cadastra ou altera serviços. Antes de gravar, mostra um resumo para o usuário confirmar.
 - **Permissões respeitadas:** As ações rodam no navegador com o login e as permissões do funcionário identificado.
@@ -107,6 +115,7 @@ O sistema opera com o **Row Level Security (RLS)** ativo em todas as tabelas, va
 | `aparelhos_cliente` | Dispositivos dos clientes (modelo, IMEI, senha de desbloqueio) | `user_id = auth.uid()` |
 | `cad_servicos` | Catálogo de serviços e preços sugeridos | `user_id = auth.uid()` |
 | `cad_fornecedores` | Cadastro de fornecedores de componentes e peças | `user_id = auth.uid()` |
+| `estoque_pecas` / `estoque_movimentos` / `os_pecas` | Estoque de peças, histórico de movimentos e peças usadas em cada OS | Leitura pelas views `*_lista` da loja; gravação só pelas funções do banco |
 
 ---
 
