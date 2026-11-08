@@ -31,6 +31,7 @@ export const CATEGORIAS_DESPESA = [
   'Água',
   'Internet e telefone',
   'Salários e pró-labore',
+  'Comissões',
   'Impostos e taxas',
   'Contador',
   'Sistemas e assinaturas',

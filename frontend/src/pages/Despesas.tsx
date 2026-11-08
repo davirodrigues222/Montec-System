@@ -36,23 +36,12 @@ import {
 import type { OrdemServico } from '../types';
 import { lucroOS, somar } from '../utils/financeiroOS';
 import { formatarValor } from '../utils/formatadores';
+import { dataBR, mesDe, nomeMes, somarMes } from '../utils/meses';
 
 // ==========================================
 // Despesas da loja e resultado do mês: lucro das OS − despesas = o que sobrou para a loja.
 // ==========================================
 
-const mesDe = (data: string) => data.slice(0, 7);
-const somarMes = (mes: string, n: number) => {
-  const [a, m] = mes.split('-').map(Number);
-  const d = new Date(a, m - 1 + n, 1);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-};
-const nomeMes = (mes: string) => {
-  const [a, m] = mes.split('-').map(Number);
-  const t = new Date(a, m - 1, 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
-  return t.charAt(0).toUpperCase() + t.slice(1);
-};
-const dataBR = (iso: string | null) => (iso ? iso.split('-').reverse().join('/') : '');
 
 /** Vencimento sugerido ao lançar: hoje, ou o dia 1 se o mês na tela não for o atual. */
 const vencimentoPadrao = (mes: string) => (mesDe(hojeISO()) === mes ? hojeISO() : `${mes}-01`);

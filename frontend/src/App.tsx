@@ -5,6 +5,7 @@ import { Layout } from './components/Layout';
 import { Dashboard } from './pages/Dashboard';
 import { Relatorios } from './pages/Relatorios';
 import { Despesas } from './pages/Despesas';
+import { Comissoes } from './pages/Comissoes';
 import { HistoricoServicos } from './pages/HistoricoServicos';
 import { Configuracoes } from './pages/Configuracoes';
 import { NovaOS } from './pages/NovaOS';
@@ -74,6 +75,7 @@ const NOMES_TELAS: Record<string, string> = {
   dashboard: 'Painel',
   relatorios: 'Análises e relatórios',
   despesas: 'Despesas',
+  comissoes: 'Comissões',
   historico: 'Ordens de serviço',
   'nova-os': 'Nova ordem',
   'garantia-retorno': 'Garantias e retornos',
@@ -549,6 +551,7 @@ export default function App() {
               />}
             {activeTab === 'relatorios' && <Relatorios onAbrirDespesas={() => navegar('despesas')} />}
             {activeTab === 'despesas' && <Despesas />}
+            {activeTab === 'comissoes' && <Comissoes />}
             {activeTab === 'historico' && <HistoricoServicos />}
             {activeTab === 'configuracoes' && (
               <Configuracoes

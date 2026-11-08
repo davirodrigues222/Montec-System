@@ -98,7 +98,15 @@ Desenvolvido para atender desde a recepção no balcão até a bancada do técni
 - **Permissão:** ver e lançar despesas exige "Análises, relatórios e despesas" (antes "Análises e relatórios"). Exportação em CSV por mês.
 - **Banco:** migração `20261108120000_despesas.sql` (requer a do estoque).
 
-### 13. Assistente de IA
+### 13. Comissão por técnico
+- **Técnico na OS:** campo "Técnico responsável" na Nova OS (quem entra com cargo Técnico já vem escolhido), no Editar OS e nos Detalhes. Usa os funcionários de Cadastros › Funcionários.
+- **Regras:** menu Comissões › Regras. Escolha a base (lucro da OS ou valor cobrado) e o percentual de cada técnico e, se quiser, de cada serviço do catálogo. O percentual do serviço vale mais que o do técnico, e lucro negativo não gera comissão.
+- **Relatório do mês:** total por técnico com o detalhe de cada OS (base, percentual e comissão) e CSV. Entram as OS com status Entregue no mês da entrega; as entregues sem técnico aparecem listadas para corrigir.
+- **Pagamento:** "Lançar como despesa" cria a despesa "Comissão <técnico> (<mês>)" na categoria Comissões, a pagar no último dia do mês, e o resultado da loja já desconta.
+- **Permissão:** regras e relatório exigem "Análises, relatórios e despesas".
+- **Banco:** migração `20261108150000_comissoes.sql`.
+
+### 14. Assistente de IA
 - **Dúvidas sobre o sistema:** Botão **Assistente** no cabeçalho, com um chat que explica telas e fluxos e abre a tela certa.
 - **Tarefas de configuração:** Cria e altera formas de pagamento (taxas, parcelamento, taxa por parcela), cria as formas padrão e cadastra ou altera serviços. Antes de gravar, mostra um resumo para o usuário confirmar.
 - **Permissões respeitadas:** As ações rodam no navegador com o login e as permissões do funcionário identificado.

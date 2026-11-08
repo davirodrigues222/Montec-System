@@ -18,6 +18,7 @@ export type AbaSistema =
   | 'dashboard'
   | 'relatorios'
   | 'despesas'
+  | 'comissoes'
   | 'historico'
   | 'configuracoes'
   | 'nova-os'
@@ -41,6 +42,7 @@ export const PERMISSAO_POR_ABA: Record<Exclude<AbaSistema, 'cadastros'>, ChavePe
   'garantia-retorno': 'tela_garantias',
   relatorios: 'tela_relatorios',
   despesas: 'tela_relatorios',
+  comissoes: 'tela_relatorios',
   configuracoes: 'tela_configuracoes',
 };
 
@@ -62,6 +64,7 @@ const ORDEM_ABAS: Exclude<AbaSistema, 'cadastros'>[] = [
   'garantia-retorno',
   'relatorios',
   'despesas',
+  'comissoes',
   'configuracoes',
 ];
 const ORDEM_SECOES: SecaoCadastro[] = ['clientes', 'servicos', 'fornecedores', 'estoque', 'lojas', 'funcionarios', 'formas-pagamento'];

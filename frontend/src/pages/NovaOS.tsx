@@ -62,6 +62,7 @@ import { BotaoCopiarLinkAcompanhamento } from '../components/LinkAcompanhamentoO
 import { SeletorFotosNovaOS } from '../components/FotosOS';
 import { PecasEstoqueOS } from '../components/PecasEstoqueOS';
 import { type PecaDaOS, type PecaEstoque, custoTotalPecas, definirPecasDaOS, listarPecasEstoque, textoPecas } from '../services/estoque';
+import { type Tecnico, listarTecnicos, tecnicoParaChecklist, tecnicosParaEscolha } from '../services/comissoes';
 import { enviarFotosOS } from '../services/fotosOS';
 import { type FormaPagamento, type TipoFormaPagamento, obterTaxaParcela } from '../services/cadastros';
 import { EVENTO_FORMAS_PAGAMENTO, OPCOES_PAGAMENTO_NATIVAS, type OpcaoPagamentoOS, carregarOpcoesPagamento } from '../services/formasPagamentoOS';
@@ -359,6 +360,9 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
   const [fornecedorPeca, setFornecedorPeca] = useState('');
   // Peças do estoque: a baixa acontece logo depois que a OS é criada. null = estoque não ativado no banco
   const [estoque, setEstoque] = useState<PecaEstoque[] | null>(null);
+  // Técnico responsável (comissão). O funcionário de cargo Técnico já vem escolhido
+  const [tecnicos, setTecnicos] = useState<Tecnico[]>([]);
+  const [tecnicoId, setTecnicoId] = useState('');
   const [pecasOS, setPecasOS] = useState<PecaDaOS[]>([]);
   const [tipoDesconto, setTipoDesconto] = useState<'VALOR' | 'PERCENTUAL'>('VALOR');
   const [descontoCliente, setDescontoCliente] = useState<number | ''>('');
@@ -437,7 +441,17 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
       },
     );
     carregarEstoque();
+    listarTecnicos().then((lista) => {
+      setTecnicos(lista);
+      setTecnicoId(tecnicoPadrao(lista));
+    });
   }, []);
+
+  // Quem abre a OS sendo do cargo Técnico já fica como responsável
+  const tecnicoPadrao = (lista: Tecnico[]) =>
+    operador?.cargo === 'TECNICO' && operador.idFuncionario && lista.some((t) => t.id_funcionario === operador.idFuncionario && t.ativo)
+      ? operador.idFuncionario
+      : '';
 
   // Primeira peça do estoque com fornecedor: preenche o fornecedor da OS se ainda estiver vazio
   const mudarPecasOS = (itens: PecaDaOS[]) => {
@@ -708,6 +722,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
       checklistEntrada: {
         ...checklist,
         ...dadosServicoCatalogo,
+        ...(tecnicoId ? tecnicoParaChecklist(tecnicos.find((t) => t.id_funcionario === tecnicoId)) : {}),
         __pagamentos: pagamentosArray,
         __possuiGarantia: possuiGarantia,
         __prazoGarantiaDias: prazoFinal,
@@ -840,6 +855,7 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
     setDadosLegais({});
     setCustoPeca('');
     setPecasOS([]);
+    setTecnicoId(tecnicoPadrao(tecnicos));
     setFreteReal(0);
     setFornecedorPeca('');
     setTipoDesconto('VALOR');
@@ -1200,6 +1216,25 @@ export const NovaOS: React.FC<Props> = ({ onNavigate }) => {
               />
             </div>
           </div>
+
+          {/* Técnico responsável (comissão): só aparece quando a loja tem funcionários */}
+          {tecnicos.length > 0 && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <Rotulo opcional>Técnico responsável</Rotulo>
+                <ComIcone icone={Wrench}>
+                  <select value={tecnicoId} onChange={(e) => setTecnicoId(e.target.value)} className={`${inputCls} pl-9 cursor-pointer`}>
+                    <option value="">Sem técnico definido</option>
+                    {tecnicosParaEscolha(tecnicos).map((t) => (
+                      <option key={t.id_funcionario} value={t.id_funcionario}>
+                        {t.nome}
+                      </option>
+                    ))}
+                  </select>
+                </ComIcone>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* ================= CARD 03: VALORES, CUSTOS E PAGAMENTO ================= */}

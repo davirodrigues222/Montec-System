@@ -29,6 +29,7 @@ import { EditorFotosOS, GaleriaFotosOS } from "../components/FotosOS";
 import { type AlteracoesFotos, SEM_ALTERACOES_FOTOS, aplicarAlteracoesFotos } from "../services/fotosOS";
 import { StatusBadge } from "../components/StatusBadge";
 import { PecasEstoqueOS } from "../components/PecasEstoqueOS";
+import { type Tecnico, listarTecnicos, tecnicoParaChecklist, tecnicosParaEscolha } from "../services/comissoes";
 import {
   type PecaDaOS,
   type PecaEstoque,
@@ -189,6 +190,11 @@ export const HistoricoServicos: React.FC = () => {
   const [editPecasEstoque, setEditPecasEstoque] = useState<PecaDaOS[]>([]);
   const [estoqueEdicao, setEstoqueEdicao] = useState<PecaEstoque[] | null>(null);
   const edicaoAbertaRef = useRef<string | null>(null);
+  // Funcionários para escolher o técnico responsável (comissão)
+  const [tecnicos, setTecnicos] = useState<Tecnico[]>([]);
+  useEffect(() => {
+    listarTecnicos().then(setTecnicos);
+  }, []);
 
   // Estados para desconto e valor líquido editável
   const [editTipoDesconto, setEditTipoDesconto] = useState<'VALOR' | 'PERCENTUAL'>('VALOR');
@@ -1168,6 +1174,16 @@ export const HistoricoServicos: React.FC = () => {
                         {osSelecionada.defeitoRelatado}
                       </p>
                     </div>
+                    {osSelecionada.checklistEntrada?.__tecnicoNome && (
+                      <div>
+                        <span className="text-zinc-500 block uppercase text-[10px] font-bold">
+                          Técnico Responsável
+                        </span>
+                        <p className="text-zinc-200 mt-1 bg-zinc-900 p-2.5 rounded-lg border border-zinc-800">
+                          {String(osSelecionada.checklistEntrada.__tecnicoNome)}
+                        </p>
+                      </div>
+                    )}
                     {osSelecionada.diagnostico && (
                       <div>
                         <span className="text-zinc-500 block uppercase text-[10px] font-bold">
@@ -1501,6 +1517,34 @@ export const HistoricoServicos: React.FC = () => {
                       />
                     </div>
                   </div>
+
+                  {/* Técnico responsável (comissão): fica no JSON da OS, salvo com o checklist */}
+                  {(tecnicos.length > 0 || editChecklist.__tecnicoId) && (
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <div>
+                        <label className="text-zinc-400 block mb-1">Técnico Responsável</label>
+                        <select
+                          value={String(editChecklist.__tecnicoId || "")}
+                          onChange={(e) => {
+                            const t = tecnicos.find((x) => x.id_funcionario === e.target.value);
+                            setEditChecklist((c) => ({ ...c, ...tecnicoParaChecklist(t) }) as Record<string, string>);
+                          }}
+                          className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-white outline-none focus:border-blue-500"
+                        >
+                          <option value="">Sem técnico definido</option>
+                          {editChecklist.__tecnicoId && !tecnicos.some((t) => t.id_funcionario === editChecklist.__tecnicoId) && (
+                            <option value={String(editChecklist.__tecnicoId)}>{String(editChecklist.__tecnicoNome || "Técnico")} (removido)</option>
+                          )}
+                          {tecnicosParaEscolha(tecnicos, String(editChecklist.__tecnicoId || "")).map((t) => (
+                            <option key={t.id_funcionario} value={t.id_funcionario}>
+                              {t.nome}
+                              {!t.ativo ? " (inativo)" : ""}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  )}
 
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     <div>
