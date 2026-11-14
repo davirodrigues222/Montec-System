@@ -1,25 +1,35 @@
-import { useState, useEffect, useRef, type ReactNode } from 'react';
+import { useState, useEffect, useRef, lazy, Suspense, type ReactNode } from 'react';
 import { supabase } from './services/supabaseClient';
 import { Auth } from './pages/Auth';
 import { Layout } from './components/Layout';
-import { Dashboard } from './pages/Dashboard';
-import { Relatorios } from './pages/Relatorios';
-import { Despesas } from './pages/Despesas';
-import { Comissoes } from './pages/Comissoes';
-import { HistoricoServicos } from './pages/HistoricoServicos';
-import { Configuracoes } from './pages/Configuracoes';
-import { NovaOS } from './pages/NovaOS';
-import { GarantiaRetorno } from './pages/Garantiaretorno';
-import { ClientesCadastro } from './pages/cadastros/ClientesCadastro';
-import { ServicosCadastro } from './pages/cadastros/ServicosCadastro';
-import { FornecedoresCadastro } from './pages/cadastros/FornecedoresCadastro';
-import { EstoqueCadastro } from './pages/cadastros/EstoqueCadastro';
-import { LojasCadastro } from './pages/cadastros/LojasCadastro';
-import { FuncionariosCadastro } from './pages/cadastros/FuncionariosCadastro';
-import { FormasPagamentoCadastro } from './pages/cadastros/FormasPagamentoCadastro';
 import { AcessoFuncionario } from './pages/AcessoFuncionario';
-import { LandingPage } from './pages/landing/LandingPage';
 import { AutorizacaoAdministrativa } from './components/AutorizacaoAdministrativa';
+import { Carregando } from './components/cadastros/ui';
+
+// Cada tela é baixada só quando é aberta: o primeiro carregamento (e a página inicial) fica bem menor
+const Dashboard = lazy(() => import('./pages/Dashboard').then((m) => ({ default: m.Dashboard })));
+const Relatorios = lazy(() => import('./pages/Relatorios').then((m) => ({ default: m.Relatorios })));
+const Despesas = lazy(() => import('./pages/Despesas').then((m) => ({ default: m.Despesas })));
+const Comissoes = lazy(() => import('./pages/Comissoes').then((m) => ({ default: m.Comissoes })));
+const HistoricoServicos = lazy(() => import('./pages/HistoricoServicos').then((m) => ({ default: m.HistoricoServicos })));
+const Configuracoes = lazy(() => import('./pages/Configuracoes').then((m) => ({ default: m.Configuracoes })));
+const NovaOS = lazy(() => import('./pages/NovaOS').then((m) => ({ default: m.NovaOS })));
+const Orcamentos = lazy(() => import('./pages/Orcamentos').then((m) => ({ default: m.Orcamentos })));
+const GarantiaRetorno = lazy(() => import('./pages/Garantiaretorno').then((m) => ({ default: m.GarantiaRetorno })));
+const ClientesCadastro = lazy(() => import('./pages/cadastros/ClientesCadastro').then((m) => ({ default: m.ClientesCadastro })));
+const ServicosCadastro = lazy(() => import('./pages/cadastros/ServicosCadastro').then((m) => ({ default: m.ServicosCadastro })));
+const FornecedoresCadastro = lazy(() =>
+  import('./pages/cadastros/FornecedoresCadastro').then((m) => ({ default: m.FornecedoresCadastro }))
+);
+const EstoqueCadastro = lazy(() => import('./pages/cadastros/EstoqueCadastro').then((m) => ({ default: m.EstoqueCadastro })));
+const LojasCadastro = lazy(() => import('./pages/cadastros/LojasCadastro').then((m) => ({ default: m.LojasCadastro })));
+const FuncionariosCadastro = lazy(() =>
+  import('./pages/cadastros/FuncionariosCadastro').then((m) => ({ default: m.FuncionariosCadastro }))
+);
+const FormasPagamentoCadastro = lazy(() =>
+  import('./pages/cadastros/FormasPagamentoCadastro').then((m) => ({ default: m.FormasPagamentoCadastro }))
+);
+const LandingPage = lazy(() => import('./pages/landing/LandingPage').then((m) => ({ default: m.LandingPage })));
 import { SECOES_CONFIGURACAO, SECOES_CONFIGURACAO_LIVRES } from './pages/configuracoes/secoes';
 import { OperadorContext } from './contexts/OperadorContext';
 import { AssinaturaProvider } from './contexts/AssinaturaContext';
@@ -78,6 +88,7 @@ const NOMES_TELAS: Record<string, string> = {
   comissoes: 'Comissões',
   historico: 'Ordens de serviço',
   'nova-os': 'Nova ordem',
+  orcamentos: 'Orçamentos',
   'garantia-retorno': 'Garantias e retornos',
   configuracoes: 'Configurações',
   'cadastros:clientes': 'Cadastros › Clientes',
@@ -152,9 +163,45 @@ const gravarPedirIdentificacao = (pedir: boolean) => {
   }
 };
 
+type TipoOperacao = 'sozinho' | 'funcionarios' | 'multiplas_lojas';
+
+const OPCOES_OPERACAO: { id: TipoOperacao; titulo: string; descricao: string; icone: ReactNode }[] = [
+  {
+    id: 'sozinho',
+    titulo: 'Trabalho Sozinho',
+    descricao: 'Atendo, conserto e cobro — tudo eu',
+    icone: (
+      <svg className="w-7 h-7" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+      </svg>
+    ),
+  },
+  {
+    id: 'funcionarios',
+    titulo: 'Tenho Funcionários',
+    descricao: 'Técnicos e/ou atendente',
+    icone: (
+      <svg className="w-7 h-7" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
+      </svg>
+    ),
+  },
+  {
+    id: 'multiplas_lojas',
+    titulo: 'Mais de Uma Loja',
+    descricao: 'Rede com múltiplos pontos',
+    icone: (
+      <svg className="w-7 h-7" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 21v-7.5a.75.75 0 01.75-.75h3a.75.75 0 01.75.75V21m-4.5 0H2.36m11.14 0H18m0 0h3.64m-1.39 0V9.349m-16.5 11.65V9.35m0 0a3.001 3.001 0 003.75-.615A2.993 2.993 0 009.75 9.75c.896 0 1.7-.393 2.25-1.016a2.993 2.993 0 002.25 1.016c.896 0 1.7-.393 2.25-1.016a3.001 3.001 0 003.75.614m-16.5 0a3.004 3.004 0 01-.621-4.72L4.318 3.44A1.5 1.5 0 015.378 3h13.243a1.5 1.5 0 011.06.44l1.19 1.189a3 3 0 01-.621 4.72m-13.5 8.65h3.75a.75.75 0 00.75-.75V13.5a.75.75 0 00-.75-.75H6.75a.75.75 0 00-.75.75v3.75c0 .415.336.75.75.75z" />
+      </svg>
+    ),
+  },
+];
+
 export default function App() {
   const [session, setSession] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [mostrarSelecaoOperacao, setMostrarSelecaoOperacao] = useState(false);
   const [activeTab, setActiveTab] = useState<AbaSistema>(sessaoOperadorRestaurada?.aba ?? 'dashboard');
   const [secaoCadastro, setSecaoCadastro] = useState<SecaoCadastro>(sessaoOperadorRestaurada?.secao ?? 'clientes');
   // Seção aberta em Configurações (subitens do menu lateral). Todas usam a mesma permissão de tela.
@@ -393,6 +440,14 @@ export default function App() {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
+      if (session) {
+        try {
+          if (sessionStorage.getItem('bancadaos_novo_cadastro') === '1') {
+            sessionStorage.removeItem('bancadaos_novo_cadastro');
+            setMostrarSelecaoOperacao(true);
+          }
+        } catch (_) {}
+      }
       setLoading(false);
     });
 
@@ -410,11 +465,74 @@ export default function App() {
     );
   }
 
+  if (session && mostrarSelecaoOperacao) {
+    const salvarOperacao = async (tipo: TipoOperacao) => {
+      try { localStorage.setItem(`bancadaos_tipo_operacao_${session.user.id}`, tipo); } catch (_) {}
+      try { await supabase.auth.updateUser({ data: { tipo_operacao: tipo } }); } catch (_) {}
+      setMostrarSelecaoOperacao(false);
+    };
+    return (
+      <div className="min-h-screen bg-[#080c14] flex items-center justify-center p-6 font-sans">
+        <div className="w-full max-w-md">
+          <div className="mb-10">
+            <span className="text-xs font-bold tracking-widest text-blue-400 uppercase">
+              PERFIL DA SUA LOJA
+            </span>
+            <h2 className="text-3xl font-extrabold text-white mt-2 tracking-tight">
+              Como você trabalha?
+            </h2>
+            <p className="text-zinc-400 text-sm mt-1.5">
+              Isso nos ajuda a preparar o sistema para o seu perfil de operação.
+            </p>
+          </div>
+
+          <div className="space-y-3">
+            {OPCOES_OPERACAO.map((opcao) => (
+              <button
+                key={opcao.id}
+                type="button"
+                onClick={() => salvarOperacao(opcao.id)}
+                className="w-full flex items-center gap-4 p-4 bg-[#0d131f] border border-zinc-800 hover:border-blue-500/60 hover:bg-blue-500/5 rounded-xl transition group text-left"
+              >
+                <div className="shrink-0 w-12 h-12 rounded-xl bg-zinc-800/60 group-hover:bg-blue-500/10 border border-zinc-700/60 group-hover:border-blue-500/30 flex items-center justify-center text-zinc-400 group-hover:text-blue-400 transition">
+                  {opcao.icone}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-bold text-white group-hover:text-blue-100 transition">
+                    {opcao.titulo}
+                  </p>
+                  <p className="text-xs text-zinc-400 mt-0.5">{opcao.descricao}</p>
+                </div>
+                <svg
+                  className="w-4 h-4 text-zinc-600 group-hover:text-blue-400 shrink-0 transition"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+            ))}
+          </div>
+
+          <p className="mt-8 text-center text-xs text-zinc-500">
+            Você pode alterar isso depois nas configurações.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   // Aparelho que lembra a loja e está sem ninguém logado: vai direto para a identificação do funcionário
   const identificacaoSemLogin = !session && !!contaAparelho && !usarLoginDono;
 
   if (forcarInicio || (!session && !identificacaoSemLogin && telaPublica === 'inicio')) {
-    return <LandingPage onEntrar={() => sairDaPaginaInicial('login')} onCriarConta={() => sairDaPaginaInicial('cadastro')} />;
+    return (
+      <Suspense fallback={<div className="min-h-dvh bg-[#080c14]" />}>
+        <LandingPage onEntrar={() => sairDaPaginaInicial('login')} onCriarConta={() => sairDaPaginaInicial('cadastro')} />
+      </Suspense>
+    );
   }
 
   if (!session && !identificacaoSemLogin) {
@@ -541,6 +659,7 @@ export default function App() {
                 </button>
               </div>
             )}
+            <Suspense fallback={<Carregando />}>
             {activeTab === 'dashboard' && <Dashboard
                 onNavigate={navegar}
                 session={session}
@@ -563,6 +682,7 @@ export default function App() {
               />
             )}
             {activeTab === 'nova-os' && <NovaOS onNavigate={navegar} />}
+            {activeTab === 'orcamentos' && <Orcamentos />}
             {activeTab === 'garantia-retorno' && <GarantiaRetorno />}
             {activeTab === 'cadastros' && (
               <>
@@ -575,6 +695,7 @@ export default function App() {
                 {secaoCadastro === 'estoque' && <EstoqueCadastro />}
               </>
             )}
+            </Suspense>
           </>
         )}
       </Layout>

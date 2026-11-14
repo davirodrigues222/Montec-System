@@ -13,13 +13,7 @@ import {
   diaLocalDaData,
 } from '../services/api';
 import { AvisoErroCarregamento } from '../components/AvisoErroCarregamento';
-
-/** Célula de CSV entre aspas; textos que começam com = + - @ ganham apóstrofo para o Excel não executar como fórmula. */
-const celulaCsv = (valor: unknown) => {
-  const texto = String(valor ?? '');
-  const seguro = /^[=+\-@\t\r]/.test(texto) ? `'${texto}` : texto;
-  return `"${seguro.replace(/"/g, '""')}"`;
-};
+import { baixarCsv } from '../utils/csv';
 import type { OrdemServico } from '../types';
 import { formaSemParcelas } from '../services/formasPagamentoOS';
 // Mesmas fórmulas do Painel: a soma das linhas da auditoria sempre bate com os cards
@@ -605,35 +599,28 @@ export const Relatorios: React.FC<{ onAbrirDespesas?: () => void }> = ({ onAbrir
       return;
     }
 
-    const cabecalho = 'Numero OS,Cliente,Aparelho,Servico,Data Abertura,Status,Forma Pagamento,Valor Bruto,Taxas Maquininha,Valor Liquido,Custo Peca,Frete,Garantia,Lucro Liquido\n';
-    const linhas = ordensFiltradas.map((os) => {
-      const numOs = os.numero_os || '';
-      const cli = celulaCsv(os.cliente?.nome);
-      const apr = celulaCsv(os.aparelho?.modelo);
-      const srv = celulaCsv(os.servicoRealizado || os.defeitoRelatado);
-      const data = formatarDataOS(os.data_abertura);
-      const st = os.status_os || '';
-      // Mesmas funções dos cards: o CSV soma exatamente os totais da tela
-      const forma = `"${rotuloFormaOS(os)}"`;
-      const val = valorBrutoOS(os).toFixed(2);
-      const tax = valorTaxasOS(os).toFixed(2);
-      const liq = valorLiquidoOS(os).toFixed(2);
-      const cp = custoPecaOS(os).toFixed(2);
-      const fr = custoFreteOS(os).toFixed(2);
-      const gar = custoGarantiaOS(os).toFixed(2);
-      const luc = (valorLiquidoOS(os) - custosOS(os)).toFixed(2);
-
-      return `${numOs},${cli},${apr},${srv},${data},${st},${forma},${val},${tax},${liq},${cp},${fr},${gar},${luc}`;
-    }).join('\n');
-
-    const blob = new Blob([cabecalho + linhas], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', `relatorio_financeiro_${diaLocalDaData(new Date().toISOString())}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    // Mesmas funções dos cards: o CSV soma exatamente os totais da tela
+    baixarCsv(
+      `relatorio_financeiro_${diaLocalDaData(new Date().toISOString())}.csv`,
+      ['Numero OS', 'Cliente', 'Aparelho', 'Servico', 'Data Abertura', 'Status', 'Forma Pagamento', 'Valor Bruto',
+        'Taxas Maquininha', 'Valor Liquido', 'Custo Peca', 'Frete', 'Garantia', 'Lucro Liquido'],
+      ordensFiltradas.map((os) => [
+        String(os.numero_os || ''),
+        os.cliente?.nome,
+        os.aparelho?.modelo,
+        os.servicoRealizado || os.defeitoRelatado,
+        formatarDataOS(os.data_abertura),
+        os.status_os || '',
+        rotuloFormaOS(os),
+        valorBrutoOS(os),
+        valorTaxasOS(os),
+        valorLiquidoOS(os),
+        custoPecaOS(os),
+        custoFreteOS(os),
+        custoGarantiaOS(os),
+        valorLiquidoOS(os) - custosOS(os),
+      ]),
+    );
   };
 
   if (loading) {

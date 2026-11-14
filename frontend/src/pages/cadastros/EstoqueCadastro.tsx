@@ -48,10 +48,12 @@ type FormPeca = typeof FORM_VAZIO;
 type Erros = Partial<Record<keyof FormPeca, string>>;
 type Filtro = 'TODAS' | 'BAIXO' | 'SEM';
 
-/** "12,50" ou "12.50" -> 12.5; vazio -> null; inválido -> NaN */
+/** "12,50", "12.50" ou "1.234,50" -> número; vazio -> null; inválido -> NaN */
 const lerValor = (s: string) => {
-  const t = s.trim().replace(',', '.');
-  return t === '' ? null : Number(t);
+  const t = s.trim().replace(/^R\$\s*/i, '');
+  if (t === '') return null;
+  // Com vírgula, o ponto é separador de milhar ("1.234,50"); sem vírgula, é o decimal ("12.50")
+  return Number(t.includes(',') ? t.replace(/\./g, '').replace(',', '.') : t);
 };
 const lerInteiro = (s: string) => (s.trim() === '' ? null : Number(s));
 const inteiroValido = (n: number | null, min = 0) => n !== null && Number.isInteger(n) && n >= min && n <= 100000;

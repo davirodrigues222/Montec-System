@@ -5,6 +5,7 @@ import { Campo, inputCls } from '../../components/cadastros/ui';
 import { cardCls } from './tipos';
 import { formatarDataOS, validarSenhaForte } from '../../utils/formatadores';
 import { baixarArquivo } from '../../utils/arquivo';
+import { baixarCsv } from '../../utils/csv';
 
 interface Props {
   config: ConfiguracoesLojaIsolada;
@@ -20,13 +21,6 @@ const TEMAS: { id: TemaVisual; nome: string; detalhe: string; fundo: string; bar
   { id: 'light', nome: 'Claro', detalhe: 'Fundo branco', fundo: 'bg-[#f1f5f9]', barra: 'bg-white border-slate-300', ponto: 'bg-blue-600', traco: 'bg-slate-300', corNome: 'text-slate-900', corDetalhe: 'text-slate-600' },
 ];
 
-
-/** Célula de CSV; textos que começam com = + - @ ganham apóstrofo para o Excel não executar como fórmula. */
-const celulaCsv = (v: unknown) => {
-  const texto = String(v ?? '');
-  const seguro = /^[=+\-@\t\r]/.test(texto) ? `'${texto}` : texto;
-  return `"${seguro.replace(/"/g, '""')}"`;
-};
 
 export const AbaAparenciaConta: React.FC<Props> = ({ config, emailConta, onSelecionarTema, onLogoUpload, onRemoverLogo }) => {
   const [senhaAtual, setSenhaAtual] = useState('');
@@ -65,27 +59,24 @@ export const AbaAparenciaConta: React.FC<Props> = ({ config, emailConta, onSelec
       if (formato === 'json') {
         baixarArquivo(JSON.stringify(backup, null, 2), `backup_montec_${data}.json`, 'application/json');
       } else {
-        const cabecalho = ['Numero OS', 'Abertura', 'Status', 'Cliente', 'WhatsApp', 'Aparelho', 'Defeito', 'Valor total', 'Valor liquido', 'Custo peca', 'Frete', 'Forma pagamento'];
-        const linhas = backup.ordens_servico.map((os: any) =>
-          [
-            os.numero_os,
+        baixarCsv(
+          `ordens_servico_${data}.csv`,
+          ['Numero OS', 'Abertura', 'Status', 'Cliente', 'WhatsApp', 'Aparelho', 'Defeito', 'Valor total', 'Valor liquido', 'Custo peca', 'Frete', 'Forma pagamento'],
+          backup.ordens_servico.map((os: any) => [
+            String(os.numero_os ?? ''),
             formatarDataOS(os.data_abertura),
             os.status_os,
             os.cliente?.nome,
             os.cliente?.whatsapp,
             os.aparelho?.modelo,
             os.defeitoRelatado,
-            Number(os.orcamentoCalculado?.valorTotalOrcamento || 0).toFixed(2),
-            Number(os.valorLiquido || 0).toFixed(2),
-            Number(os.orcamentoCalculado?.custoPeca || 0).toFixed(2),
-            Number(os.orcamentoCalculado?.freteReal || 0).toFixed(2),
+            Number(os.orcamentoCalculado?.valorTotalOrcamento || 0),
+            Number(os.valorLiquido || 0),
+            Number(os.orcamentoCalculado?.custoPeca || 0),
+            Number(os.orcamentoCalculado?.freteReal || 0),
             os.formaPagamento,
-          ]
-            .map(celulaCsv)
-            .join(';')
+          ]),
         );
-        // BOM para o Excel abrir acentos corretamente; ";" é o separador padrão no Excel em português
-        baixarArquivo('﻿' + [cabecalho.map(celulaCsv).join(';'), ...linhas].join('\n'), `ordens_servico_${data}.csv`, 'text/csv;charset=utf-8');
       }
     } catch (err: any) {
       alert(err?.message || 'Não foi possível gerar o backup.');

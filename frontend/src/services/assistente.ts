@@ -91,6 +91,7 @@ export interface DestinoTela {
 const TELAS: Record<string, DestinoTela> = {
   painel: { aba: 'dashboard' },
   'nova-os': { aba: 'nova-os' },
+  orcamentos: { aba: 'orcamentos' },
   ordens: { aba: 'historico' },
   garantias: { aba: 'garantia-retorno' },
   relatorios: { aba: 'relatorios' },

@@ -202,8 +202,9 @@ export const Dashboard: React.FC<Props> = ({ onNavigate, onAbrirEstoque, session
     () =>
       listaOrdens.filter(
         (os) =>
-          diaLocalDaData(os.checklistEntrada?.__dataPronto) === hojeStr ||
-          diaLocalDaData(os.data_conclusao) === hojeStr
+          // Ficou pronta hoje e depois foi cancelada ou voltou para o reparo: não conta como finalizada
+          (os.status_os === 'PRONTO' || os.status_os === 'ENTREGUE') &&
+          (diaLocalDaData(os.checklistEntrada?.__dataPronto) === hojeStr || diaLocalDaData(os.data_conclusao) === hojeStr)
       ).length,
     [listaOrdens, hojeStr]
   );
@@ -215,13 +216,15 @@ export const Dashboard: React.FC<Props> = ({ onNavigate, onAbrirEstoque, session
     [listaOrdens, hojeStr]
   );
 
+  // Orçamento ainda por fechar: OS em avaliação/análise sem aprovação do cliente, ou OS em andamento sem
+  // valor. Antes contava também rascunhos, canceladas e entregues sem valor, e o número só crescia.
   const orcamentosPendentes = useMemo(
     () =>
-      listaOrdens.filter(
-        (os) =>
-          !os.orcamentoCalculado?.valorTotalOrcamento ||
-          os.status_os === 'AGUARDANDO_AVALIACAO'
-      ).length,
+      listaOrdens.filter((os) => {
+        if (['RASCUNHO', 'CANCELADO', 'ENTREGUE'].includes(os.status_os)) return false;
+        const emAvaliacao = os.status_os === 'AGUARDANDO_AVALIACAO' || os.status_os === 'EM_ANALISE';
+        return !os.orcamentoCalculado?.valorTotalOrcamento || (emAvaliacao && !os.checklistEntrada?.__orcamentoAprovadoEm);
+      }).length,
     [listaOrdens]
   );
 

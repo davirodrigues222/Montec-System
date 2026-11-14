@@ -22,8 +22,9 @@ interface Props {
 /**
  * login | cadastro | verificar: código do e-mail que confirma o cadastro
  * recuperar: pede o código de troca de senha | redefinir: código + nova senha
+ * operacao: seleção do perfil operacional logo após a conta ser criada
  */
-type ModoAuth = 'login' | 'cadastro' | 'verificar' | 'recuperar' | 'redefinir';
+type ModoAuth = 'login' | 'cadastro' | 'verificar' | 'recuperar' | 'redefinir' | 'operacao';
 
 // Espera entre dois envios de código (o Supabase também limita: 1 e-mail por minuto)
 const ESPERA_REENVIO_S = 60;
@@ -161,6 +162,7 @@ export const Auth: React.FC<Props> = ({ onLoginSuccess, modoInicial = 'login', o
 
       // Confirmação de e-mail desligada no Supabase: a conta já entra logada
       if (data?.session) {
+        try { sessionStorage.setItem('bancadaos_novo_cadastro', '1'); } catch (_) {}
         onLoginSuccess?.();
         return;
       }
@@ -186,6 +188,7 @@ export const Auth: React.FC<Props> = ({ onLoginSuccess, modoInicial = 'login', o
     setLoading(true);
     try {
       await confirmarCadastroComCodigo(emailCodigo, codigo);
+      try { sessionStorage.setItem('bancadaos_novo_cadastro', '1'); } catch (_) {}
       onLoginSuccess?.();
     } catch (err: any) {
       setMensagem({ tipo: 'erro', texto: err.message });
@@ -194,6 +197,7 @@ export const Auth: React.FC<Props> = ({ onLoginSuccess, modoInicial = 'login', o
       setLoading(false);
     }
   };
+
 
   /** Esqueci minha senha: envia o código para o e-mail. */
   const handleRecuperar = async (e: React.FormEvent) => {

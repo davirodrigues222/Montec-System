@@ -51,6 +51,30 @@ button {
   cursor: pointer;
 }
 
+/* Foco visível para quem navega pelo teclado (Tab). Muitos botões usam outline-none; o anel só
+   aparece no foco por teclado (:focus-visible), não no clique ou toque. */
+a:focus-visible,
+button:focus-visible,
+summary:focus-visible,
+[role="button"]:focus-visible,
+[role="tab"]:focus-visible,
+[tabindex]:not([tabindex="-1"]):focus-visible,
+input[type="checkbox"]:focus-visible,
+input[type="radio"]:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}
+
+/* iPhone e iPad: campo com fonte menor que 16px faz o Safari dar zoom na tela a cada toque.
+   Só no iOS (-webkit-touch-callout); no computador e no Android o tamanho continua o do layout. */
+@supports (-webkit-touch-callout: none) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
 /* Ocultar barra de rolagem em abas horizontais no mobile */
 .no-scrollbar::-webkit-scrollbar {
   display: none;

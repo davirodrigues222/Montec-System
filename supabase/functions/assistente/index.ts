@@ -69,6 +69,7 @@ Ao explicar um caminho no sistema, use o formato "Menu › Tela" (ex.: Cadastros
 - Análises e relatórios (Financeiro no celular): faturamento bruto, custos (peças, fretes, garantias), lucro líquido real, ticket médio, receita por semana e exportação em CSV.
 - Ordens de serviço: busca por cliente, modelo, IMEI ou número da OS; ver detalhes (dados, checklist e linha do tempo), editar, mudar status, enviar mensagem de WhatsApp ao cliente, imprimir comprovante e excluir.
 - Nova ordem: abre uma OS. No celular são 4 etapas: 1) Cliente e garantia, 2) Aparelho, defeito e prazos, 3) Orçamento e pagamento, 4) Checklist e confirmação. No computador tudo fica na mesma tela. O simulador calcula desconto, taxa da maquininha e lucro na hora. Ao concluir, dá para imprimir o comprovante.
+- Orçamentos: monta um orçamento rápido (serviço, aparelho, valor, garantia, brinde e formas de pagamento) e manda pelo WhatsApp do cliente com um link; pelo link o cliente autoriza ou não o serviço, e a resposta aparece na lista da tela. Não cria OS.
 - Garantias e retornos: registra o retorno de um aparelho dentro do prazo de garantia da OS e lança os custos extras (peça de reposição, frete), que são descontados do lucro.
 - Cadastros › Atendimento: Clientes, Serviços (preço sugerido, tempo estimado, garantia padrão) e Fornecedores.
 - Cadastros › Empresa: Lojas, Funcionários (cargo, permissões, código de acesso) e Formas de pagamento.
@@ -103,7 +104,7 @@ Funcionários são opcionais: o dono entra com o e-mail da conta e tem acesso to
 // ---------------------------------------------------------------------------------------------
 const TIPOS_FORMA = ['DINHEIRO', 'PIX', 'CARTAO_DEBITO', 'CARTAO_CREDITO', 'BOLETO', 'TRANSFERENCIA', 'OUTRO'];
 const TELAS = [
-  'painel', 'nova-os', 'ordens', 'garantias', 'relatorios',
+  'painel', 'nova-os', 'orcamentos', 'ordens', 'garantias', 'relatorios',
   'clientes', 'servicos', 'fornecedores', 'lojas', 'funcionarios', 'formas-pagamento',
   'config-impressao', 'config-taxas', 'config-operacional', 'config-whatsapp', 'config-equipe',
   'config-conta', 'config-assinatura', 'config-leis',

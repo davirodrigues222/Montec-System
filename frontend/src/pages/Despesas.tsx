@@ -37,6 +37,7 @@ import type { OrdemServico } from '../types';
 import { lucroOS, somar } from '../utils/financeiroOS';
 import { formatarValor } from '../utils/formatadores';
 import { dataBR, mesDe, nomeMes, somarMes } from '../utils/meses';
+import { baixarCsv } from '../utils/csv';
 
 // ==========================================
 // Despesas da loja e resultado do mês: lucro das OS − despesas = o que sobrou para a loja.
@@ -258,34 +259,21 @@ export const Despesas: React.FC = () => {
       alert('Não há despesas neste mês para exportar.');
       return;
     }
-    const cel = (v: unknown) => {
-      const t = String(v ?? '');
-      return `"${(/^[=+\-@\t\r]/.test(t) ? `'${t}` : t).replace(/"/g, '""')}"`;
-    };
-    const linhas = [
-      'Descricao,Categoria,Vencimento,Valor,Situacao,Data pagamento,Forma pagamento,Fornecedor,Observacoes',
-      ...doMes.map((d) =>
-        [
-          cel(d.descricao),
-          cel(d.categoria),
-          dataBR(d.data),
-          d.valor.toFixed(2),
-          { PAGA: 'Paga', VENCIDA: 'Vencida', A_PAGAR: 'A pagar' }[situacaoDespesa(d)],
-          dataBR(d.data_pagamento),
-          cel(d.forma_pagamento),
-          cel(nomeFornecedor(d.id_fornecedor)),
-          cel(d.observacoes),
-        ].join(',')
-      ),
-    ];
-    const url = URL.createObjectURL(new Blob([linhas.join('\n')], { type: 'text/csv;charset=utf-8;' }));
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `despesas_${mes}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    baixarCsv(
+      `despesas_${mes}.csv`,
+      ['Descricao', 'Categoria', 'Vencimento', 'Valor', 'Situacao', 'Data pagamento', 'Forma pagamento', 'Fornecedor', 'Observacoes'],
+      doMes.map((d) => [
+        d.descricao,
+        d.categoria,
+        dataBR(d.data),
+        d.valor,
+        { PAGA: 'Paga', VENCIDA: 'Vencida', A_PAGAR: 'A pagar' }[situacaoDespesa(d)],
+        dataBR(d.data_pagamento),
+        d.forma_pagamento,
+        nomeFornecedor(d.id_fornecedor),
+        d.observacoes,
+      ]),
+    );
   };
 
   if (!carregando && ausente) {

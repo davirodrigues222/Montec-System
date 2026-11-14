@@ -19,6 +19,7 @@ import { Badge, Carregando, FiltroSegmentado, PaginaCadastro, useFeedback } from
 import type { OrdemServico } from '../types';
 import { formatarValor } from '../utils/formatadores';
 import { dataBR, mesDe, nomeMes, somarMes, ultimoDiaDoMes } from '../utils/meses';
+import { baixarCsv } from '../utils/csv';
 
 // ==========================================
 // Comissão por técnico: regras (percentual por técnico ou por serviço) e relatório do mês.
@@ -160,32 +161,19 @@ export const Comissoes: React.FC = () => {
       alert('Não há comissões neste mês para exportar.');
       return;
     }
-    const cel = (v: unknown) => {
-      const t = String(v ?? '');
-      return `"${(/^[=+\-@\t\r]/.test(t) ? `'${t}` : t).replace(/"/g, '""')}"`;
-    };
-    const csv = [
-      'Tecnico,OS,Entrega,Servico,Base,Percentual,Comissao',
-      ...linhas.map(({ g, l }) =>
-        [
-          cel(nomeAtual(g.id, g.nome)),
-          cel(l.os.numero_os),
-          dataBR(diaLocalDaData(l.os.data_conclusao || l.os.data_abertura)),
-          cel(l.os.checklistEntrada?.__servicoNome || l.os.servicoRealizado || ''),
-          l.base.toFixed(2),
-          l.percentual.toFixed(2),
-          l.valor.toFixed(2),
-        ].join(',')
-      ),
-    ].join('\n');
-    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `comissoes_${mes}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    baixarCsv(
+      `comissoes_${mes}.csv`,
+      ['Tecnico', 'OS', 'Entrega', 'Servico', 'Base', 'Percentual', 'Comissao'],
+      linhas.map(({ g, l }) => [
+        nomeAtual(g.id, g.nome),
+        String(l.os.numero_os ?? ''),
+        dataBR(diaLocalDaData(l.os.data_conclusao || l.os.data_abertura)),
+        l.os.checklistEntrada?.__servicoNome || l.os.servicoRealizado || '',
+        l.base,
+        l.percentual,
+        l.valor,
+      ]),
+    );
   };
 
   if (!carregando && ausente) {

@@ -22,6 +22,7 @@ export type AbaSistema =
   | 'historico'
   | 'configuracoes'
   | 'nova-os'
+  | 'orcamentos'
   | 'garantia-retorno'
   | 'cadastros';
 
@@ -38,6 +39,7 @@ export interface Operador {
 export const PERMISSAO_POR_ABA: Record<Exclude<AbaSistema, 'cadastros'>, ChavePermissao> = {
   dashboard: 'tela_painel',
   'nova-os': 'tela_nova_os',
+  orcamentos: 'tela_nova_os',
   historico: 'tela_ordens',
   'garantia-retorno': 'tela_garantias',
   relatorios: 'tela_relatorios',
@@ -60,6 +62,7 @@ export const PERMISSAO_POR_SECAO: Record<SecaoCadastro, ChavePermissao> = {
 const ORDEM_ABAS: Exclude<AbaSistema, 'cadastros'>[] = [
   'dashboard',
   'nova-os',
+  'orcamentos',
   'historico',
   'garantia-retorno',
   'relatorios',

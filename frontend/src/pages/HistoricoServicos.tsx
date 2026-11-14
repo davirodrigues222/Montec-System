@@ -290,6 +290,24 @@ export const HistoricoServicos: React.FC = () => {
     return () => window.removeEventListener(EVENTO_FORMAS_PAGAMENTO, carregarFormas);
   }, []);
 
+  // Esc fecha o modal de cima: pré-visualização de impressão, exclusão (fora do meio da exclusão) ou
+  // detalhes. A edição não fecha no Esc, para um toque sem querer não descartar o que foi alterado.
+  useEffect(() => {
+    if (!osSelecionada && !osParaExcluir) return;
+    const aoTeclar = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented || osParaEditar) return;
+      if (osParaExcluir) {
+        if (!excluindo) setOsParaExcluir(null);
+      } else if (osParaImprimir) {
+        setOsParaImprimir(null);
+      } else {
+        setOsSelecionada(null);
+      }
+    };
+    window.addEventListener("keydown", aoTeclar);
+    return () => window.removeEventListener("keydown", aoTeclar);
+  }, [osSelecionada, osParaExcluir, osParaEditar, osParaImprimir, excluindo]);
+
   // O documento fica montado depois do print(): no iPhone o print() volta na hora, antes de o Safari
   // gerar a impressão. Sai da página ao fechar os detalhes da OS.
   const handleImprimir = (os: OrdemServico) => {
@@ -439,7 +457,8 @@ export const HistoricoServicos: React.FC = () => {
           : valorComDesconto * (1 - obterTaxaEfetivaPagamentos(osParaEditar));
 
       if (editStatus !== osParaEditar.status_os) {
-        logs.push(`Status alterado para ${editStatus.replace("_", " ")}`);
+        // Troca todos os "_" (com replace("_") "PRONTO_PARA_X" virava "PRONTO PARA_X" na linha do tempo)
+        logs.push(`Status alterado para ${editStatus.replace(/_/g, " ")}`);
       }
 
       const custoGarantiaExistente = Number(
@@ -1806,9 +1825,10 @@ export const HistoricoServicos: React.FC = () => {
                       editDesconto === "" ? 0 : Number(editDesconto),
                     );
                     const liquidoDigitado = Number(String(editValorLiquido).replace(",", "."));
+                    // Campo vazio: a mesma conta do salvar (valor com desconto menos a taxa já cobrada na OS)
                     const liquido = editValorLiquido !== "" && Number.isFinite(liquidoDigitado)
                       ? Math.max(0, liquidoDigitado)
-                      : valorComDesconto;
+                      : valorComDesconto * (1 - obterTaxaEfetivaPagamentos(osParaEditar));
                     const custoGarantia = Number(
                       osParaEditar.orcamentoCalculado?.custoPecaGarantia ||
                         osParaEditar.garantia?.custoPecaGarantia ||

@@ -54,9 +54,14 @@ const BotoesAdicionarFoto: React.FC<{ restantes: number; desabilitado?: boolean;
 /** Foto ampliada; fecha pelo botão, tocando fora ou com Esc. */
 const VisualizadorFoto: React.FC<{ url: string; aoFechar: () => void }> = ({ url, aoFechar }) => {
   useEffect(() => {
-    const aoTeclar = (e: KeyboardEvent) => e.key === 'Escape' && aoFechar();
-    window.addEventListener('keydown', aoTeclar);
-    return () => window.removeEventListener('keydown', aoTeclar);
+    // Captura: fecha só a foto, antes do modal da OS que está por baixo (ele ignora o Esc já tratado)
+    const aoTeclar = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      aoFechar();
+    };
+    window.addEventListener('keydown', aoTeclar, true);
+    return () => window.removeEventListener('keydown', aoTeclar, true);
   }, [aoFechar]);
 
   return (

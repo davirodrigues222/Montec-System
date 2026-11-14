@@ -64,13 +64,6 @@
       <button class="botao" id="voltar" type="button">Voltar ao BancadaOS</button>
       <p class="dica">Se o sistema já estava aberto em outra aba, é só voltar para ela: a confirmação aparece sozinha.</p>
     </main>
-    <script>
-      // Esta aba foi aberta pelo sistema: fecha e o cliente volta para a aba original.
-      // Se o navegador não deixar fechar (aba aberta de outro jeito), abre o sistema aqui mesmo.
-      document.getElementById('voltar').addEventListener('click', function () {
-        window.close();
-        setTimeout(function () { window.location.href = '/'; }, 300);
-      });
-    </script>
+    <script src="/pagamento-concluido.js"></script>
   </body>
 </html>
