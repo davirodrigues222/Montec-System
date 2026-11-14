@@ -23,6 +23,11 @@ export const SECOES_CONFIGURACAO: { id: SecaoConfiguracao; rotulo: string; descr
     descricao: 'Modelos de mensagem enviados ao cliente a partir das Ordens de serviço.',
   },
   {
+    id: 'avaliacoes',
+    rotulo: 'Avaliações no Google',
+    descricao: 'Link de avaliação do Google Meu Negócio e a mensagem que pede a avaliação depois da entrega.',
+  },
+  {
     id: 'equipe',
     rotulo: 'Equipe',
     descricao: 'Quem pode liberar telas restritas e o que cada funcionário acessa.',

@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   aplicarTemaVisualNoDOM,
   carregarConfiguracoesLoja,
+  normalizarLinkAvaliacao,
   obterConfiguracoesLojaSincrono,
   obterMetaFinanceiraConta,
   obterUsuarioAtivoSincrono,
@@ -19,6 +20,7 @@ import { AbaDadosLoja } from './configuracoes/AbaDadosLoja';
 import { AbaFinanceiro } from './configuracoes/AbaFinanceiro';
 import { AbaOperacional } from './configuracoes/AbaOperacional';
 import { AbaWhatsapp } from './configuracoes/AbaWhatsapp';
+import { AbaAvaliacoes } from './configuracoes/AbaAvaliacoes';
 import { AbaEquipe } from './configuracoes/AbaEquipe';
 import { AbaAparenciaConta } from './configuracoes/AbaAparenciaConta';
 import { AbaLeisTermos } from './configuracoes/AbaLeisTermos';
@@ -85,6 +87,11 @@ export const Configuracoes: React.FC<Props> = ({ secao, onAbrirCadastro }) => {
     // Os erros indicam a seção em vez de trocar de seção: cada seção pode exigir autorização própria
     if (!config.nomeLoja.trim()) {
       feedback.erro('Informe o nome fantasia em Configurações › Impressão.');
+      return;
+    }
+    // Link inválido seria descartado ao salvar: avisa em vez de apagar sem o usuário perceber
+    if (config.linkAvaliacaoGoogle.trim() && !normalizarLinkAvaliacao(config.linkAvaliacaoGoogle)) {
+      feedback.erro('Link de avaliação inválido em Configurações › Avaliações no Google: cole o endereço completo, começando com https://');
       return;
     }
     const metaAlterada = metaInput.trim() !== metaSalva.current;
@@ -211,6 +218,7 @@ export const Configuracoes: React.FC<Props> = ({ secao, onAbrirCadastro }) => {
       )}
       {aba === 'operacional' && <AbaOperacional config={config} alterar={alterar} />}
       {aba === 'whatsapp' && <AbaWhatsapp config={config} alterar={alterar} />}
+      {aba === 'avaliacoes' && <AbaAvaliacoes config={config} alterar={alterar} />}
       {aba === 'equipe' && <AbaEquipe onAbrirCadastro={onAbrirCadastro} />}
       {aba === 'assinatura' && <AbaAssinatura />}
       {aba === 'leis' && <AbaLeisTermos config={config} alterar={alterar} podeEditar={pode('tela_configuracoes')} />}

@@ -23,7 +23,8 @@ const formaBaseDaOS = (os: OrdemServico): string => {
 
 /** Linhas exibidas por vez na listagem (botão "Mostrar mais" carrega o restante). */
 const LINHAS_POR_PAGINA = 50;
-import { MODELOS_WHATSAPP, enviarMensagemWhatsapp, podeEnviarMensagem } from "../utils/whatsapp";
+import { MODELOS_WHATSAPP, avaliacaoSolicitadaEm, enviarMensagemWhatsapp, podeEnviarMensagem } from "../utils/whatsapp";
+import { PedidoAvaliacaoOS, TagAvaliacaoSolicitada } from "../components/PedidoAvaliacaoOS";
 import { LinkAcompanhamentoOS } from "../components/LinkAcompanhamentoOS";
 import { EditorFotosOS, GaleriaFotosOS } from "../components/FotosOS";
 import { type AlteracoesFotos, SEM_ALTERACOES_FOTOS, aplicarAlteracoesFotos } from "../services/fotosOS";
@@ -76,7 +77,7 @@ import {
 import type { OrdemServico, StatusOS } from "../types";
 import { ITENS_CHECKLIST, OPCOES_CHECKLIST, itensVisiveisChecklist, rotuloItemChecklist } from "../utils/checklist";
 import { formatarDataOS, formatarValor } from "../utils/formatadores";
-import { Pencil, Printer, RotateCcw, Save, Smartphone, TriangleAlert, User } from 'lucide-react';
+import { Pencil, Printer, RotateCcw, Save, Smartphone, Star, TriangleAlert, User } from 'lucide-react';
 
 // ================= FILTROS DA LISTAGEM =================
 type FiltroData = "TODAS" | "DIA" | "MES" | "ANO";
@@ -149,6 +150,17 @@ export const HistoricoServicos: React.FC = () => {
   const [editFotos, setEditFotos] = useState<AlteracoesFotos>(SEM_ALTERACOES_FOTOS);
   const [versaoFotos, setVersaoFotos] = useState(0);
   const [osParaExcluir, setOsParaExcluir] = useState<OrdemServico | null>(null);
+  // OS que acabou de ser marcada como Entregue no Editar: oferece o pedido de avaliação na hora
+  const [osParaAvaliar, setOsParaAvaliar] = useState<OrdemServico | null>(null);
+
+  /** Pedido de avaliação enviado: a tag aparece na lista e nos detalhes sem recarregar. */
+  const marcarAvaliacaoSolicitada = (idOs: string, quando: string) => {
+    const marcar = (os: OrdemServico): OrdemServico =>
+      os.id_os === idOs ? { ...os, checklistEntrada: { ...(os.checklistEntrada || {}), __avaliacaoSolicitadaEm: quando } } : os;
+    setOrdens((lista) => lista.map(marcar));
+    setOsSelecionada((atual) => (atual ? marcar(atual) : atual));
+    setOsParaAvaliar((atual) => (atual ? marcar(atual) : atual));
+  };
   const { pode, operador } = useOperador();
   // Custo e lucro só para quem tem acesso financeiro (o banco também não entrega: migração 20261026180000)
   const veCustos = pode("tela_relatorios");
@@ -293,10 +305,12 @@ export const HistoricoServicos: React.FC = () => {
   // Esc fecha o modal de cima: pré-visualização de impressão, exclusão (fora do meio da exclusão) ou
   // detalhes. A edição não fecha no Esc, para um toque sem querer não descartar o que foi alterado.
   useEffect(() => {
-    if (!osSelecionada && !osParaExcluir) return;
+    if (!osSelecionada && !osParaExcluir && !osParaAvaliar) return;
     const aoTeclar = (e: KeyboardEvent) => {
       if (e.key !== "Escape" || e.defaultPrevented || osParaEditar) return;
-      if (osParaExcluir) {
+      if (osParaAvaliar) {
+        setOsParaAvaliar(null);
+      } else if (osParaExcluir) {
         if (!excluindo) setOsParaExcluir(null);
       } else if (osParaImprimir) {
         setOsParaImprimir(null);
@@ -306,7 +320,7 @@ export const HistoricoServicos: React.FC = () => {
     };
     window.addEventListener("keydown", aoTeclar);
     return () => window.removeEventListener("keydown", aoTeclar);
-  }, [osSelecionada, osParaExcluir, osParaEditar, osParaImprimir, excluindo]);
+  }, [osSelecionada, osParaExcluir, osParaAvaliar, osParaEditar, osParaImprimir, excluindo]);
 
   // O documento fica montado depois do print(): no iPhone o print() volta na hora, antes de o Safari
   // gerar a impressão. Sai da página ao fechar os detalhes da OS.
@@ -580,8 +594,15 @@ export const HistoricoServicos: React.FC = () => {
         if (falhasFotos.length) alert(`A OS foi salva, mas algumas fotos não foram gravadas: ${falhasFotos[0]}`);
       }
 
+      const acabouDeSerEntregue = editStatus === "ENTREGUE" && osParaEditar.status_os !== "ENTREGUE";
       setOsParaEditar(null);
       const listaAtualizada = await carregarHistorico();
+
+      // Entregue agora, com link do Google cadastrado: oferece o pedido de avaliação na hora
+      if (acabouDeSerEntregue && obterConfiguracoesLojaSincrono().linkAvaliacaoGoogle) {
+        const entregue = listaAtualizada.find((o) => o.id_os === idEditado);
+        if (entregue && !avaliacaoSolicitadaEm(entregue)) setOsParaAvaliar(entregue);
+      }
 
       // Reflete os novos valores no modal de detalhes, se ele estiver aberto nesta OS
       setOsSelecionada((atual) =>
@@ -799,6 +820,9 @@ export const HistoricoServicos: React.FC = () => {
                     <div className="min-w-0 overflow-hidden">
                       <StatusBadge status={os.status_os} />
                     </div>
+                    {avaliacaoSolicitadaEm(os) && (
+                      <Star className="w-3.5 h-3.5 shrink-0 text-amber-300" fill="currentColor" aria-label="Avaliação solicitada" />
+                    )}
                     <div className="ml-auto flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
                       <button
                         type="button"
@@ -884,7 +908,10 @@ export const HistoricoServicos: React.FC = () => {
                         </p>
                       </td>
                       <td className="py-3.5 px-5">
-                        <StatusBadge status={os.status_os} />
+                        <div className="flex flex-col items-start gap-1">
+                          <StatusBadge status={os.status_os} />
+                          <TagAvaliacaoSolicitada os={os} />
+                        </div>
                       </td>
                       <td className="py-3.5 px-5 text-right">
                         <p className="font-bold text-white">R$ {formatarValor(valorCobrado)}</p>
@@ -1028,6 +1055,9 @@ export const HistoricoServicos: React.FC = () => {
             <div className="p-6 overflow-y-auto space-y-4 flex-1">
               {abaModal === "detalhes" && (
                 <div className="space-y-4 text-xs">
+                  {/* Pós-venda: pedido de avaliação no Google (só na OS entregue) */}
+                  <PedidoAvaliacaoOS os={osSelecionada} onRegistrado={marcarAvaliacaoSolicitada} />
+
                   {/* Mensagens automáticas: abre o WhatsApp do cliente com o texto pronto */}
                   <div className="p-3 bg-emerald-500/5 border border-emerald-500/20 rounded-xl space-y-2">
                     <div>
@@ -1931,6 +1961,47 @@ export const HistoricoServicos: React.FC = () => {
                     Salvar Alterações
                   </span>
                 )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PEDIDO DE AVALIAÇÃO LOGO APÓS A ENTREGA */}
+      {osParaAvaliar && (
+        <div
+          className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 print:hidden"
+          onClick={() => setOsParaAvaliar(null)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="titulo-pedido-avaliacao"
+            onClick={(e) => e.stopPropagation()}
+            className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 w-full max-w-md space-y-4 shadow-2xl"
+          >
+            <div>
+              <h3 id="titulo-pedido-avaliacao" className="text-base font-bold text-white">
+                OS #{osParaAvaliar.numero_os} entregue
+              </h3>
+              <p className="text-xs text-zinc-400 mt-1">
+                Aproveite que o serviço acabou de ser entregue para pedir a avaliação de {osParaAvaliar.cliente?.nome || "cliente"} no Google.
+              </p>
+            </div>
+            <PedidoAvaliacaoOS
+              os={osParaAvaliar}
+              onRegistrado={(idOs, quando) => {
+                marcarAvaliacaoSolicitada(idOs, quando);
+                setOsParaAvaliar(null);
+              }}
+            />
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => setOsParaAvaliar(null)}
+                className="px-4 py-2 text-xs font-semibold text-zinc-400 hover:text-white transition"
+              >
+                Agora não
               </button>
             </div>
           </div>

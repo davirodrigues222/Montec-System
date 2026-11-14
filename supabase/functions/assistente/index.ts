@@ -73,7 +73,7 @@ Ao explicar um caminho no sistema, use o formato "Menu › Tela" (ex.: Cadastros
 - Garantias e retornos: registra o retorno de um aparelho dentro do prazo de garantia da OS e lança os custos extras (peça de reposição, frete), que são descontados do lucro.
 - Cadastros › Atendimento: Clientes, Serviços (preço sugerido, tempo estimado, garantia padrão) e Fornecedores.
 - Cadastros › Empresa: Lojas, Funcionários (cargo, permissões, código de acesso) e Formas de pagamento.
-- Configurações: Impressão (identidade nos documentos, horário, formato do papel), Taxas (meta mensal, chave PIX e taxas das maquininhas usadas na Nova OS), Operacional (prazos, prefixo da OS, termos de garantia, itens do checklist), Mensagens de WhatsApp (modelos), Equipe (quem libera telas restritas e o que cada funcionário acessa), Conta (logotipo, tema, senha, exportação dos dados), Plano & Assinatura, Leis e termos de uso (CDC, Código Civil, LGPD).
+- Configurações: Impressão (identidade nos documentos, horário, formato do papel), Taxas (meta mensal, chave PIX e taxas das maquininhas usadas na Nova OS), Operacional (prazos, prefixo da OS, termos de garantia, itens do checklist), Mensagens de WhatsApp (modelos), Avaliações no Google (link do Google Meu Negócio e mensagem do pedido de avaliação; a OS entregue ganha o botão "Pedir avaliação no WhatsApp" e fica marcada como "Avaliação solicitada"), Equipe (quem libera telas restritas e o que cada funcionário acessa), Conta (logotipo, tema, senha, exportação dos dados), Plano & Assinatura, Leis e termos de uso (CDC, Código Civil, LGPD).
 
 # Status da OS
 Aguardando avaliação, Em análise, Aguardando peça, Em manutenção, Pronto para retirada, Entregue / concluído, Cancelado.
@@ -106,7 +106,7 @@ const TIPOS_FORMA = ['DINHEIRO', 'PIX', 'CARTAO_DEBITO', 'CARTAO_CREDITO', 'BOLE
 const TELAS = [
   'painel', 'nova-os', 'orcamentos', 'ordens', 'garantias', 'relatorios',
   'clientes', 'servicos', 'fornecedores', 'lojas', 'funcionarios', 'formas-pagamento',
-  'config-impressao', 'config-taxas', 'config-operacional', 'config-whatsapp', 'config-equipe',
+  'config-impressao', 'config-taxas', 'config-operacional', 'config-whatsapp', 'config-avaliacoes', 'config-equipe',
   'config-conta', 'config-assinatura', 'config-leis',
 ];
 

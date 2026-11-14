@@ -61,7 +61,7 @@ export const AbaAparenciaConta: React.FC<Props> = ({ config, emailConta, onSelec
       } else {
         baixarCsv(
           `ordens_servico_${data}.csv`,
-          ['Numero OS', 'Abertura', 'Status', 'Cliente', 'WhatsApp', 'Aparelho', 'Defeito', 'Valor total', 'Valor liquido', 'Custo peca', 'Frete', 'Forma pagamento'],
+          ['Numero OS', 'Abertura', 'Status', 'Cliente', 'WhatsApp', 'Aparelho', 'Defeito', 'Valor total', 'Valor liquido', 'Custo peca', 'Frete', 'Forma pagamento', 'Avaliacao solicitada'],
           backup.ordens_servico.map((os: any) => [
             String(os.numero_os ?? ''),
             formatarDataOS(os.data_abertura),
@@ -75,6 +75,7 @@ export const AbaAparenciaConta: React.FC<Props> = ({ config, emailConta, onSelec
             Number(os.orcamentoCalculado?.custoPeca || 0),
             Number(os.orcamentoCalculado?.freteReal || 0),
             os.formaPagamento,
+            os.checklistEntrada?.__avaliacaoSolicitadaEm ? formatarDataOS(os.checklistEntrada.__avaliacaoSolicitadaEm) : '',
           ]),
         );
       }

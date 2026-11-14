@@ -16,6 +16,7 @@ import {
 } from '../services/orcamentos';
 import { type Cliente, type Servico, listarClientes, listarServicos, parseMoedaBR } from '../services/cadastros';
 import { buscarModelosAparelhos, linkWhatsapp } from '../services/api';
+import { abrirEmNovaAba } from '../utils/whatsapp';
 import { hojeISO } from '../services/despesas';
 import { Badge, Campo, Carregando, FiltroSegmentado, ModalConfirmacao, PaginaCadastro, inputCls, useFeedback } from '../components/cadastros/ui';
 import { CampoModeloAparelho } from '../components/CampoModeloAparelho';
@@ -221,7 +222,7 @@ export const Orcamentos: React.FC = () => {
       janela.location.href = destino;
       return true;
     }
-    return !!window.open(destino, '_blank', 'noopener');
+    return abrirEmNovaAba(destino);
   };
 
   const enviar = async () => {

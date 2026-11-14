@@ -131,4 +131,4 @@ export type SecaoCadastro =
   | 'formas-pagamento';
 
 // Submódulos do menu "Configurações" (navegação em árvore na barra lateral)
-export type SecaoConfiguracao = 'loja' | 'financeiro' | 'operacional' | 'whatsapp' | 'equipe' | 'conta' | 'assinatura' | 'leis';
+export type SecaoConfiguracao = 'loja' | 'financeiro' | 'operacional' | 'whatsapp' | 'avaliacoes' | 'equipe' | 'conta' | 'assinatura' | 'leis';

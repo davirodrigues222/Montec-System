@@ -105,6 +105,7 @@ const TELAS: Record<string, DestinoTela> = {
   'config-taxas': { aba: 'configuracoes', secaoConfiguracao: 'financeiro' },
   'config-operacional': { aba: 'configuracoes', secaoConfiguracao: 'operacional' },
   'config-whatsapp': { aba: 'configuracoes', secaoConfiguracao: 'whatsapp' },
+  'config-avaliacoes': { aba: 'configuracoes', secaoConfiguracao: 'avaliacoes' },
   'config-equipe': { aba: 'configuracoes', secaoConfiguracao: 'equipe' },
   'config-conta': { aba: 'configuracoes', secaoConfiguracao: 'conta' },
   'config-assinatura': { aba: 'configuracoes', secaoConfiguracao: 'assinatura' },

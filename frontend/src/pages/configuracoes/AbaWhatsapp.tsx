@@ -27,6 +27,7 @@ const PASSOS = [
   'O WhatsApp abre na conversa do cliente com o texto já preenchido com os dados daquela OS.',
   'Você revisa e toca em Enviar no WhatsApp. O cliente precisa ter o WhatsApp cadastrado na OS.',
   'Depois que a OS é marcada como Entregue / Concluído, os botões ficam bloqueados. Envie a mensagem de entrega antes de mudar o status.',
+  'Depois da entrega, a OS ganha o botão "Pedir avaliação no Google" (link e mensagem em Configurações › Avaliações no Google).',
   '{link_acompanhamento} vira um link em que o cliente acompanha o andamento da OS e aprova o orçamento, sem precisar de login.',
 ];
 

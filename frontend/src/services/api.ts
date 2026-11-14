@@ -79,6 +79,12 @@ export interface ConfiguracoesLojaIsolada {
   checklistItensAtivos: string[];
 
   mensagensWhatsapp: MensagensWhatsapp;
+
+  // Avaliações no Google (pós-venda)
+  /** Link de avaliação do Google Meu Negócio (ex.: https://g.page/r/.../review). Vazio = recurso desligado. */
+  linkAvaliacaoGoogle: string;
+  /** Modelo do pedido de avaliação enviado pelo WhatsApp depois da entrega. */
+  mensagemAvaliacao: string;
 }
 
 export interface Maquininha {
@@ -178,6 +184,36 @@ const MENSAGENS_WHATSAPP_ANTIGAS: Partial<Record<keyof MensagensWhatsapp, string
 const modeloMensagem = (chave: keyof MensagensWhatsapp, salvo?: string) =>
   !salvo || MENSAGENS_WHATSAPP_ANTIGAS[chave]?.includes(salvo) ? MENSAGENS_WHATSAPP_PADRAO[chave] : salvo;
 
+/** Pedido de avaliação no Google enviado depois da entrega (Configurações › Avaliações no Google). */
+export const MENSAGEM_AVALIACAO_PADRAO =
+  'Olá {cliente}! Tudo certo com seu {aparelho}? Sua opinião é muito importante para nós da {loja}. Poderia nos avaliar no Google? Leva menos de 1 minuto: {link_avaliacao}';
+
+/**
+ * Link de avaliação aceito: só https (o texto vai para o WhatsApp do cliente). Devolve o link limpo
+ * ou '' se for inválido. Links fora do Google são aceitos, mas a tela avisa (linkAvaliacaoEhGoogle).
+ */
+export function normalizarLinkAvaliacao(valor: unknown): string {
+  let texto = String(valor ?? '').trim();
+  if (!texto || texto.length > 500) return '';
+  // Colado sem o protocolo ("g.page/r/..."): completa com https://
+  if (!/^[a-z][a-z0-9+.-]*:/i.test(texto)) texto = `https://${texto}`;
+  try {
+    const url = new URL(texto);
+    return url.protocol === 'https:' ? url.toString() : '';
+  } catch {
+    return '';
+  }
+}
+
+const DOMINIOS_GOOGLE = /(^|\.)(g\.page|goo\.gl|google\.[a-z.]+|g\.co)$/i;
+export const linkAvaliacaoEhGoogle = (link: string) => {
+  try {
+    return DOMINIOS_GOOGLE.test(new URL(link).hostname);
+  } catch {
+    return false;
+  }
+};
+
 const ITENS_CHECKLIST_PADRAO = [
   'ligando', 'touchScreen', 'display', 'cameraTraseira', 'cameraFrontal', 'microfone',
   'altoFalante', 'conectorCarga', 'bateria', 'wifi', 'bluetooth', 'botoesLaterais', 'faceId', 'carcaca',
@@ -244,6 +280,8 @@ function completarConfigLoja(cfgEntrada: Partial<ConfiguracoesLojaIsolada>, padr
       pronto: modeloMensagem('pronto', mensagens.pronto),
       entrega: modeloMensagem('entrega', mensagens.entrega),
     },
+    linkAvaliacaoGoogle: normalizarLinkAvaliacao(cfg.linkAvaliacaoGoogle),
+    mensagemAvaliacao: String(cfg.mensagemAvaliacao || '').trim() || MENSAGEM_AVALIACAO_PADRAO,
   };
 }
 
@@ -361,6 +399,8 @@ export function obterConfigPadraoConta(user?: any): ConfiguracoesLojaIsolada {
     prefixoOS: 'OS-',
     checklistItensAtivos: [...ITENS_CHECKLIST_PADRAO],
     mensagensWhatsapp: { ...MENSAGENS_WHATSAPP_PADRAO },
+    linkAvaliacaoGoogle: '',
+    mensagemAvaliacao: MENSAGEM_AVALIACAO_PADRAO,
   };
 }
 
@@ -789,6 +829,10 @@ export function variaveisMensagemOS(
       Math.max(GARANTIA_LEGAL_DIAS, os?.possuiGarantia === false ? 0 : Number(os?.prazoGarantiaDias) || cfg.prazoGarantiaDias)
     ),
     link_acompanhamento: linkAcompanhamento,
+    link_avaliacao: cfg.linkAvaliacaoGoogle || '',
+    // Apelidos aceitos nos modelos
+    nome_cliente: String(os?.cliente?.nome || 'cliente').trim(),
+    nome_loja: cfg.nomeLoja,
   };
 }
 
@@ -2207,6 +2251,8 @@ export async function editarOrdemServico(id_os: string, payload: any): Promise<v
       __dataPronto: (checklistBase as any)?.__dataPronto ?? checklistExistente.__dataPronto,
       __servicoNome: (checklistBase as any)?.__servicoNome ?? checklistExistente.__servicoNome,
       __servicoId: (checklistBase as any)?.__servicoId ?? checklistExistente.__servicoId,
+      // Gravado pelo botão "Pedir avaliação" (registrarPedidoAvaliacao): o Editar OS aberto antes não o apaga
+      __avaliacaoSolicitadaEm: (checklistBase as any)?.__avaliacaoSolicitadaEm ?? checklistExistente.__avaliacaoSolicitadaEm,
       ...extras,
     };
   }
@@ -2255,6 +2301,40 @@ export async function editarOrdemServico(id_os: string, payload: any): Promise<v
     throw new Error(traduzirErroBanco(error, 'Falha ao atualizar Ordem de Serviço'));
   }
   invalidarCacheOrdens();
+}
+
+/**
+ * Marca na OS que o pedido de avaliação no Google foi enviado (JSON checklist_entrada, sem coluna
+ * nova). Devolve a data gravada. Lança erro se não houver permissão para alterar a OS.
+ */
+export async function registrarPedidoAvaliacao(id_os: string): Promise<string> {
+  const { data: atual, error: erroBusca } = await supabase
+    .from('ordens_servico')
+    .select('checklist_entrada')
+    .eq('id_os', id_os)
+    .maybeSingle();
+  if (erroBusca || !atual) throw new Error(traduzirErroBanco(erroBusca, 'Ordem de serviço não encontrada.'));
+
+  let checklist: Record<string, any> = {};
+  const bruto = atual.checklist_entrada;
+  if (bruto && typeof bruto === 'object') checklist = bruto;
+  else if (typeof bruto === 'string') {
+    try {
+      checklist = JSON.parse(bruto) || {};
+    } catch {
+      checklist = {};
+    }
+  }
+  const quando = new Date().toISOString();
+  const { data, error } = await supabase
+    .from('ordens_servico')
+    .update({ checklist_entrada: { ...checklist, __avaliacaoSolicitadaEm: quando } })
+    .eq('id_os', id_os)
+    .select('id_os');
+  if (error) throw new Error(traduzirErroBanco(error, 'Não foi possível registrar o pedido de avaliação.'));
+  exigirLinhaAfetada(data);
+  invalidarCacheOrdens();
+  return quando;
 }
 
 // Cache curto das ordens: várias telas abertas em sequência não baixam tudo de novo a cada vez.

@@ -69,9 +69,64 @@ export async function enviarMensagemWhatsapp(
   if (janela) {
     janela.opener = null;
     janela.location.href = destino;
-  } else if (!window.open(destino, '_blank', 'noopener')) {
+  } else if (!abrirEmNovaAba(destino)) {
     alert('O navegador bloqueou a abertura do WhatsApp. Permita pop-ups para este site e tente de novo.');
     return false;
   }
+  return true;
+}
+
+// ------------------------------------------
+// Pedido de avaliação no Google (pós-venda)
+// Diferente das mensagens acima, só vale DEPOIS da entrega. Modelo e link ficam em
+// Configurações › Avaliações no Google.
+// ------------------------------------------
+
+/** O botão "Pedir avaliação" aparece para a OS entregue. */
+export const podePedirAvaliacao = (os: OrdemServico) => os.status_os === 'ENTREGUE';
+
+/** Data em que o pedido de avaliação foi enviado (ISO), ou null. */
+export const avaliacaoSolicitadaEm = (os: Pick<OrdemServico, 'checklistEntrada'>): string | null =>
+  os.checklistEntrada?.__avaliacaoSolicitadaEm || null;
+
+/**
+ * Abre a conversa do cliente com o pedido de avaliação preenchido com os dados da OS.
+ * Retorna false (com aviso) se faltar o link do Google, a OS não estiver entregue ou o número for inválido.
+ */
+export function abrirPedidoAvaliacao(os: OrdemServico): boolean {
+  const cfg = obterConfiguracoesLojaSincrono();
+  if (!cfg.linkAvaliacaoGoogle) {
+    alert('Cadastre o link de avaliação do Google em Configurações › Avaliações no Google.');
+    return false;
+  }
+  if (!podePedirAvaliacao(os)) {
+    alert('O pedido de avaliação é enviado depois que a OS é marcada como Entregue / Concluído.');
+    return false;
+  }
+  // Sem a variável no modelo, o link vai no fim (sem ele o pedido não serve para nada)
+  const modelo = cfg.mensagemAvaliacao.includes('{link_avaliacao}')
+    ? cfg.mensagemAvaliacao
+    : `${cfg.mensagemAvaliacao.trim()}\n\n{link_avaliacao}`;
+  const destino = linkWhatsapp(os.cliente?.whatsapp || '', preencherModeloMensagem(modelo, variaveisMensagemOS(os, cfg)));
+  if (!destino) {
+    alert('O WhatsApp do cliente não está cadastrado ou é inválido. Informe o número com DDD na OS.');
+    return false;
+  }
+  if (!abrirEmNovaAba(destino)) {
+    alert('O navegador bloqueou a abertura do WhatsApp. Permita pop-ups para este site e tente de novo.');
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Abre um link em nova aba sem dar à página aberta acesso a esta (opener = null).
+ * Com o recurso 'noopener' o window.open devolve sempre null, mesmo abrindo: não daria para saber
+ * se o navegador bloqueou. Retorna false só quando a aba não abriu.
+ */
+export function abrirEmNovaAba(url: string): boolean {
+  const janela = window.open(url, '_blank');
+  if (!janela) return false;
+  janela.opener = null;
   return true;
 }
