@@ -1,18 +1,21 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Check, Copy, MessageCircle, RotateCcw, Send, Trash2 } from 'lucide-react';
+import { Check, Copy, MessageCircle, Pencil, Plus, RotateCcw, Send, Trash2, X } from 'lucide-react';
 import {
   CONDICOES_PADRAO,
   type DadosOrcamento,
+  MAX_OPCOES_ORCAMENTO,
   type Orcamento,
   OrcamentosAusenteError,
+  QUALIDADES_SUGERIDAS,
   ROTULO_STATUS_ORCAMENTO,
   type StatusOrcamento,
-  criarOrcamento,
   definirStatusOrcamento,
   excluirOrcamento,
   linkDoOrcamento,
   listarOrcamentos,
   mensagemOrcamento,
+  rotuloOpcao,
+  salvarOrcamento,
 } from '../services/orcamentos';
 import { type Cliente, type Servico, listarClientes, listarServicos, parseMoedaBR } from '../services/cadastros';
 import { buscarModelosAparelhos, linkWhatsapp } from '../services/api';
@@ -38,13 +41,26 @@ const VALIDADES = [
   { dias: 0, rotulo: 'Sem validade' },
 ];
 
+/** Ao editar: mantém a data de validade que o orçamento já tem. */
+const VALIDADE_MANTER = -1;
+
+/** Uma opção de preço no formulário; `chave` identifica a linha na tela (não vai para o banco). */
+interface OpcaoForm {
+  chave: string;
+  qualidade: string;
+  valor: string;
+  descricao: string;
+}
+
+type ErrosOpcao = { qualidade?: string; valor?: string };
+
 interface Form {
   clienteNome: string;
   clienteWhatsapp: string;
   idCliente: string;
   titulo: string;
   aparelho: string;
-  valor: string;
+  opcoes: OpcaoForm[];
   garantia: string;
   brinde: string;
   condicoes: string;
@@ -52,15 +68,52 @@ interface Form {
   validadeDias: number;
 }
 
-/** Campos que mudam a cada cliente; garantia, brinde, condições e validade ficam para o próximo. */
-const CLIENTE_VAZIO = { clienteNome: '', clienteWhatsapp: '', idCliente: '', titulo: '', aparelho: '', valor: '', observacoes: '' };
+let sequenciaOpcao = 0;
+const novaOpcao = (dados: Partial<Omit<OpcaoForm, 'chave'>> = {}): OpcaoForm => ({
+  chave: `opcao-${++sequenciaOpcao}`,
+  qualidade: '',
+  valor: '',
+  descricao: '',
+  ...dados,
+});
 
-const FORM_INICIAL: Form = {
-  ...CLIENTE_VAZIO,
+const opcoesDoOrcamento = (o: Orcamento) =>
+  o.opcoes.map((p) => novaOpcao({ qualidade: p.qualidade || '', valor: formatarValor(p.valor), descricao: p.descricao || '' }));
+
+/** Campos que mudam a cada cliente; garantia, brinde, condições e validade ficam para o próximo. */
+const clienteVazio = () => ({
+  clienteNome: '',
+  clienteWhatsapp: '',
+  idCliente: '',
+  titulo: '',
+  aparelho: '',
+  opcoes: [novaOpcao()],
+  observacoes: '',
+});
+
+const formInicial = (): Form => ({
+  ...clienteVazio(),
   garantia: '3 meses',
   brinde: '',
   condicoes: CONDICOES_PADRAO.join('\n'),
   validadeDias: 7,
+});
+
+/** Valor que aparece na lista: a opção autorizada, as opções ou o valor único. */
+const resumoValor = (o: Orcamento) => {
+  if (o.opcao_aprovada) {
+    const q = o.opcao_aprovada.qualidade;
+    return `${q ? `${q} · ` : ''}${formatarMoeda(o.opcao_aprovada.valor)}`;
+  }
+  if (o.opcoes.length > 1) return o.opcoes.map((p, i) => `${rotuloOpcao(p, i)} ${formatarMoeda(p.valor)}`).join(' / ');
+  return formatarMoeda(o.opcoes[0]?.valor ?? o.valor);
+};
+
+/** Valor do seletor de resposta. Com várias opções, "Autorizado" vem com a opção escolhida (APROVADO:<índice>). */
+const valorStatus = (o: Orcamento) => {
+  if (o.status !== 'APROVADO' || o.opcoes.length <= 1) return o.status;
+  const i = o.opcoes.findIndex((p) => p.id && p.id === o.opcao_aprovada?.id);
+  return i >= 0 ? `APROVADO:${i}` : 'APROVADO';
 };
 
 const somarDiasISO = (dias: number) => {
@@ -93,12 +146,17 @@ async function copiar(texto: string) {
 export const Orcamentos: React.FC = () => {
   const [lista, setLista] = useState<Orcamento[]>([]);
   const [carregando, setCarregando] = useState(true);
-  const [ausente, setAusente] = useState(false);
+  const [ausente, setAusente] = useState<string | null>(null);
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [servicos, setServicos] = useState<Servico[]>([]);
   const [modelos, setModelos] = useState<string[]>([]);
-  const [form, setForm] = useState<Form>(FORM_INICIAL);
+  const [form, setForm] = useState<Form>(formInicial);
   const [erros, setErros] = useState<Partial<Record<keyof Form, string>>>({});
+  const [errosOpcoes, setErrosOpcoes] = useState<Record<string, ErrosOpcao>>({});
+  // Orçamento aguardando resposta que está sendo alterado no formulário (null = novo orçamento)
+  const [editando, setEditando] = useState<Orcamento | null>(null);
+  // Opção recém-adicionada: recebe o foco quando aparece na tela
+  const focarOpcao = useRef<string | null>(null);
   const [enviando, setEnviando] = useState(false);
   const [filtro, setFiltro] = useState<Filtro>('TODOS');
   const [busca, setBusca] = useState('');
@@ -113,7 +171,7 @@ export const Orcamentos: React.FC = () => {
     try {
       const dados = await listarOrcamentos();
       setLista(dados);
-      setAusente(false);
+      setAusente(null);
       const ultimo = dados[0];
       if (ultimo && formIntocado.current) {
         formIntocado.current = false;
@@ -125,7 +183,7 @@ export const Orcamentos: React.FC = () => {
         }));
       }
     } catch (e: any) {
-      if (e instanceof OrcamentosAusenteError) setAusente(true);
+      if (e instanceof OrcamentosAusenteError) setAusente(e.migracao);
       else feedback.erro(e.message);
     } finally {
       setCarregando(false);
@@ -175,30 +233,55 @@ export const Orcamentos: React.FC = () => {
     setForm((f) => ({
       ...f,
       titulo,
-      valor: servico && !f.valor.trim() && servico.preco_sugerido > 0 ? formatarValor(servico.preco_sugerido) : f.valor,
+      // O preço sugerido vai para a primeira opção, se ela ainda estiver sem valor
+      opcoes:
+        servico && servico.preco_sugerido > 0 && !f.opcoes[0].valor.trim()
+          ? [{ ...f.opcoes[0], valor: formatarValor(servico.preco_sugerido) }, ...f.opcoes.slice(1)]
+          : f.opcoes,
       garantia:
         servico?.garantia_padrao && servico.garantia_padrao !== 'Sem garantia' ? servico.garantia_padrao : f.garantia,
     }));
     setErros((e) => ({ ...e, titulo: undefined }));
   };
 
-  const valorNum = parseMoedaBR(form.valor);
+  // ---- Opções de preço ----
+  const mudarOpcao = (chave: string, campo: keyof Omit<OpcaoForm, 'chave'>, valor: string) => {
+    formIntocado.current = false;
+    setForm((f) => ({ ...f, opcoes: f.opcoes.map((p) => (p.chave === chave ? { ...p, [campo]: valor } : p)) }));
+    setErrosOpcoes((e) => (e[chave] ? { ...e, [chave]: { ...e[chave], [campo]: undefined } } : e));
+  };
+
+  const adicionarOpcao = () => {
+    if (form.opcoes.length >= MAX_OPCOES_ORCAMENTO) return;
+    const nova = novaOpcao();
+    focarOpcao.current = nova.chave;
+    formIntocado.current = false;
+    setForm((f) => ({ ...f, opcoes: [...f.opcoes, nova] }));
+  };
+
+  const removerOpcao = (chave: string) => {
+    setForm((f) => ({ ...f, opcoes: f.opcoes.length > 1 ? f.opcoes.filter((p) => p.chave !== chave) : f.opcoes }));
+    setErrosOpcoes(({ [chave]: _removido, ...resto }) => resto);
+  };
+
+  const variasOpcoes = form.opcoes.length > 1;
+  const validadeAtual = form.validadeDias === VALIDADE_MANTER ? editando?.validade ?? null : form.validadeDias > 0 ? somarDiasISO(form.validadeDias) : null;
   const dados: DadosOrcamento = {
     cliente_nome: form.clienteNome,
     cliente_whatsapp: somenteDigitos(form.clienteWhatsapp),
     id_cliente: form.idCliente || null,
     titulo: form.titulo,
     aparelho: form.aparelho,
-    valor: valorNum ?? 0,
+    opcoes: form.opcoes.map((p) => ({ qualidade: p.qualidade, valor: parseMoedaBR(p.valor) ?? 0, descricao: p.descricao })),
     garantia: form.garantia,
     brinde: form.brinde,
     condicoes: form.condicoes.split('\n'),
     observacoes: form.observacoes,
-    validade: form.validadeDias > 0 ? somarDiasISO(form.validadeDias) : null,
+    validade: validadeAtual,
   };
   const previa = mensagemOrcamento(
     { ...dados, titulo: dados.titulo || 'SERVIÇO', aparelho: dados.aparelho },
-    `${window.location.origin}/orcamento/…`
+    editando ? linkDoOrcamento(editando.token) : `${window.location.origin}/orcamento/…`
   );
 
   const validar = () => {
@@ -207,10 +290,37 @@ export const Orcamentos: React.FC = () => {
     if (!linkWhatsapp(form.clienteWhatsapp, 'x')) e.clienteWhatsapp = 'Informe o WhatsApp com DDD.';
     if (form.titulo.trim().length < 2) e.titulo = 'Informe o serviço (ex.: Troca de tela).';
     if (!form.aparelho.trim()) e.aparelho = 'Informe o modelo do aparelho.';
-    if (!valorNum || valorNum <= 0) e.valor = 'Informe o valor (ex.: 270,00).';
     if (form.condicoes.split('\n').filter((c) => c.trim()).length > 10) e.condicoes = 'Use no máximo 10 linhas.';
+
+    const eo: Record<string, ErrosOpcao> = {};
+    const qualidadesVistas = new Set<string>();
+    for (const p of form.opcoes) {
+      const erro: ErrosOpcao = {};
+      const valor = parseMoedaBR(p.valor);
+      if (!valor || valor <= 0) erro.valor = 'Informe o valor (ex.: 270,00).';
+      const qualidade = p.qualidade.trim().toLowerCase();
+      if (variasOpcoes && !qualidade) erro.qualidade = 'Informe a qualidade para o cliente saber a diferença.';
+      else if (qualidade && qualidadesVistas.has(qualidade)) erro.qualidade = 'Já existe uma opção com esta qualidade.';
+      if (qualidade) qualidadesVistas.add(qualidade);
+      if (erro.valor || erro.qualidade) eo[p.chave] = erro;
+    }
+
     setErros(e);
-    return Object.keys(e).length === 0;
+    setErrosOpcoes(eo);
+    return Object.keys(e).length === 0 && Object.keys(eo).length === 0;
+  };
+
+  /** Volta para "Novo orçamento" mantendo garantia, brinde e formas de pagamento. */
+  const limparFormulario = () => {
+    setEditando(null);
+    setForm((f) => ({ ...f, ...clienteVazio(), validadeDias: f.validadeDias === VALIDADE_MANTER ? 7 : f.validadeDias }));
+    setErros({});
+    setErrosOpcoes({});
+  };
+
+  const irParaFormulario = () => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    document.querySelector<HTMLElement>('main')?.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   /** Abre a conversa do cliente. A janela é aberta antes de salvar (no clique) para o navegador não bloquear. */
@@ -225,26 +335,30 @@ export const Orcamentos: React.FC = () => {
     return abrirEmNovaAba(destino);
   };
 
-  const enviar = async () => {
+  /** Salva (cria ou altera) e, se `abrirConversa`, abre o WhatsApp do cliente com a mensagem. */
+  const enviar = async (abrirConversa = true) => {
     if (enviandoRef.current || !validar()) return;
     enviandoRef.current = true;
     setEnviando(true);
-    const janela = window.open('', '_blank');
+    const janela = abrirConversa ? window.open('', '_blank') : null;
+    const emEdicao = editando;
     try {
-      const criado = await criarOrcamento(dados);
-      const texto = mensagemOrcamento(criado, linkDoOrcamento(criado.token));
-      if (!abrirWhatsapp(janela, criado.cliente_whatsapp, texto)) {
+      const salvo = await salvarOrcamento(dados, emEdicao?.id);
+      if (!abrirConversa) {
+        feedback.sucesso('Alterações salvas. O link que o cliente recebeu já mostra a versão nova.');
+      } else if (!abrirWhatsapp(janela, salvo.cliente_whatsapp, mensagemOrcamento(salvo, linkDoOrcamento(salvo.token)))) {
         feedback.erro('Orçamento salvo, mas o navegador bloqueou o WhatsApp. Use "Reenviar" na lista abaixo.');
       } else {
-        feedback.sucesso(`Orçamento de ${criado.cliente_nome} salvo. Confira a mensagem no WhatsApp e toque em Enviar.`);
+        feedback.sucesso(`Orçamento de ${salvo.cliente_nome} salvo. Confira a mensagem no WhatsApp e toque em Enviar.`);
       }
-      setLista((l) => [criado, ...l]);
-      setForm((f) => ({ ...f, ...CLIENTE_VAZIO }));
-      setErros({});
+      setLista((l) => (emEdicao ? l.map((x) => (x.id === salvo.id ? salvo : x)) : [salvo, ...l]));
+      limparFormulario();
     } catch (e: any) {
       janela?.close();
-      if (e instanceof OrcamentosAusenteError) setAusente(true);
+      if (e instanceof OrcamentosAusenteError) setAusente(e.migracao);
       feedback.erro(e.message);
+      // O cliente pode ter respondido enquanto a loja editava: atualiza a lista
+      if (emEdicao) carregar();
     } finally {
       enviandoRef.current = false;
       setEnviando(false);
@@ -259,32 +373,68 @@ export const Orcamentos: React.FC = () => {
 
   const usarComoModelo = (o: Orcamento) => {
     formIntocado.current = false;
+    setEditando(null);
     setForm({
-      ...FORM_INICIAL,
+      ...formInicial(),
       titulo: o.titulo,
       aparelho: o.aparelho,
-      valor: formatarValor(o.valor),
+      opcoes: opcoesDoOrcamento(o),
       garantia: o.garantia || '',
       brinde: o.brinde || '',
       condicoes: o.condicoes.join('\n'),
       observacoes: o.observacoes || '',
     });
     setErros({});
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-    document.querySelector<HTMLElement>('main')?.scrollTo({ top: 0, behavior: 'smooth' });
+    setErrosOpcoes({});
+    irParaFormulario();
   };
 
-  const mudarStatus = async (o: Orcamento, status: StatusOrcamento) => {
-    if (status === o.status) return;
+  /** Carrega no formulário um orçamento que ainda aguarda resposta, para corrigir valores ou opções. */
+  const editar = (o: Orcamento) => {
+    formIntocado.current = false;
+    setEditando(o);
+    setForm({
+      clienteNome: o.cliente_nome,
+      clienteWhatsapp: mascaraTelefone(o.cliente_whatsapp.replace(/^55(?=\d{10,11}$)/, '')),
+      idCliente: o.id_cliente || '',
+      titulo: o.titulo,
+      aparelho: o.aparelho,
+      opcoes: opcoesDoOrcamento(o),
+      garantia: o.garantia || '',
+      brinde: o.brinde || '',
+      condicoes: o.condicoes.join('\n'),
+      observacoes: o.observacoes || '',
+      validadeDias: o.validade ? VALIDADE_MANTER : 0,
+    });
+    setErros({});
+    setErrosOpcoes({});
+    irParaFormulario();
+  };
+
+  const mudarStatus = async (o: Orcamento, valor: string) => {
+    if (valor === valorStatus(o)) return;
+    const [codigo, indice] = valor.split(':');
+    const status = codigo as StatusOrcamento;
+    // Opção autorizada: a escolhida no seletor ou, se só há uma, ela mesma
+    const opcao = status !== 'APROVADO' ? null : indice !== undefined ? o.opcoes[Number(indice)] : o.opcoes.length === 1 ? o.opcoes[0] : null;
     try {
-      await definirStatusOrcamento(o.id, status);
+      const opcaoAprovada = await definirStatusOrcamento(o.id, status, opcao);
       setLista((l) =>
         l.map((x) =>
           x.id === o.id
-            ? { ...x, status, respondido_por: status === 'PENDENTE' ? null : 'LOJA', respondido_em: status === 'PENDENTE' ? null : new Date().toISOString() }
+            ? {
+                ...x,
+                status,
+                opcao_aprovada: opcaoAprovada,
+                motivo_recusa: status === 'RECUSADO' ? x.motivo_recusa : null,
+                respondido_por: status === 'PENDENTE' ? null : 'LOJA',
+                respondido_em: status === 'PENDENTE' ? null : new Date().toISOString(),
+              }
             : x
         )
       );
+      // Respondido não pode mais ser editado
+      if (editando?.id === o.id && status !== 'PENDENTE') limparFormulario();
     } catch (e: any) {
       feedback.erro(e.message);
     }
@@ -296,6 +446,7 @@ export const Orcamentos: React.FC = () => {
     try {
       await excluirOrcamento(paraExcluir.id);
       setLista((l) => l.filter((x) => x.id !== paraExcluir.id));
+      if (editando?.id === paraExcluir.id) limparFormulario();
       setParaExcluir(null);
       feedback.sucesso('Orçamento excluído. O link dele parou de funcionar.');
     } catch (e: any) {
@@ -335,7 +486,7 @@ export const Orcamentos: React.FC = () => {
           <p className="text-sm font-bold text-blue-400">Os orçamentos ainda não foram ativados no banco de dados</p>
           <p className="text-xs text-zinc-400 mt-1 leading-relaxed">
             Execute a migração{' '}
-            <code className="px-1.5 py-0.5 rounded bg-zinc-800/80 text-zinc-200 text-[11px]">supabase/migrations/20261114090000_orcamentos.sql</code>{' '}
+            <code className="px-1.5 py-0.5 rounded bg-zinc-800/80 text-zinc-200 text-[11px]">supabase/migrations/{ausente}</code>{' '}
             no SQL Editor do Supabase e recarregue esta página.
           </p>
         </div>
@@ -357,10 +508,28 @@ export const Orcamentos: React.FC = () => {
           }}
           className="bg-[#0c101a] border border-zinc-800/80 rounded-2xl p-5 sm:p-6 space-y-5"
         >
-          <div>
-            <h3 className="text-sm font-bold text-white">Novo orçamento</h3>
-            <p className="text-xs text-zinc-400 mt-0.5">Garantia, brinde e formas de pagamento ficam salvos para o próximo.</p>
-          </div>
+          {editando ? (
+            <div className="flex items-start justify-between gap-3 rounded-xl bg-blue-500/10 border border-blue-500/25 px-4 py-3">
+              <div>
+                <h3 className="text-sm font-bold text-white">Editando o orçamento de {editando.cliente_nome}</h3>
+                <p className="text-xs text-zinc-400 mt-0.5">
+                  O cliente ainda não respondeu. O link que ele recebeu passa a mostrar a versão nova.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={limparFormulario}
+                className="shrink-0 text-xs font-semibold text-blue-400 hover:underline"
+              >
+                Cancelar edição
+              </button>
+            </div>
+          ) : (
+            <div>
+              <h3 className="text-sm font-bold text-white">Novo orçamento</h3>
+              <p className="text-xs text-zinc-400 mt-0.5">Garantia, brinde e formas de pagamento ficam salvos para o próximo.</p>
+            </div>
+          )}
 
           <div className="grid sm:grid-cols-2 gap-4">
             <Campo label="Cliente" obrigatorio erro={erros.clienteNome} dica={form.idCliente ? 'Cliente cadastrado' : undefined}>
@@ -415,15 +584,101 @@ export const Orcamentos: React.FC = () => {
               />
             </Campo>
 
-            <Campo label="Valor (R$)" obrigatorio erro={erros.valor}>
-              <input
-                inputMode="decimal"
-                value={form.valor}
-                onChange={(e) => mudar('valor', e.target.value)}
-                placeholder="270,00"
-                className={`${inputCls(erros.valor)} tabular-nums`}
-              />
-            </Campo>
+          </div>
+
+          {/* ---------- Opções de preço ---------- */}
+          <div className="space-y-2.5">
+            <div>
+              <p className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider">
+                Opções de preço<span className="text-blue-400"> *</span>
+              </p>
+              <p className="text-[11px] text-zinc-500 mt-0.5">
+                Para passar mais de um preço (ex.: tela original e primeira linha), adicione uma opção. O cliente escolhe pelo link.
+              </p>
+            </div>
+
+            {form.opcoes.map((p, i) => {
+              const eo = errosOpcoes[p.chave] || {};
+              return (
+                <div key={p.chave} className="rounded-xl border border-zinc-800/80 bg-[#080c14] p-3 sm:p-4">
+                  <div className="flex items-center justify-between gap-2 mb-2.5 min-h-7">
+                    <span className="text-xs font-bold text-zinc-300">{variasOpcoes ? `Opção ${i + 1}` : 'Preço'}</span>
+                    {i > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => removerOpcao(p.chave)}
+                        title="Remover opção"
+                        aria-label={`Remover opção ${i + 1}`}
+                        className="p-1.5 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-zinc-800/50 transition"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                  <div className="grid sm:grid-cols-[minmax(0,1fr)_150px] gap-3">
+                    <Campo
+                      label="Qualidade / tipo da peça"
+                      obrigatorio={variasOpcoes}
+                      erro={eo.qualidade}
+                      dica={variasOpcoes ? undefined : 'Opcional com uma opção só.'}
+                    >
+                      <input
+                        ref={(el) => {
+                          if (el && focarOpcao.current === p.chave) {
+                            focarOpcao.current = null;
+                            el.focus();
+                          }
+                        }}
+                        list="orcamento-qualidades"
+                        value={p.qualidade}
+                        onChange={(e) => mudarOpcao(p.chave, 'qualidade', e.target.value)}
+                        placeholder="Ex.: Original, Primeira linha, Incell"
+                        maxLength={40}
+                        autoComplete="off"
+                        className={inputCls(eo.qualidade)}
+                      />
+                    </Campo>
+                    <Campo label="Valor (R$)" obrigatorio erro={eo.valor}>
+                      <input
+                        inputMode="decimal"
+                        value={p.valor}
+                        onChange={(e) => mudarOpcao(p.chave, 'valor', e.target.value)}
+                        placeholder="270,00"
+                        className={`${inputCls(eo.valor)} tabular-nums`}
+                      />
+                    </Campo>
+                    <Campo label="Descrição" className="sm:col-span-2" dica="Opcional. Ex.: garantia de 6 meses, mesma qualidade de imagem da original.">
+                      <input
+                        value={p.descricao}
+                        onChange={(e) => mudarOpcao(p.chave, 'descricao', e.target.value)}
+                        maxLength={200}
+                        className={inputCls()}
+                      />
+                    </Campo>
+                  </div>
+                </div>
+              );
+            })}
+            <datalist id="orcamento-qualidades">
+              {QUALIDADES_SUGERIDAS.map((q) => (
+                <option key={q} value={q} />
+              ))}
+            </datalist>
+
+            {form.opcoes.length < MAX_OPCOES_ORCAMENTO ? (
+              <button
+                type="button"
+                onClick={adicionarOpcao}
+                className="w-full inline-flex items-center justify-center gap-2 py-2.5 rounded-xl border border-dashed border-zinc-700 text-xs font-bold text-blue-400 hover:bg-blue-500/10 transition"
+              >
+                <Plus className="w-4 h-4" /> Adicionar opção
+              </button>
+            ) : (
+              <p className="text-[11px] text-zinc-500 text-center">Limite de {MAX_OPCOES_ORCAMENTO} opções por orçamento.</p>
+            )}
+          </div>
+
+          <div className="grid sm:grid-cols-[180px_minmax(0,1fr)] gap-4">
             <Campo label="Garantia" dica="Ex.: 3 meses, 90 dias">
               <input
                 value={form.garantia}
@@ -433,17 +688,16 @@ export const Orcamentos: React.FC = () => {
                 className={inputCls()}
               />
             </Campo>
+            <Campo label="Brinde ou destaque" dica="Opcional. Aparece com 🎁 na mensagem.">
+              <input
+                value={form.brinde}
+                onChange={(e) => mudar('brinde', e.target.value)}
+                placeholder="Ex.: Na troca de tela você ganha uma película de brinde já aplicada"
+                maxLength={200}
+                className={inputCls()}
+              />
+            </Campo>
           </div>
-
-          <Campo label="Brinde ou destaque" dica="Opcional. Aparece com 🎁 na mensagem.">
-            <input
-              value={form.brinde}
-              onChange={(e) => mudar('brinde', e.target.value)}
-              placeholder="Ex.: Na troca de tela você ganha uma película de brinde já aplicada"
-              maxLength={200}
-              className={inputCls()}
-            />
-          </Campo>
 
           <Campo label="Formas de pagamento" erro={erros.condicoes} dica="Uma por linha. Cada linha aparece com ✔️.">
             <textarea
@@ -469,6 +723,7 @@ export const Orcamentos: React.FC = () => {
                 onChange={(e) => mudar('validadeDias', Number(e.target.value))}
                 className={inputCls()}
               >
+                {editando?.validade && <option value={VALIDADE_MANTER}>Manter (até {dataBR(editando.validade)})</option>}
                 {VALIDADES.map((v) => (
                   <option key={v.dias} value={v.dias}>
                     {v.rotulo}
@@ -481,22 +736,32 @@ export const Orcamentos: React.FC = () => {
           <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3 pt-4 border-t border-zinc-800/60">
             <button
               type="button"
-              onClick={() => {
-                setForm((f) => ({ ...f, ...CLIENTE_VAZIO }));
-                setErros({});
-              }}
+              onClick={limparFormulario}
               className="px-4 py-2.5 text-xs font-semibold text-zinc-400 hover:text-white transition self-start sm:self-auto"
             >
-              Limpar
+              {editando ? 'Cancelar edição' : 'Limpar'}
             </button>
-            <button
-              type="submit"
-              disabled={enviando}
-              className="inline-flex items-center justify-center gap-2 px-5 py-3 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white font-bold rounded-xl text-sm transition shadow-md shadow-emerald-600/20"
-            >
-              <Send className="w-4 h-4" />
-              {enviando ? 'Salvando…' : 'Enviar no WhatsApp'}
-            </button>
+            <div className="flex flex-col-reverse sm:flex-row gap-2">
+              {editando && (
+                <button
+                  type="button"
+                  onClick={() => enviar(false)}
+                  disabled={enviando}
+                  className="inline-flex items-center justify-center gap-2 px-5 py-3 border border-zinc-700 hover:bg-zinc-800 disabled:opacity-60 text-zinc-200 font-bold rounded-xl text-sm transition"
+                >
+                  <Check className="w-4 h-4" />
+                  Só salvar
+                </button>
+              )}
+              <button
+                type="submit"
+                disabled={enviando}
+                className="inline-flex items-center justify-center gap-2 px-5 py-3 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white font-bold rounded-xl text-sm transition shadow-md shadow-emerald-600/20"
+              >
+                <Send className="w-4 h-4" />
+                {enviando ? 'Salvando…' : editando ? 'Salvar e reenviar no WhatsApp' : 'Enviar no WhatsApp'}
+              </button>
+            </div>
           </div>
         </form>
 
@@ -564,7 +829,7 @@ export const Orcamentos: React.FC = () => {
                     {o.status === 'PENDENTE' && o.validade && o.validade < hojeISO() && <Badge cor="vermelho">Vencido</Badge>}
                   </div>
                   <p className="text-xs text-zinc-300">
-                    {o.titulo} · {o.aparelho} · <span className="font-bold text-white tabular-nums">{formatarMoeda(o.valor)}</span>
+                    {o.titulo} · {o.aparelho} · <span className="font-bold text-white tabular-nums">{resumoValor(o)}</span>
                   </p>
                   <p className="text-[11px] text-zinc-500">
                     {mascaraTelefone(o.cliente_whatsapp.replace(/^55(?=\d{10,11}$)/, ''))} · enviado em {formatarDataHora(o.criado_em)}
@@ -582,18 +847,41 @@ export const Orcamentos: React.FC = () => {
 
                 <div className="flex flex-wrap items-center gap-1.5 md:justify-end shrink-0">
                   <select
-                    value={o.status}
-                    onChange={(e) => mudarStatus(o, e.target.value as StatusOrcamento)}
+                    value={valorStatus(o)}
+                    onChange={(e) => mudarStatus(o, e.target.value)}
                     aria-label={`Resposta do orçamento de ${o.cliente_nome}`}
                     title="Registrar a resposta que o cliente deu por outro meio"
-                    className="px-2.5 py-2 bg-[#080c14] border border-zinc-800/80 rounded-lg text-[11px] text-zinc-200 outline-none focus:border-blue-500"
+                    className="max-w-[220px] px-2.5 py-2 bg-[#080c14] border border-zinc-800/80 rounded-lg text-[11px] text-zinc-200 outline-none focus:border-blue-500"
                   >
-                    {(Object.keys(ROTULO_STATUS_ORCAMENTO) as StatusOrcamento[]).map((s) => (
-                      <option key={s} value={s}>
-                        {ROTULO_STATUS_ORCAMENTO[s]}
-                      </option>
-                    ))}
+                    <option value="PENDENTE">{ROTULO_STATUS_ORCAMENTO.PENDENTE}</option>
+                    {o.opcoes.length > 1 ? (
+                      <>
+                        {/* Autorizado sem opção registrada (antes das opções existirem) */}
+                        {valorStatus(o) === 'APROVADO' && <option value="APROVADO">{ROTULO_STATUS_ORCAMENTO.APROVADO}</option>}
+                        {o.opcoes.map((p, i) => (
+                          <option key={p.id || i} value={`APROVADO:${i}`}>
+                            {ROTULO_STATUS_ORCAMENTO.APROVADO} · {rotuloOpcao(p, i)}
+                          </option>
+                        ))}
+                      </>
+                    ) : (
+                      <option value="APROVADO">{ROTULO_STATUS_ORCAMENTO.APROVADO}</option>
+                    )}
+                    <option value="RECUSADO">{ROTULO_STATUS_ORCAMENTO.RECUSADO}</option>
                   </select>
+                  {o.status === 'PENDENTE' && (
+                    <button
+                      type="button"
+                      onClick={() => editar(o)}
+                      title="Editar valores e opções"
+                      aria-label={`Editar orçamento de ${o.cliente_nome}`}
+                      className={`p-2 rounded-lg transition ${
+                        editando?.id === o.id ? 'text-blue-400 bg-blue-500/10' : 'text-zinc-400 hover:text-blue-400 hover:bg-zinc-800/50'
+                      }`}
+                    >
+                      <Pencil className="w-4 h-4" />
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => reenviar(o)}
@@ -642,7 +930,7 @@ export const Orcamentos: React.FC = () => {
           titulo="Excluir orçamento?"
           mensagem={
             <>
-              O orçamento de <strong className="text-zinc-200">{paraExcluir.cliente_nome}</strong> ({paraExcluir.titulo}, {formatarMoeda(paraExcluir.valor)})
+              O orçamento de <strong className="text-zinc-200">{paraExcluir.cliente_nome}</strong> ({paraExcluir.titulo}, {resumoValor(paraExcluir)})
               será apagado e o link enviado ao cliente para de funcionar.
             </>
           }
