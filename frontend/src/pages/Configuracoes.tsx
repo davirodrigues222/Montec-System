@@ -14,6 +14,7 @@ import {
 } from '../services/api';
 import { useFeedback } from '../components/cadastros/ui';
 import { formatarValor } from '../utils/formatadores';
+import { prepararLogoAnimacao } from '../utils/logoAnimacao';
 import type { SecaoCadastro, SecaoConfiguracao } from '../types';
 import { SECOES_CONFIGURACAO } from './configuracoes/secoes';
 import { AbaDadosLoja } from './configuracoes/AbaDadosLoja';
@@ -68,7 +69,11 @@ export const Configuracoes: React.FC<Props> = ({ secao, onAbrirCadastro }) => {
     const sincronizar = (cfg: ConfiguracoesLojaIsolada) => {
       if (!ativo) return;
       // Tema e logotipo são salvos na hora; o resto só é recarregado se não houver edição pendente
-      setConfig((atual) => (alteradoRef.current ? { ...atual, temaVisual: cfg.temaVisual, logoUrl: cfg.logoUrl } : cfg));
+      setConfig((atual) =>
+        alteradoRef.current
+          ? { ...atual, temaVisual: cfg.temaVisual, logoUrl: cfg.logoUrl, logoAnimacaoUrl: cfg.logoAnimacaoUrl }
+          : cfg,
+      );
       aplicarTemaVisualNoDOM(cfg.temaVisual);
     };
     carregarConfiguracoesLoja()
@@ -107,7 +112,14 @@ export const Configuracoes: React.FC<Props> = ({ secao, onAbrirCadastro }) => {
     setErroMeta(null);
     try {
       // Tema e logotipo já foram salvos na hora; a meta é gravada à parte (com o histórico do mês)
-      const { metaFaturamentoMensal: _meta, historicoMetasMensais: _historico, temaVisual: _tema, logoUrl: _logo, ...resto } = config;
+      const {
+        metaFaturamentoMensal: _meta,
+        historicoMetasMensais: _historico,
+        temaVisual: _tema,
+        logoUrl: _logo,
+        logoAnimacaoUrl: _logoAnimacao,
+        ...resto
+      } = config;
       let salvo = await salvarConfiguracoesLoja(resto);
       if (validacaoMeta?.valido) {
         salvo = (await salvarMetaFinanceiraConta(validacaoMeta.valor)).config;
@@ -150,6 +162,28 @@ export const Configuracoes: React.FC<Props> = ({ secao, onAbrirCadastro }) => {
       feedback.sucesso(mensagem);
     } catch (err: any) {
       feedback.erro(err?.message || 'Não foi possível salvar o logotipo.');
+    }
+  };
+
+  // Logo da animação do Painel: salva na hora, como o logotipo
+  const salvarLogoAnimacao = async (logoAnimacaoUrl: string, mensagem: string) => {
+    const anterior = config.logoAnimacaoUrl || '';
+    setConfig((atual) => ({ ...atual, logoAnimacaoUrl }));
+    try {
+      await salvarConfiguracoesLoja({ logoAnimacaoUrl });
+      feedback.sucesso(mensagem);
+    } catch (err: any) {
+      setConfig((atual) => ({ ...atual, logoAnimacaoUrl: anterior }));
+      feedback.erro(err?.message || 'Não foi possível salvar a logo da animação.');
+    }
+  };
+
+  const enviarLogoAnimacao = async (arquivo: File) => {
+    try {
+      const dados = await prepararLogoAnimacao(arquivo);
+      await salvarLogoAnimacao(dados, 'Logo da animação atualizada. Ela já aparece no Painel.');
+    } catch (err: any) {
+      feedback.erro(err?.message || 'Não foi possível usar esta imagem.');
     }
   };
 
@@ -229,6 +263,8 @@ export const Configuracoes: React.FC<Props> = ({ secao, onAbrirCadastro }) => {
           onSelecionarTema={handleSelecionarTema}
           onLogoUpload={handleLogoUpload}
           onRemoverLogo={() => salvarLogo('', 'Logotipo removido da sua conta.')}
+          onEnviarLogoAnimacao={enviarLogoAnimacao}
+          onRemoverLogoAnimacao={() => salvarLogoAnimacao('', 'A animação do Painel voltou a usar a logo do BancadaOS.')}
         />
       )}
 

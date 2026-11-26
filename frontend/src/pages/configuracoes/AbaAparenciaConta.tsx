@@ -6,6 +6,7 @@ import { cardCls } from './tipos';
 import { formatarDataOS, validarSenhaForte } from '../../utils/formatadores';
 import { baixarArquivo } from '../../utils/arquivo';
 import { baixarCsv } from '../../utils/csv';
+import { LogoPassando } from '../../components/LogoPassando';
 
 interface Props {
   config: ConfiguracoesLojaIsolada;
@@ -13,6 +14,8 @@ interface Props {
   onSelecionarTema: (tema: TemaVisual) => void;
   onLogoUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onRemoverLogo: () => void;
+  onEnviarLogoAnimacao: (arquivo: File) => Promise<void>;
+  onRemoverLogoAnimacao: () => void;
 }
 
 const TEMAS: { id: TemaVisual; nome: string; detalhe: string; fundo: string; barra: string; ponto: string; traco: string; corNome: string; corDetalhe: string }[] = [
@@ -22,7 +25,34 @@ const TEMAS: { id: TemaVisual; nome: string; detalhe: string; fundo: string; bar
 ];
 
 
-export const AbaAparenciaConta: React.FC<Props> = ({ config, emailConta, onSelecionarTema, onLogoUpload, onRemoverLogo }) => {
+export const AbaAparenciaConta: React.FC<Props> = ({
+  config,
+  emailConta,
+  onSelecionarTema,
+  onLogoUpload,
+  onRemoverLogo,
+  onEnviarLogoAnimacao,
+  onRemoverLogoAnimacao,
+}) => {
+  const [enviandoAnimacao, setEnviandoAnimacao] = useState(false);
+
+  const enviarAnimacao = async (arquivo: File | undefined) => {
+    if (!arquivo) return;
+    setEnviandoAnimacao(true);
+    try {
+      await onEnviarLogoAnimacao(arquivo);
+    } finally {
+      setEnviandoAnimacao(false);
+    }
+  };
+
+  // Logotipo da loja já em PNG: dá para reaproveitar na animação sem enviar de novo
+  const logotipoEhPng = config.logoUrl.startsWith('data:image/png');
+  const usarLogotipoNaAnimacao = async () => {
+    const blob = await (await fetch(config.logoUrl)).blob();
+    await enviarAnimacao(new File([blob], 'logotipo.png', { type: 'image/png' }));
+  };
+
   const [senhaAtual, setSenhaAtual] = useState('');
   const [novaSenha, setNovaSenha] = useState('');
   const [confirmarSenha, setConfirmarSenha] = useState('');
@@ -120,6 +150,63 @@ export const AbaAparenciaConta: React.FC<Props> = ({ config, emailConta, onSelec
             <p className="text-[11px] text-zinc-400">PNG ou JPG, até 2 MB.</p>
           </div>
         </div>
+      </div>
+
+      <div className={cardCls}>
+        <div>
+          <h3 className="text-sm font-bold text-white">Animação do Painel</h3>
+          <p className="text-xs text-zinc-400 mt-0.5">
+            Quando há poucas ordens em andamento, a logo passa pelo card do Painel. Envie a logo da sua loja em PNG: o sistema
+            corta as sobras transparentes e ajusta o tamanho. Salva na hora.
+          </p>
+        </div>
+        <LogoPassando
+          previa={{ logo: config.logoAnimacaoUrl || '', nome: config.nomeLoja }}
+          className="h-44 rounded-xl bg-[#080c14] border border-zinc-800/80"
+        />
+        <div className="flex flex-wrap items-center gap-2">
+          <label
+            className={`px-4 py-2 bg-[#0c101a] hover:bg-zinc-800 border border-zinc-700/80 text-white rounded-xl text-xs font-semibold transition ${
+              enviandoAnimacao ? 'opacity-50 pointer-events-none' : 'cursor-pointer'
+            }`}
+          >
+            {enviandoAnimacao ? 'Preparando a logo…' : config.logoAnimacaoUrl ? 'Trocar logo (PNG)' : 'Enviar minha logo (PNG)'}
+            <input
+              type="file"
+              accept="image/png,.png"
+              disabled={enviandoAnimacao}
+              onChange={(e) => {
+                const arquivo = e.target.files?.[0];
+                e.target.value = '';
+                enviarAnimacao(arquivo);
+              }}
+              className="hidden"
+            />
+          </label>
+          {logotipoEhPng && !config.logoAnimacaoUrl && (
+            <button
+              type="button"
+              onClick={usarLogotipoNaAnimacao}
+              disabled={enviandoAnimacao}
+              className="px-4 py-2 bg-[#0c101a] hover:bg-zinc-800 border border-zinc-700/80 text-white rounded-xl text-xs font-semibold transition disabled:opacity-50"
+            >
+              Usar o logotipo da loja
+            </button>
+          )}
+          {config.logoAnimacaoUrl && (
+            <button
+              type="button"
+              onClick={onRemoverLogoAnimacao}
+              disabled={enviandoAnimacao}
+              className="px-3 py-2 bg-zinc-900/50 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 rounded-xl text-xs font-semibold transition disabled:opacity-50"
+            >
+              Voltar para a logo do BancadaOS
+            </button>
+          )}
+        </div>
+        <p className="text-[11px] text-zinc-400">
+          Só PNG, até 2 MB. Fundo transparente fica melhor. Se a logo for só um símbolo, o nome da loja aparece ao lado.
+        </p>
       </div>
 
       <div className={cardCls}>

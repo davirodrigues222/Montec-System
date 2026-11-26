@@ -49,6 +49,8 @@ export interface ConfiguracoesLojaIsolada {
   telefone: string;
   endereco: string;
   logoUrl: string;
+  /** Logo da animação do Painel (PNG em base64). Vazia = logo do BancadaOS. */
+  logoAnimacaoUrl?: string;
   temaVisual: TemaVisual;
   prazoGarantiaDias: number;
   prazoAbandonoDias: number;
@@ -371,6 +373,7 @@ export function obterConfigPadraoConta(user?: any): ConfiguracoesLojaIsolada {
     telefone: meta.whatsapp || '',
     endereco: '',
     logoUrl: '',
+    logoAnimacaoUrl: '',
     temaVisual: 'midnight',
     prazoGarantiaDias: 90,
     prazoAbandonoDias: 90,
@@ -487,7 +490,7 @@ export function sincronizarSessaoConfiguracoesLoja(user: any | null): Configurac
 /** Espelho da sessão (compatibilidade): sem o logotipo, que fica só no cofre da conta. */
 function gravarEspelhoSessao(cfg: Partial<ConfiguracoesLojaIsolada>) {
   try {
-    window.localStorage.setItem(CHAVE_ESPELHO_SESSAO, JSON.stringify({ ...cfg, logoUrl: '' }));
+    window.localStorage.setItem(CHAVE_ESPELHO_SESSAO, JSON.stringify({ ...cfg, logoUrl: '', logoAnimacaoUrl: '' }));
   } catch (e) {
     console.warn('Não foi possível atualizar o espelho das configurações:', e);
   }
@@ -734,7 +737,7 @@ export async function salvarConfiguracoesLoja(
   // 2. Dono: também no perfil da conta (compatibilidade com aparelhos ainda sem a tabela).
   // O user_metadata vai dentro do token JWT enviado em TODA requisição: a logo (base64)
   // nunca pode ir para lá, senão o cabeçalho estoura e o navegador falha com ERR_HTTP2_PROTOCOL_ERROR.
-  const { logoUrl: _logoLocal, ...configSemLogo } = configFinal;
+  const { logoUrl: _logoLocal, logoAnimacaoUrl: _logoAnimacao, ...configSemLogo } = configFinal;
   const { data: updateData, error: updateError } = await supabase.auth.updateUser({
     data: {
       nome_assistencia: configFinal.nomeLoja,
