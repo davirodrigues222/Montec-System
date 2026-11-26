@@ -567,8 +567,9 @@ export const Dashboard: React.FC<Props> = ({ onNavigate, onAbrirEstoque, session
             </div>
           ) : (
             <>
-            {/* Celular: cards compactos, sem rolagem lateral */}
-            <ul className="md:hidden divide-y divide-zinc-800/40 overflow-x-hidden flex-1">
+            {/* Lista compacta, sem rolagem lateral: celular, notebook e navegador com zoom. A tabela só
+                cabe no card (560 px) a partir de ~1536 px de largura, por causa da barra lateral. */}
+            <ul className={`2xl:hidden divide-y divide-zinc-800/40 overflow-x-hidden ${poucasOrdens ? 'lg:flex-none' : ''} flex-1`}>
               {ordensEmAndamento.map((os) => (
                 <li key={os.id_os} className="px-4 py-3 min-w-0">
                   <div className="flex items-center justify-between gap-2 min-w-0">
@@ -586,7 +587,7 @@ export const Dashboard: React.FC<Props> = ({ onNavigate, onAbrirEstoque, session
                 </li>
               ))}
             </ul>
-            <div className={`hidden md:block overflow-x-auto ${poucasOrdens ? 'lg:flex-none' : ''} flex-1`}>
+            <div className={`hidden 2xl:block overflow-x-auto ${poucasOrdens ? 'lg:flex-none' : ''} flex-1`}>
               <table className="w-full text-left text-xs min-w-[560px]">
                 <thead className="bg-[#090d15] text-[10px] text-zinc-400 uppercase tracking-wider border-b border-zinc-800/60">
                   <tr>
@@ -600,7 +601,7 @@ export const Dashboard: React.FC<Props> = ({ onNavigate, onAbrirEstoque, session
                 <tbody className="divide-y divide-zinc-800/40">
                   {ordensEmAndamento.map((os) => (
                     <tr key={os.id_os} className="hover:bg-zinc-800/20 transition">
-                      <td className="py-3.5 px-5 font-bold text-blue-400 font-mono">
+                      <td className="py-3.5 px-5 font-bold text-blue-400 font-mono whitespace-nowrap">
                         {os.numero_os}
                       </td>
                       <td className="py-3.5 px-5">
@@ -615,7 +616,7 @@ export const Dashboard: React.FC<Props> = ({ onNavigate, onAbrirEstoque, session
                           {os.servicoRealizado || os.defeitoRelatado || 'Manutenção geral'}
                         </p>
                       </td>
-                      <td className="py-3.5 px-5 text-zinc-400 font-medium">
+                      <td className="py-3.5 px-5 text-zinc-400 font-medium whitespace-nowrap">
                         {formatarDataEntrada(os.data_abertura)}
                       </td>
                       <td className="py-3.5 px-5 text-center">
