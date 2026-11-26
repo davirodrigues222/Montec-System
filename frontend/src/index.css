@@ -40,15 +40,19 @@ body {
   transition: background-color 0.2s ease, color 0.2s ease;
 }
 
-button,
-input,
-select,
-textarea {
-  font: inherit;
-}
+/* Na camada base: fora dela, o "font: inherit" vencia as classes do Tailwind (text-xs, font-bold...)
+   e todo botão e campo ficava com a fonte do elemento pai. */
+@layer base {
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+  }
 
-button {
-  cursor: pointer;
+  button {
+    cursor: pointer;
+  }
 }
 
 /* Foco visível para quem navega pelo teclado (Tab). Muitos botões usam outline-none; o anel só
