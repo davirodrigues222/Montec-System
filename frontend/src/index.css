@@ -69,6 +69,51 @@ input[type="radio"]:focus-visible {
   outline-offset: 2px;
 }
 
+/* Painel: logo que entra rápido pela esquerda, para no centro e sai pela direita (components/LogoPassando.tsx).
+   As distâncias usam a largura da área (cqw), para a logo sempre sair por completo. */
+.logo-passando-area {
+  container-type: inline-size;
+}
+
+@keyframes logo-passando {
+  0% { transform: translateX(-75cqw) skewX(-14deg); opacity: 0; }
+  6% { opacity: 1; }
+  13% { transform: translateX(14px) skewX(8deg); }
+  19% { transform: translateX(0) skewX(0); }
+  74% { transform: translateX(0) skewX(0); opacity: 1; }
+  79% { transform: translateX(-14px) skewX(6deg); }
+  88% { transform: translateX(75cqw) skewX(-14deg); opacity: 0; }
+  100% { transform: translateX(75cqw); opacity: 0; }
+}
+
+/* Rastro azul atrás da logo só enquanto ela corre */
+@keyframes logo-passando-rastro {
+  0%, 2% { opacity: 0; }
+  6%, 11% { opacity: 1; }
+  17%, 79% { opacity: 0; }
+  83%, 86% { opacity: 1; }
+  90%, 100% { opacity: 0; }
+}
+
+.logo-passando {
+  position: relative;
+  animation: logo-passando 7s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+}
+
+.logo-passando-rastro {
+  animation: logo-passando-rastro 7s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .logo-passando,
+  .logo-passando-rastro {
+    animation: none;
+  }
+  .logo-passando-rastro {
+    opacity: 0;
+  }
+}
+
 /* Detalhes da OS: brilho que corre na linha da etapa atual, indo para a próxima etapa */
 @keyframes etapa-carregando {
   from {

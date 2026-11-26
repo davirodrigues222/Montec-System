@@ -10,6 +10,7 @@ import {
 } from '../services/api';
 import { AvisoErroCarregamento } from '../components/AvisoErroCarregamento';
 import { FundoBancada } from '../components/FundoBancada';
+import { LogoPassando } from '../components/LogoPassando';
 import type { OrdemServico, StatusOS } from '../types';
 import type { AbaSistema } from '../services/acesso';
 import { formatarValor } from '../utils/formatadores';
@@ -300,6 +301,8 @@ export const Dashboard: React.FC<Props> = ({ onNavigate, onAbrirEstoque, session
       .filter((os) => os.status_os !== 'ENTREGUE' && os.status_os !== 'CANCELADO' && os.status_os !== 'RASCUNHO')
       .slice(0, 6);
   }, [listaOrdens]);
+  // 1 ou 2 ordens: o espaço vazio do card ganha a logo animada
+  const poucasOrdens = ordensEmAndamento.length > 0 && ordensEmAndamento.length <= 2;
 
   if (loading) {
     return (
@@ -583,7 +586,7 @@ export const Dashboard: React.FC<Props> = ({ onNavigate, onAbrirEstoque, session
                 </li>
               ))}
             </ul>
-            <div className="hidden md:block overflow-x-auto flex-1">
+            <div className={`hidden md:block overflow-x-auto ${poucasOrdens ? 'lg:flex-none' : ''} flex-1`}>
               <table className="w-full text-left text-xs min-w-[560px]">
                 <thead className="bg-[#090d15] text-[10px] text-zinc-400 uppercase tracking-wider border-b border-zinc-800/60">
                   <tr>
@@ -623,6 +626,8 @@ export const Dashboard: React.FC<Props> = ({ onNavigate, onAbrirEstoque, session
                 </tbody>
               </table>
             </div>
+            {/* Com 1 ou 2 ordens sobra espaço no card (ele acompanha a altura da coluna da direita) */}
+            {poucasOrdens && <LogoPassando className="hidden lg:flex flex-1 min-h-[200px] border-t border-zinc-800/40" />}
             </>
           )}
         </div>
