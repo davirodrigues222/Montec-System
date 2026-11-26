@@ -223,6 +223,8 @@ export const DetalhesOS: React.FC<Props> = ({
   const [alterando, setAlterando] = useState(false);
   const [mostrarSenha, setMostrarSenha] = useState(false);
   const [qtdFotos, setQtdFotos] = useState<number | null>(null);
+  const [capaFoto, setCapaFoto] = useState('');
+  const [capaFalhou, setCapaFalhou] = useState(false);
   const [aviso, setAviso] = useState('');
   const [editandoPrevisao, setEditandoPrevisao] = useState(false);
   const [previsao, setPrevisao] = useState('');
@@ -232,8 +234,15 @@ export const DetalhesOS: React.FC<Props> = ({
   useEffect(() => {
     let ativo = true;
     setQtdFotos(null);
+    setCapaFoto('');
+    setCapaFalhou(false);
+    // A primeira foto vira a capa do card "Checklist de entrada"
     listarFotosOS(os.id_os)
-      .then((f) => ativo && setQtdFotos(f.length))
+      .then((f) => {
+        if (!ativo) return;
+        setQtdFotos(f.length);
+        setCapaFoto(f[0]?.url || '');
+      })
       .catch(() => ativo && setQtdFotos(null));
     return () => {
       ativo = false;
@@ -723,8 +732,25 @@ export const DetalhesOS: React.FC<Props> = ({
   const cardChecklist = (
     <Card className="!p-4">
       <button type="button" onClick={() => setAba('checklist')} className="w-full flex items-center gap-4 text-left group">
-        <span className="w-14 h-14 lg:w-16 lg:h-16 shrink-0 inline-flex items-center justify-center rounded-xl bg-zinc-800/50 border border-zinc-800 text-zinc-400">
-          <Camera className="w-5 h-5" />
+        <span className="relative w-14 h-14 lg:w-16 lg:h-16 shrink-0 inline-flex items-center justify-center overflow-hidden rounded-xl bg-zinc-800/50 border border-zinc-800 text-zinc-400">
+          {capaFoto && !capaFalhou ? (
+            <>
+              <img
+                src={capaFoto}
+                alt="Primeira foto do aparelho"
+                loading="lazy"
+                onError={() => setCapaFalhou(true)}
+                className="w-full h-full object-cover"
+              />
+              {qtdFotos && qtdFotos > 1 ? (
+                <span className="absolute bottom-1 right-1 px-1.5 rounded-md bg-black/70 text-[10px] font-bold leading-4" data-theme-preview="true" style={{ color: '#fff' }}>
+                  +{qtdFotos - 1}
+                </span>
+              ) : null}
+            </>
+          ) : (
+            <Camera className="w-5 h-5" />
+          )}
         </span>
         <div className="min-w-0 flex-1">
           <p className="text-sm font-bold text-white">Checklist de entrada</p>
