@@ -69,6 +69,28 @@ input[type="radio"]:focus-visible {
   outline-offset: 2px;
 }
 
+/* Detalhes da OS: brilho que corre na linha da etapa atual, indo para a próxima etapa */
+@keyframes etapa-carregando {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(200%);
+  }
+}
+
+.etapa-carregando {
+  animation: etapa-carregando 1.8s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .etapa-carregando {
+    animation: none;
+    width: 100%;
+    opacity: 0.5;
+  }
+}
+
 /* iPhone e iPad: campo com fonte menor que 16px faz o Safari dar zoom na tela a cada toque.
    Só no iOS (-webkit-touch-callout); no computador e no Android o tamanho continua o do layout. */
 @supports (-webkit-touch-callout: none) {

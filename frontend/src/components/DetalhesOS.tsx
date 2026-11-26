@@ -183,6 +183,13 @@ const Avatar: React.FC<{ nome?: string; pequeno?: boolean }> = ({ nome, pequeno 
   );
 };
 
+/** Trecho da etapa atual: um brilho azul corre pela linha, como se carregasse para a próxima etapa. */
+const LinhaCarregando: React.FC<{ className: string }> = ({ className }) => (
+  <span className={`relative overflow-hidden bg-zinc-800 ${className}`} aria-hidden="true">
+    <span className="etapa-carregando absolute inset-y-0 left-0 w-1/2 rounded-full bg-linear-to-r from-transparent via-blue-400 to-blue-500" />
+  </span>
+);
+
 const dataBR = (v?: string | null) => formatarDataOS(v) || '';
 
 /** Data da garantia: conclusão + prazo em dias. */
@@ -459,7 +466,12 @@ export const DetalhesOS: React.FC<Props> = ({
                 >
                   {feita ? <Check className="w-3.5 h-3.5" strokeWidth={3} /> : atual ? <span className="w-2 h-2 rounded-full bg-blue-400" /> : null}
                 </span>
-                {i < ETAPAS.length - 1 && <span className={`h-0.5 flex-1 mx-2 rounded ${i < etapa ? 'bg-blue-500' : 'bg-zinc-800'}`} />}
+                {i < ETAPAS.length - 1 &&
+                  (atual ? (
+                    <LinhaCarregando className="h-0.5 flex-1 mx-2 rounded" />
+                  ) : (
+                    <span className={`h-0.5 flex-1 mx-2 rounded ${feita ? 'bg-blue-500' : 'bg-zinc-800'}`} />
+                  ))}
               </div>
               <p className={`mt-2 text-xs font-bold ${atual ? 'text-blue-400' : feita ? 'text-zinc-100' : 'text-zinc-400'}`}>{atual && i === 2 ? ROTULO_STATUS[status] : nome}</p>
               <p className="text-[11px] text-zinc-500 truncate pr-2">{detalhe}</p>
@@ -489,7 +501,11 @@ export const DetalhesOS: React.FC<Props> = ({
           <div>
             <div className="grid grid-cols-5 gap-1.5">
               {ETAPAS.map((nome, i) => (
-                <span key={nome} className={`h-1 rounded-full ${i < etapa ? 'bg-blue-500' : i === etapa ? 'bg-blue-400' : 'bg-zinc-800'}`} />
+                i === etapa ? (
+                  <LinhaCarregando key={nome} className="h-1 rounded-full" />
+                ) : (
+                  <span key={nome} className={`h-1 rounded-full ${i < etapa ? 'bg-blue-500' : 'bg-zinc-800'}`} />
+                )
               ))}
             </div>
             <div className="mt-1.5 flex justify-between text-[11px] text-zinc-500">
