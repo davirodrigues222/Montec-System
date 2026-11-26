@@ -50,10 +50,11 @@ export const BotaoCopiarLinkAcompanhamento: React.FC<{ idOs: string; className: 
   );
 };
 
+
 /**
- * Link de acompanhamento da OS (Ordens de serviço › Detalhes): o cliente vê o andamento e aprova o
- * orçamento sem login. O link também vai nas mensagens de WhatsApp que usam {link_acompanhamento}.
- * Use com key={os.id_os}: ao trocar de OS o estado (link mostrado) recomeça.
+ * Card "Acompanhamento online" dos detalhes da OS: o cliente vê o andamento e aprova o orçamento sem
+ * login. O link também vai nas mensagens de WhatsApp que usam {link_acompanhamento}.
+ * Use com key={os.id_os}: ao trocar de OS o estado (link gerado) recomeça.
  */
 export const LinkAcompanhamentoOS: React.FC<{ os: OrdemServico }> = ({ os }) => {
   const [link, setLink] = useState('');
@@ -63,13 +64,19 @@ export const LinkAcompanhamentoOS: React.FC<{ os: OrdemServico }> = ({ os }) => 
 
   if (os.status_os === 'RASCUNHO') return null;
 
-  const executar = async (acao: () => Promise<string>, mensagem = '') => {
+  const obterLink = async () => {
+    if (link) return link;
+    const gerado = await gerarLinkAcompanhamento(os.id_os);
+    setLink(gerado);
+    return gerado;
+  };
+
+  const executar = async (acao: () => Promise<void>) => {
     setCarregando(true);
     setErro('');
     setAviso('');
     try {
-      setLink(await acao());
-      setAviso(mensagem);
+      await acao();
     } catch (e: any) {
       setErro(e.message);
     } finally {
@@ -77,65 +84,76 @@ export const LinkAcompanhamentoOS: React.FC<{ os: OrdemServico }> = ({ os }) => 
     }
   };
 
-  const gerar = () => executar(() => gerarLinkAcompanhamento(os.id_os));
+  const copiar = () =>
+    executar(async () => {
+      const atual = await obterLink();
+      try {
+        await navigator.clipboard.writeText(atual);
+        setAviso('Link copiado. Cole na conversa com o cliente.');
+      } catch {
+        setAviso('Não foi possível copiar: selecione o link abaixo e copie.');
+      }
+    });
+
+  // A aba abre no clique (o navegador bloqueia janelas abertas depois de uma espera) e recebe o link depois
+  const abrir = () => {
+    const janela = window.open('', '_blank');
+    executar(async () => {
+      try {
+        const atual = await obterLink();
+        if (janela) janela.location.href = atual;
+        else window.open(atual, '_blank', 'noopener');
+      } catch (e) {
+        janela?.close();
+        throw e;
+      }
+    });
+  };
 
   const gerarNovo = () => {
     if (!window.confirm('Gerar um link novo? O link enviado antes para o cliente deixa de funcionar.')) return;
     executar(async () => {
       await revogarLinkAcompanhamento(os.id_os);
-      return gerarLinkAcompanhamento(os.id_os);
-    }, 'Link novo gerado. O anterior não funciona mais.');
-  };
-
-  const copiar = async () => {
-    try {
-      await navigator.clipboard.writeText(link);
-      setAviso('Link copiado.');
-    } catch {
-      setAviso('Não foi possível copiar: selecione o link e copie manualmente.');
-    }
+      setLink(await gerarLinkAcompanhamento(os.id_os));
+      setAviso('Link novo gerado. O anterior não funciona mais.');
+    });
   };
 
   const botaoCls =
-    'inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600/15 hover:bg-blue-600/25 disabled:opacity-40 text-blue-300 border border-blue-500/30 rounded-lg text-[11px] font-semibold transition';
+    'inline-flex items-center justify-center gap-1.5 h-9 px-3 bg-zinc-900/50 hover:bg-zinc-800 disabled:opacity-40 text-zinc-100 border border-zinc-800 rounded-lg text-xs font-semibold transition';
 
   return (
-    <div className="p-3 bg-blue-500/5 border border-blue-500/20 rounded-xl space-y-2">
+    <div className="p-5 bg-[#0c101a] border border-zinc-800/80 rounded-2xl space-y-3">
       <div>
-        <span className="text-blue-400 block uppercase text-[10px] font-bold">Acompanhamento online</span>
-        <span className="text-[11px] text-zinc-500">
-          O cliente acompanha o andamento e aprova o orçamento por um link, sem precisar de login.
-        </span>
+        <h4 className="text-sm font-bold text-white">Acompanhamento online</h4>
+        <p className="text-xs text-zinc-400 mt-1">O cliente vê o andamento e aprova o orçamento sem login.</p>
       </div>
-
-      {link ? (
-        <>
-          <input
-            readOnly
-            value={link}
-            onFocus={(e) => e.target.select()}
-            className="w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-[11px] text-zinc-200 outline-none"
-          />
-          <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={copiar} className={botaoCls}>
-              <Copy className="w-3.5 h-3.5" /> Copiar
-            </button>
-            <a href={link} target="_blank" rel="noopener noreferrer" className={botaoCls}>
-              <ExternalLink className="w-3.5 h-3.5" /> Ver como o cliente vê
-            </a>
-            <button type="button" onClick={gerarNovo} disabled={carregando} className={botaoCls}>
-              <RefreshCw className="w-3.5 h-3.5" /> Gerar link novo
-            </button>
-          </div>
-        </>
-      ) : (
-        <button type="button" onClick={gerar} disabled={carregando} className={botaoCls}>
-          <Link2 className="w-3.5 h-3.5" /> {carregando ? 'Gerando…' : 'Mostrar link do cliente'}
+      <div className="grid grid-cols-2 gap-2">
+        <button type="button" onClick={copiar} disabled={carregando} className={botaoCls}>
+          <Copy className="w-3.5 h-3.5" /> Copiar link
         </button>
+        <button type="button" onClick={abrir} disabled={carregando} className={botaoCls}>
+          <ExternalLink className="w-3.5 h-3.5" /> Abrir
+        </button>
+      </div>
+      {link && (
+        <input
+          readOnly
+          value={link}
+          onFocus={(e) => e.target.select()}
+          className="w-full px-3 py-2 bg-[#080c14] border border-zinc-800 rounded-lg text-[11px] text-zinc-300 outline-none"
+        />
       )}
-
       {aviso && <p className="text-[11px] text-emerald-400">{aviso}</p>}
       {erro && <p className="text-[11px] text-rose-400">{erro}</p>}
+      <button
+        type="button"
+        onClick={gerarNovo}
+        disabled={carregando}
+        className="inline-flex items-center gap-1 text-[11px] text-zinc-500 hover:text-zinc-300 disabled:opacity-40 transition"
+      >
+        <RefreshCw className="w-3 h-3" /> Gerar link novo (o anterior para de funcionar)
+      </button>
     </div>
   );
 };

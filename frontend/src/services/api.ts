@@ -2184,6 +2184,8 @@ export async function editarOrdemServico(id_os: string, payload: any): Promise<v
   if (payload.servicoRealizado !== undefined) extras.__servicoRealizado = payload.servicoRealizado || '';
   if (payload.pecasUtilizadas !== undefined) extras.__pecasUtilizadas = payload.pecasUtilizadas || '';
   if (payload.aparelho?.senhaDesbloqueio !== undefined) extras.__senhaDesbloqueio = payload.aparelho.senhaDesbloqueio || '';
+  // Previsão de entrega (AAAA-MM-DD ou vazio para apagar), definida nos detalhes da OS
+  if (payload.dataPrevistaEntrega !== undefined) extras.__dataPrevistaEntrega = payload.dataPrevistaEntrega || null;
   // Entregue ou cancelada: a senha do aparelho deixa de ser necessária e é apagada (LGPD, arts. 6º, III, e 16)
   if (status && STATUS_APAGAM_SENHA.includes(status)) extras.__senhaDesbloqueio = '';
   const conclusaoInformada = payload.dataConclusao ?? payload.data_conclusao;

@@ -23,10 +23,10 @@ const formaBaseDaOS = (os: OrdemServico): string => {
 
 /** Linhas exibidas por vez na listagem (botão "Mostrar mais" carrega o restante). */
 const LINHAS_POR_PAGINA = 50;
-import { MODELOS_WHATSAPP, avaliacaoSolicitadaEm, enviarMensagemWhatsapp, podeEnviarMensagem } from "../utils/whatsapp";
+import { avaliacaoSolicitadaEm } from "../utils/whatsapp";
 import { PedidoAvaliacaoOS, TagAvaliacaoSolicitada } from "../components/PedidoAvaliacaoOS";
-import { LinkAcompanhamentoOS } from "../components/LinkAcompanhamentoOS";
-import { EditorFotosOS, GaleriaFotosOS } from "../components/FotosOS";
+import { type AbaEdicaoOS, DetalhesOS } from "../components/DetalhesOS";
+import { EditorFotosOS } from "../components/FotosOS";
 import { type AlteracoesFotos, SEM_ALTERACOES_FOTOS, aplicarAlteracoesFotos } from "../services/fotosOS";
 import { StatusBadge } from "../components/StatusBadge";
 import { PecasEstoqueOS } from "../components/PecasEstoqueOS";
@@ -75,9 +75,9 @@ import {
   taxaDaForma,
 } from "../services/formasPagamentoOS";
 import type { OrdemServico, StatusOS } from "../types";
-import { ITENS_CHECKLIST, OPCOES_CHECKLIST, itensVisiveisChecklist, rotuloItemChecklist } from "../utils/checklist";
+import { ITENS_CHECKLIST, OPCOES_CHECKLIST } from "../utils/checklist";
 import { formatarDataOS, formatarValor } from "../utils/formatadores";
-import { Pencil, Printer, RotateCcw, Save, Smartphone, Star, TriangleAlert, User } from 'lucide-react';
+import { Save, Star, TriangleAlert } from 'lucide-react';
 
 // ================= FILTROS DA LISTAGEM =================
 type FiltroData = "TODAS" | "DIA" | "MES" | "ANO";
@@ -171,9 +171,6 @@ export const HistoricoServicos: React.FC = () => {
   const [excluindo, setExcluindo] = useState(false);
   const [salvandoEdicao, setSalvandoEdicao] = useState(false);
   const salvandoEdicaoRef = useRef(false); // trava imediata contra duplo clique
-  const [abaModal, setAbaModal] = useState<
-    "detalhes" | "checklist" | "historico"
-  >("detalhes");
   const [abaEdicao, setAbaEdicao] = useState<
     "geral" | "financeiro" | "checklist"
   >("geral");
@@ -329,7 +326,7 @@ export const HistoricoServicos: React.FC = () => {
     setTimeout(imprimirDocumento, 300);
   };
 
-  const abrirEdicao = (os: OrdemServico) => {
+  const abrirEdicao = (os: OrdemServico, aba: AbaEdicaoOS = "geral") => {
     setOsParaEditar(os);
     setEditFotos(SEM_ALTERACOES_FOTOS);
     setEditNome(os.cliente?.nome || "");
@@ -407,7 +404,71 @@ export const HistoricoServicos: React.FC = () => {
     setEditDataConclusao(diaLocalDaData(os.data_conclusao));
 
     setEditChecklist(os.checklistEntrada || {});
-    setAbaEdicao("geral");
+    setAbaEdicao(aba);
+  };
+
+  /** Recarrega a lista e atualiza os detalhes abertos com a versão gravada da OS. */
+  const recarregarOS = async (idOs: string): Promise<OrdemServico | undefined> => {
+    const lista = await carregarHistorico(true);
+    const atualizada = lista.find((o) => o.id_os === idOs);
+    setOsSelecionada((atual) => (atual && atual.id_os === idOs ? atualizada ?? atual : atual));
+    return atualizada;
+  };
+
+  /**
+   * Troca rápida de status nos detalhes da OS (seletor e botão da próxima etapa). Segue as mesmas
+   * regras do Editar OS: aprovação do orçamento (CDC, art. 39, VI) e pedido de avaliação na entrega.
+   */
+  const alterarStatusOS = async (os: OrdemServico, novo: StatusOS) => {
+    if (novo === os.status_os) return;
+    const legal = lerDadosLegaisOS(os.checklistEntrada || {});
+    let checklistEntrada: Record<string, any> | undefined;
+    if (STATUS_EXIGEM_APROVACAO.includes(novo) && !legal.orcamentoAprovadoEm) {
+      const aprovou = window.confirm(
+        "O Código de Defesa do Consumidor (art. 39, VI) exige a aprovação do cliente antes de executar o serviço.\n\n" +
+          "O cliente aprovou o orçamento desta OS? Ao confirmar, a aprovação fica registrada com a data de hoje.",
+      );
+      if (!aprovou) return;
+      checklistEntrada = {
+        ...(os.checklistEntrada || {}),
+        ...dadosLegaisParaChecklist({
+          ...legal,
+          orcamentoAprovadoEm: new Date().toISOString(),
+          orcamentoAprovacaoForma: "Confirmada pela loja",
+        }),
+      };
+    }
+    if (novo === "ENTREGUE" && !window.confirm("Marcar como entregue? A garantia começa a contar hoje e a senha do aparelho é apagada.")) return;
+    if (novo === "CANCELADO" && !window.confirm(`Cancelar a OS ${os.numero_os}? A senha do aparelho é apagada.`)) return;
+
+    try {
+      await editarOrdemServico(os.id_os, {
+        statusOs: novo,
+        ...(checklistEntrada ? { checklistEntrada } : {}),
+        modificacoesLog: [`Status alterado para ${novo.replace(/_/g, " ")}`],
+      });
+      const atualizada = await recarregarOS(os.id_os);
+      if (
+        novo === "ENTREGUE" &&
+        atualizada &&
+        obterConfiguracoesLojaSincrono().linkAvaliacaoGoogle &&
+        !avaliacaoSolicitadaEm(atualizada)
+      ) {
+        setOsParaAvaliar(atualizada);
+      }
+    } catch (err: any) {
+      alert(err.message || "Não foi possível alterar o status da OS.");
+    }
+  };
+
+  const definirPrevisaoOS = async (os: OrdemServico, data: string) => {
+    try {
+      await editarOrdemServico(os.id_os, { dataPrevistaEntrega: data || null });
+      await recarregarOS(os.id_os);
+    } catch (err: any) {
+      alert(err.message || "Não foi possível salvar a previsão de entrega.");
+      throw err;
+    }
   };
 
   const handleSalvarEdicao = async () => {
@@ -635,10 +696,6 @@ export const HistoricoServicos: React.FC = () => {
     }
   };
 
-  // Último retorno em garantia da OS aberta nos detalhes (a tela Garantias grava dataRetorno e defeitoConstatadoGarantia)
-  const ultimoRetorno = osSelecionada?.garantia?.listaRetornos?.at(-1);
-  const dataUltimoRetorno = ultimoRetorno?.dataRetorno || ultimoRetorno?.dataAcionamento;
-
   // Anos com ordens cadastradas (para o filtro por ano), do mais recente para o mais antigo
   const anosDisponiveis = useMemo(() => {
     const anos = new Set(ordens.map((os) => diaDaOS(os).substring(0, 4)).filter(Boolean));
@@ -809,10 +866,7 @@ export const HistoricoServicos: React.FC = () => {
           <ul className="md:hidden divide-y divide-zinc-800/50 overflow-x-hidden">
             {ordensFiltradas.slice(0, linhasVisiveis).map((os) => {
               const valorCobrado = Number(os.orcamentoCalculado?.valorTotalOrcamento || 0);
-              const abrirDetalhes = () => {
-                setOsSelecionada(os);
-                setAbaModal("detalhes");
-              };
+              const abrirDetalhes = () => setOsSelecionada(os);
               return (
                 <li key={os.id_os} onClick={abrirDetalhes} className="px-4 py-3 cursor-pointer active:bg-zinc-800/30 transition min-w-0">
                   <div className="flex items-center gap-2 min-w-0">
@@ -887,10 +941,7 @@ export const HistoricoServicos: React.FC = () => {
                 {ordensFiltradas.slice(0, linhasVisiveis).map((os) => {
                   const valorCobrado = Number(os.orcamentoCalculado?.valorTotalOrcamento || 0);
                   const valorLiquido = Number(os.valorLiquido ?? valorCobrado);
-                  const abrirDetalhes = () => {
-                    setOsSelecionada(os);
-                    setAbaModal("detalhes");
-                  };
+                  const abrirDetalhes = () => setOsSelecionada(os);
                   return (
                     <tr key={os.id_os} onClick={abrirDetalhes} className="group cursor-pointer hover:bg-zinc-800/25 transition">
                       <td className="py-3.5 px-5">
@@ -977,408 +1028,25 @@ export const HistoricoServicos: React.FC = () => {
         </div>
       )}
 
-      {/* MODAL DETALHES COMPLETO DA OS */}
+      {/* DETALHES DA OS */}
       {osSelecionada && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 print:hidden">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-3xl overflow-hidden shadow-2xl flex flex-col max-h-[92vh]">
-            <div className="relative p-4 pr-14 bg-zinc-950 border-b border-zinc-800 flex flex-wrap items-center justify-between gap-3">
-              {/* Fechar: fixo no canto superior direito do modal */}
-              <button
-                onClick={() => {
-                  setOsSelecionada(null);
-                  setOsParaImprimir(null);
-                }}
-                className="absolute top-3 right-3 w-8 h-8 flex items-center justify-center rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 text-base font-bold transition"
-                title="Fechar"
-                aria-label="Fechar"
-              >
-                ✕
-              </button>
-
-              <div>
-                <h3 className="text-sm font-bold text-white flex items-center space-x-2">
-                  <span>Ordem de Serviço</span>
-                  <span className="font-mono text-blue-400">
-                    #{osSelecionada.numero_os}
-                  </span>
-                  <StatusBadge status={osSelecionada.status_os} />
-                </h3>
-                <p className="text-[11px] text-zinc-500 mt-0.5">
-                  {osSelecionada.cliente?.nome} —{" "}
-                  {osSelecionada.aparelho?.modelo}
-                </p>
-              </div>
-
-              <div className="flex items-center space-x-2">
-                <button
-                  onClick={() => abrirEdicao(osSelecionada)}
-                  className="px-3 py-1.5 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded-lg text-xs font-semibold transition flex items-center space-x-1"
-                >
-                  <Pencil className="w-3.5 h-3.5" />
-                  <span>Editar OS</span>
-                </button>
-
-                {osSelecionada.possuiGarantia !== false &&
-                  Number(osSelecionada.possuiGarantia) !== 0 && (
-                    <button
-                      onClick={() => handleImprimir(osSelecionada)}
-                      className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg text-xs transition flex items-center space-x-1 shadow-md"
-                    >
-                      <Printer className="w-3.5 h-3.5" />
-                      <span>Imprimir / Salvar PDF</span>
-                    </button>
-                  )}
-              </div>
-            </div>
-
-            <div className="flex border-b border-zinc-800 bg-zinc-950/50 text-xs">
-              <button
-                onClick={() => setAbaModal("detalhes")}
-                className={classeAba(abaModal === "detalhes")}
-              >
-                Informações & Orçamento
-              </button>
-              <button
-                onClick={() => setAbaModal("checklist")}
-                className={classeAba(abaModal === "checklist")}
-              >
-                Checklist e fotos
-              </button>
-              <button
-                onClick={() => setAbaModal("historico")}
-                className={classeAba(abaModal === "historico")}
-              >
-                Linha do Tempo & Logs
-              </button>
-            </div>
-
-            <div className="p-6 overflow-y-auto space-y-4 flex-1">
-              {abaModal === "detalhes" && (
-                <div className="space-y-4 text-xs">
-                  {/* Pós-venda: pedido de avaliação no Google (só na OS entregue) */}
-                  <PedidoAvaliacaoOS os={osSelecionada} onRegistrado={marcarAvaliacaoSolicitada} />
-
-                  {/* Mensagens automáticas: abre o WhatsApp do cliente com o texto pronto */}
-                  <div className="p-3 bg-emerald-500/5 border border-emerald-500/20 rounded-xl space-y-2">
-                    <div>
-                      <span className="text-emerald-400 block uppercase text-[10px] font-bold">
-                        Avisar o cliente pelo WhatsApp
-                      </span>
-                      <span className="text-[11px] text-zinc-500">
-                        {!podeEnviarMensagem(osSelecionada)
-                          ? "OS entregue: as mensagens só podem ser enviadas antes da entrega."
-                          : osSelecionada.cliente?.whatsapp
-                          ? `Abre a conversa com ${osSelecionada.cliente.whatsapp} com o texto pronto. Você revisa e toca em Enviar.`
-                          : "Cadastre o WhatsApp do cliente (Editar OS) para usar as mensagens."}
-                      </span>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {MODELOS_WHATSAPP.map((m) => (
-                        <button
-                          key={m.chave}
-                          type="button"
-                          onClick={() => enviarMensagemWhatsapp(osSelecionada, m.chave)}
-                          disabled={!osSelecionada.cliente?.whatsapp || !podeEnviarMensagem(osSelecionada)}
-                          title={
-                            !podeEnviarMensagem(osSelecionada)
-                              ? "OS já entregue"
-                              : osSelecionada.cliente?.whatsapp
-                              ? undefined
-                              : "Cliente sem WhatsApp cadastrado"
-                          }
-                          className="px-3 py-1.5 bg-emerald-600/15 hover:bg-emerald-600/25 disabled:opacity-40 disabled:cursor-not-allowed text-emerald-300 border border-emerald-500/30 rounded-lg text-[11px] font-semibold transition"
-                        >
-                          {m.rotulo}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <LinkAcompanhamentoOS key={osSelecionada.id_os} os={osSelecionada} />
-
-                  {/* Badge de Alerta de Garantia / Retorno nos Detalhes da OS */}
-                  {osSelecionada.garantia && (
-                    <div className="p-3.5 bg-rose-500/10 border border-rose-500/30 rounded-xl text-rose-400 space-y-1">
-                      <div className="flex items-center space-x-2 font-bold text-xs uppercase">
-                        <RotateCcw className="w-4 h-4 shrink-0" />
-                        <span>Serviço com Retorno em Garantia Acionado</span>
-                      </div>
-                      <p className="text-[11px] text-zinc-300">
-                        <strong>Data do Acionamento:</strong>{" "}
-                        {dataUltimoRetorno
-                          ? new Date(dataUltimoRetorno).toLocaleDateString("pt-BR")
-                          : "Não informada"}
-                      </p>
-                      <p className="text-[11px] text-zinc-300">
-                        <strong>Motivo / Ocorrência:</strong>{" "}
-                        {ultimoRetorno?.defeitoConstatadoGarantia ||
-                          ultimoRetorno?.motivoRetorno ||
-                          "Não especificado"}
-                      </p>
-                      {Number(
-                        osSelecionada.garantia.custoPecaGarantia || 0,
-                      ) > 0 && (
-                        <p className="text-[11px] text-rose-300 font-semibold">
-                          <strong>Custo Extra da Peça (Garantia):</strong> R${" "}
-                          {Number(
-                            osSelecionada.garantia.custoPecaGarantia,
-                          ).toFixed(2)}{" "}
-                          (Abatido do Lucro Líquido)
-                        </p>
-                      )}
-                    </div>
-                  )}
-
-                  <div className="grid grid-cols-3 gap-3 p-3 bg-zinc-950 border border-zinc-800 rounded-xl">
-                    <div>
-                      <span className="text-zinc-500 block uppercase text-[10px] font-bold">
-                        Data de Abertura
-                      </span>
-                      <p className="font-semibold text-zinc-200">
-                        {osSelecionada.data_abertura
-                          ? new Date(
-                              osSelecionada.data_abertura,
-                            ).toLocaleDateString("pt-BR")
-                          : "-"}
-                      </p>
-                    </div>
-                    <div>
-                      <span className="text-zinc-500 block uppercase text-[10px] font-bold">
-                        Forma de Pagamento
-                      </span>
-                      <p className="font-semibold text-blue-400">
-                        {osSelecionada.formaPagamento || "PIX"}{" "}
-                        {osSelecionada.formaPagamento ===
-                        "Cartão de crédito"
-                          ? `(${osSelecionada.parcelas || 1}x)`
-                          : ""}
-                      </p>
-                      {/* Maquininha(s) usada(s) no cartão, registradas nos pagamentos da OS */}
-                      {(osSelecionada.pagamentos || []).some((p) => p.maquininha) && (
-                        <p className="text-[11px] text-zinc-400 mt-0.5">
-                          Maquininha:{" "}
-                          {[...new Set((osSelecionada.pagamentos || []).map((p) => p.maquininha).filter(Boolean))].join(", ")}
-                        </p>
-                      )}
-                    </div>
-                    <div>
-                      <span className="text-zinc-500 block uppercase text-[10px] font-bold">
-                        Data de Conclusão
-                      </span>
-                      <p className="font-semibold text-zinc-200">
-                        {osSelecionada.data_conclusao
-                          ? new Date(
-                              osSelecionada.data_conclusao,
-                            ).toLocaleDateString("pt-BR")
-                          : "Em andamento"}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-zinc-950 border border-zinc-800 rounded-xl">
-                    <div className="space-y-1">
-                      <span className="text-blue-400 block uppercase text-[10px] font-bold">
-                        <User className="inline w-3.5 h-3.5 mr-1 -mt-0.5" />
-                        Informações do Cliente
-                      </span>
-                      <p className="font-bold text-white text-sm">
-                        {osSelecionada.cliente?.nome}
-                      </p>
-                      <p className="text-zinc-400">
-                        <strong>WhatsApp:</strong>{" "}
-                        {osSelecionada.cliente?.whatsapp || "Não informado"}
-                      </p>
-                      <p className="text-zinc-400">
-                        <strong>CPF/CNPJ:</strong>{" "}
-                        {osSelecionada.cliente?.cpfCnpj || "Não informado"}
-                      </p>
-                    </div>
-
-                    <div className="space-y-1 border-t md:border-t-0 md:border-l border-zinc-800 pt-3 md:pt-0 md:pl-4">
-                      <span className="text-blue-400 block uppercase text-[10px] font-bold">
-                        <Smartphone className="inline w-3.5 h-3.5 mr-1 -mt-0.5" />
-                        Informações do Aparelho
-                      </span>
-                      <p className="font-bold text-white text-sm">
-                        {osSelecionada.aparelho?.modelo}
-                      </p>
-                      <p className="text-zinc-400">
-                        <strong>IMEI / N° Série:</strong>{" "}
-                        {osSelecionada.aparelho?.imei1 || "Não informado"}
-                      </p>
-                      <p className="text-zinc-400">
-                        <strong>Senha:</strong>{" "}
-                        {osSelecionada.aparelho?.senhaDesbloqueio ||
-                          "Não informada"}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="p-4 bg-zinc-950 border border-zinc-800 rounded-xl space-y-3">
-                    <div>
-                      <span className="text-zinc-500 block uppercase text-[10px] font-bold">
-                        Defeito Relatado pelo Cliente
-                      </span>
-                      <p className="text-zinc-200 mt-1 bg-zinc-900 p-2.5 rounded-lg border border-zinc-800">
-                        {osSelecionada.defeitoRelatado}
-                      </p>
-                    </div>
-                    {osSelecionada.checklistEntrada?.__tecnicoNome && (
-                      <div>
-                        <span className="text-zinc-500 block uppercase text-[10px] font-bold">
-                          Técnico Responsável
-                        </span>
-                        <p className="text-zinc-200 mt-1 bg-zinc-900 p-2.5 rounded-lg border border-zinc-800">
-                          {String(osSelecionada.checklistEntrada.__tecnicoNome)}
-                        </p>
-                      </div>
-                    )}
-                    {osSelecionada.diagnostico && (
-                      <div>
-                        <span className="text-zinc-500 block uppercase text-[10px] font-bold">
-                          Diagnóstico Técnico
-                        </span>
-                        <p className="text-zinc-200 mt-1 bg-zinc-900 p-2.5 rounded-lg border border-zinc-800">
-                          {osSelecionada.diagnostico}
-                        </p>
-                      </div>
-                    )}
-                    {osSelecionada.servicoRealizado && (
-                      <div>
-                        <span className="text-zinc-500 block uppercase text-[10px] font-bold">
-                          Serviço Realizado
-                        </span>
-                        <p className="text-zinc-200 mt-1 bg-zinc-900 p-2.5 rounded-lg border border-zinc-800">
-                          {osSelecionada.servicoRealizado}
-                        </p>
-                      </div>
-                    )}
-                    {osSelecionada.pecasUtilizadas && (
-                      <div>
-                        <span className="text-zinc-500 block uppercase text-[10px] font-bold">
-                          Peças Utilizadas
-                        </span>
-                        <p className="text-zinc-200 mt-1 bg-zinc-900 p-2.5 rounded-lg border border-zinc-800">
-                          {osSelecionada.pecasUtilizadas}
-                        </p>
-                      </div>
-                    )}
-                    {osSelecionada.observacoes && (
-                      <div>
-                        <span className="text-zinc-500 block uppercase text-[10px] font-bold">
-                          Observações Internas
-                        </span>
-                        <p className="text-zinc-200 mt-1 bg-zinc-900 p-2.5 rounded-lg border border-zinc-800">
-                          {osSelecionada.observacoes}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="p-4 bg-zinc-950 border border-zinc-800 rounded-xl">
-                      <span className="text-zinc-400 uppercase text-[10px] font-bold block">
-                        Valor Cobrado Total
-                      </span>
-                      <p className="text-xl font-black text-white mt-1">
-                        R${" "}
-                        {(
-                          osSelecionada.orcamentoCalculado
-                            ?.valorTotalOrcamento || 0
-                        ).toFixed(2)}
-                      </p>
-                    </div>
-                    <div className="p-4 bg-zinc-950 border border-blue-500/30 rounded-xl">
-                      <span className="text-blue-400 uppercase text-[10px] font-bold block">
-                        Valor Líquido (Caixa)
-                      </span>
-                      <p className="text-xl font-black text-blue-400 mt-1">
-                        R${" "}
-                        {Number(
-                          osSelecionada.valorLiquido ||
-                            osSelecionada.orcamentoCalculado
-                              ?.valorTotalOrcamento ||
-                            0,
-                        ).toFixed(2)}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {abaModal === "checklist" && (
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  {/* Fotos antes do checklist (mesma ordem da Nova OS) */}
-                  <div className="col-span-2 pb-4 mb-2 border-b border-zinc-800">
-                    <GaleriaFotosOS key={`${osSelecionada.id_os}-${versaoFotos}`} idOs={osSelecionada.id_os} />
-                  </div>
-                  {itensVisiveisChecklist(osSelecionada.checklistEntrada).length > 0 ? (
-                    itensVisiveisChecklist(osSelecionada.checklistEntrada).map(
-                      ([item, status]) => (
-                        <div
-                          key={item}
-                          className="p-2.5 bg-zinc-950 border border-zinc-800 rounded-lg flex justify-between items-center"
-                        >
-                          <span className="capitalize font-medium text-zinc-300">
-                            {rotuloItemChecklist(item)}
-                          </span>
-                          <span
-                            className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                              status === "OK"
-                                ? "bg-emerald-500/20 text-emerald-400"
-                                : status === "DEFEITO"
-                                  ? "bg-rose-500/20 text-rose-400"
-                                  : "bg-blue-500/20 text-blue-400"
-                            }`}
-                          >
-                            {status}
-                          </span>
-                        </div>
-                      ),
-                    )
-                  ) : (
-                    <p className="text-zinc-500 col-span-2 text-center py-4">
-                      Sem checklist registrado.
-                    </p>
-                  )}
-                </div>
-              )}
-
-              {abaModal === "historico" && (
-                <div className="space-y-3 text-xs">
-                  <h4 className="font-bold text-white uppercase text-[10px]">
-                    Linha do Tempo de Ocorrências e Edições
-                  </h4>
-                  <div className="space-y-2 max-h-48 overflow-y-auto">
-                    {osSelecionada.historico &&
-                    osSelecionada.historico.length > 0 ? (
-                      osSelecionada.historico.map((item: any) => (
-                        <div
-                          key={item.id}
-                          className="p-2.5 bg-zinc-950 border border-zinc-800 rounded-lg"
-                        >
-                          <div className="flex justify-between text-[10px] text-zinc-500 mb-1">
-                            <span>
-                              {new Date(item.data).toLocaleString("pt-BR")}
-                            </span>
-                            <span className="text-blue-400 font-bold">
-                              {item.autor || "Sistema"}
-                            </span>
-                          </div>
-                          <p className="text-zinc-300">{item.descricao}</p>
-                        </div>
-                      ))
-                    ) : (
-                      <p className="text-zinc-500 text-center py-4">
-                        Nenhuma ocorrência salva.
-                      </p>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
+        <DetalhesOS
+          key={osSelecionada.id_os}
+          os={osSelecionada}
+          veCustos={veCustos}
+          podeImprimir={osSelecionada.possuiGarantia !== false && Number(osSelecionada.possuiGarantia) !== 0}
+          versaoFotos={versaoFotos}
+          onFechar={() => {
+            setOsSelecionada(null);
+            setOsParaImprimir(null);
+          }}
+          onEditar={(aba) => abrirEdicao(osSelecionada, aba)}
+          onImprimir={() => handleImprimir(osSelecionada)}
+          onExcluir={() => setOsParaExcluir(osSelecionada)}
+          onAlterarStatus={(novo) => alterarStatusOS(osSelecionada, novo)}
+          onDefinirPrevisao={(data) => definirPrevisaoOS(osSelecionada, data)}
+          onAvaliacaoRegistrada={marcarAvaliacaoSolicitada}
+        />
       )}
 
       {/* MODAL EDIÇÃO */}
